@@ -1,0 +1,57 @@
+{
+  "name": "fat-buddha-kot-agent",
+  "version": "1.0.0",
+  "description": "Desktop thermal printer agent for The Fat Buddha Delight Restro & Cafe KOT system",
+  "main": "src/main/main.js",
+  "author": "The Fat Buddha Delight Restro & Cafe",
+  "license": "UNLICENSED",
+  "scripts": {
+    "start": "electron .",
+    "dev": "electron . --dev",
+    "pack": "electron-builder --dir",
+    "dist": "electron-builder --win",
+    "dist:x64": "electron-builder --win --x64"
+  },
+  "dependencies": {
+    "firebase": "^10.14.1"
+  },
+  "devDependencies": {
+    "electron": "^33.2.0",
+    "electron-builder": "^25.1.8"
+  },
+  "build": {
+    "appId": "com.fatbuddha.kotagent",
+    "productName": "Fat Buddha KOT Printer Agent",
+    "artifactName": "Fat-Buddha-KOT-Agent-Setup.${ext}",
+    "directories": {
+      "output": "dist-installer"
+    },
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64",
+            "ia32"
+          ]
+        }
+      ],
+      "icon": "assets/icon.ico"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "Fat Buddha KOT Printer Agent",
+      "uninstallDisplayName": "Fat Buddha KOT Printer Agent",
+      "runAfterFinish": true
+    },
+    "files": [
+      "src/**/*",
+      "firebase-config.json",
+      "assets/**/*",
+      "package.json"
+    ]
+  }
+}

@@ -1,0 +1,355 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Fat Buddha KOT Printer Agent</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <div id="app" class="app-container">
+    <!-- TOP NAVIGATION / HEADER -->
+    <header class="app-header">
+      <div class="brand-group">
+        <div class="logo-icon">🖨️</div>
+        <div>
+          <h1 class="app-title">Fat Buddha KOT Printer Agent</h1>
+          <div class="restaurant-name-header" id="headerRestaurantName">
+            The Fat Buddha Delight Restro &amp; Cafe
+          </div>
+        </div>
+      </div>
+
+      <!-- Live Global Status Indicators -->
+      <div class="header-status-group">
+        <div class="status-pill" id="headerFirebasePill">
+          <span class="status-dot disconnected" id="headerFirebaseDot"></span>
+          <span id="headerFirebaseText">Firebase: Connecting...</span>
+        </div>
+
+        <div class="status-pill" id="headerPrinterPill">
+          <span class="status-dot offline" id="headerPrinterDot"></span>
+          <span id="headerPrinterText">Printer: Checking...</span>
+        </div>
+
+        <div class="destination-tag" id="headerDestinationTag">
+          KITCHEN
+        </div>
+      </div>
+
+      <!-- Navigation Tabs -->
+      <nav class="nav-tabs">
+        <button class="nav-tab active" data-tab="dashboard">Dashboard</button>
+        <button class="nav-tab" data-tab="logs">Print Logs</button>
+        <button class="nav-tab" data-tab="settings">Settings</button>
+      </nav>
+
+      <!-- Window Control Actions -->
+      <div class="window-actions">
+        <button class="win-btn" id="btnMinimize" title="Minimize to Tray">−</button>
+        <button class="win-btn" id="btnHideToTray" title="Send to Background">⤓</button>
+      </div>
+    </header>
+
+    <!-- MAIN BODY CONTENT -->
+    <main class="main-content">
+      
+      <!-- TAB 1: DASHBOARD VIEW -->
+      <section id="viewDashboard" class="view-section active">
+        <!-- Paused Warning Banner -->
+        <div id="pausedBanner" class="alert-banner warning hidden">
+          <div class="banner-content">
+            <span class="banner-icon">⏸</span>
+            <div>
+              <strong>Printing is currently PAUSED</strong>
+              <div class="subtext">New orders are safely queued in Firestore. Click resume when your thermal printer is ready.</div>
+            </div>
+          </div>
+          <button id="btnResumeBanner" class="btn btn-warning-action">▶ Resume Printing</button>
+        </div>
+
+        <!-- Connection Error Banner -->
+        <div id="connectionErrorBanner" class="alert-banner error hidden">
+          <div class="banner-content">
+            <span class="banner-icon">⚠</span>
+            <div>
+              <strong>Firebase Connection Disconnected</strong>
+              <div class="subtext" id="connectionErrorText">Attempting automatic reconnection in background...</div>
+            </div>
+          </div>
+          <button id="btnRetryConnection" class="btn btn-secondary btn-sm">Retry Now</button>
+        </div>
+
+        <!-- Top Overview Grid -->
+        <div class="dashboard-grid">
+          <!-- Card 1: Agent Identity -->
+          <div class="card identity-card">
+            <div class="card-header">
+              <span class="card-title">Agent Configuration</span>
+              <span class="badge badge-amber" id="dashDestBadge">KITCHEN AGENT</span>
+            </div>
+            <div class="identity-info">
+              <div class="info-row">
+                <span class="label">Restaurant:</span>
+                <span class="value" id="dashRestaurantName">The Fat Buddha Delight Restro &amp; Cafe</span>
+              </div>
+              <div class="info-row">
+                <span class="label">Assigned Printer:</span>
+                <span class="value font-mono" id="dashPrinterName">Not Configured</span>
+              </div>
+              <div class="info-row">
+                <span class="label">Paper Format:</span>
+                <span class="value font-mono" id="dashPaperWidth">80mm Standard</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- Card 2: Counters & Quick Stats -->
+          <div class="card stats-card">
+            <div class="stats-row">
+              <div class="stat-box">
+                <div class="stat-number stat-pending" id="statPendingCount">0</div>
+                <div class="stat-label">Pending</div>
+              </div>
+              <div class="stat-box">
+                <div class="stat-number stat-printed" id="statPrintedCount">0</div>
+                <div class="stat-label">Printed</div>
+              </div>
+              <div class="stat-box">
+                <div class="stat-number stat-failed" id="statFailedCount">0</div>
+                <div class="stat-label">Failed</div>
+              </div>
+            </div>
+            <div class="last-kot-row">
+              <div class="last-kot-item">
+                <span class="label">Last KOT:</span>
+                <span class="value font-mono" id="statLastKot">None</span>
+              </div>
+              <div class="last-kot-item">
+                <span class="label">Last Print:</span>
+                <span class="value" id="statLastPrintTime">None</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Action Bar -->
+        <div class="action-bar">
+          <button id="btnTogglePause" class="btn btn-primary">
+            <span id="btnPauseIcon">⏸</span> <span id="btnPauseLabel">Pause Printing</span>
+          </button>
+          <button id="btnTestPrint" class="btn btn-secondary">
+            🖨️ Test Print
+          </button>
+          <button id="btnRetryFailed" class="btn btn-amber">
+            🔄 Retry Failed Jobs (<span id="retryFailedCount">0</span>)
+          </button>
+          <button id="btnOpenSettings" class="btn btn-ghost">
+            ⚙️ Setup &amp; Settings
+          </button>
+        </div>
+
+        <!-- Live KOT Activity Stream -->
+        <div class="card activity-card">
+          <div class="card-header">
+            <div class="flex items-center gap-2">
+              <span class="card-title">Live Print Queue &amp; Activity</span>
+              <span class="live-pulse"></span>
+            </div>
+            <span class="subtext">Filtered for: <strong id="filterDestinationLabel">KITCHEN</strong></span>
+          </div>
+
+          <div class="table-container">
+            <table class="activity-table">
+              <thead>
+                <tr>
+                  <th>Time</th>
+                  <th>KOT #</th>
+                  <th>Table</th>
+                  <th>Destination</th>
+                  <th>Status</th>
+                  <th>Action</th>
+                </tr>
+              </thead>
+              <tbody id="activityTableBody">
+                <tr class="empty-row">
+                  <td colspan="6">Waiting for incoming KOT orders from POS...</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+
+      <!-- TAB 2: PRINT LOGS VIEW -->
+      <section id="viewLogs" class="view-section">
+        <div class="card">
+          <div class="card-header">
+            <div>
+              <span class="card-title">Local Print History &amp; Audit Trail</span>
+              <div class="subtext">All KOT print transactions processed on this computer</div>
+            </div>
+            <div class="flex gap-2">
+              <button id="btnClearLogs" class="btn btn-danger btn-sm">Clear History</button>
+              <button id="btnRefreshLogs" class="btn btn-secondary btn-sm">Refresh</button>
+            </div>
+          </div>
+
+          <div class="table-container logs-container">
+            <table class="activity-table">
+              <thead>
+                <tr>
+                  <th>Timestamp</th>
+                  <th>KOT ID</th>
+                  <th>Table</th>
+                  <th>Destination</th>
+                  <th>Windows Printer</th>
+                  <th>Status</th>
+                  <th>Details / Error</th>
+                </tr>
+              </thead>
+              <tbody id="logsTableBody">
+                <tr class="empty-row">
+                  <td colspan="7">No logs recorded yet.</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+
+      <!-- TAB 3: SETTINGS & SETUP VIEW -->
+      <section id="viewSettings" class="view-section">
+        <div class="card settings-card">
+          <div class="card-header">
+            <div>
+              <h2 class="card-title">Printer Agent Configuration</h2>
+              <div class="subtext">Configure hardware, destination routing, and Windows startup settings</div>
+            </div>
+            <span class="badge badge-neutral" id="setupStatusBadge">Setup Mode</span>
+          </div>
+
+          <form id="settingsForm" class="settings-form">
+            <!-- 1. Restaurant Name -->
+            <div class="form-group">
+              <label for="inputRestaurantName">Restaurant Name</label>
+              <input
+                type="text"
+                id="inputRestaurantName"
+                class="form-input"
+                value="The Fat Buddha Delight Restro &amp; Cafe"
+                required
+              />
+              <span class="form-hint">Printed on all thermal KOT headers.</span>
+            </div>
+
+            <!-- 2. Agent Destination Dropdown -->
+            <div class="form-group">
+              <label for="selectDestination">Agent Destination</label>
+              <select id="selectDestination" class="form-select">
+                <option value="KITCHEN">KITCHEN (Kitchen Food Orders)</option>
+                <option value="RECEPTION">RECEPTION (Beverages, Bar &amp; Reception)</option>
+              </select>
+              <span class="form-hint">
+                Select <strong>KITCHEN</strong> for the kitchen PC, or <strong>RECEPTION</strong> for the reception/bar PC.
+              </span>
+            </div>
+
+            <!-- 3. Available Windows Printer Dropdown -->
+            <div class="form-group">
+              <div class="flex justify-between items-center">
+                <label for="selectPrinter">Available Windows Thermal Printer</label>
+                <button type="button" id="btnRefreshPrinters" class="btn-link">🔄 Refresh List</button>
+              </div>
+              <select id="selectPrinter" class="form-select">
+                <option value="">-- Scanning Windows Printers... --</option>
+              </select>
+              <span class="form-hint">
+                Select your installed thermal receipt printer (e.g., Xprinter XP-80, Epson TM-T82, POS-80).
+              </span>
+            </div>
+
+            <!-- 4. Thermal Paper Width -->
+            <div class="form-group">
+              <label for="selectPaperWidth">Thermal Paper Width</label>
+              <select id="selectPaperWidth" class="form-select">
+                <option value="80mm">80mm (Standard 3-inch Thermal Roll)</option>
+                <option value="58mm">58mm (Compact 2-inch Thermal Roll)</option>
+              </select>
+            </div>
+
+            <!-- 5. Status Diagnostics -->
+            <div class="diagnostics-panel">
+              <h3 class="panel-title">Real-Time Diagnostics</h3>
+              <div class="diag-grid">
+                <div class="diag-item">
+                  <span class="label">Firebase Firestore Status:</span>
+                  <div class="flex items-center gap-2">
+                    <span class="status-dot disconnected" id="diagFirebaseDot"></span>
+                    <span class="font-bold" id="diagFirebaseText">Disconnected</span>
+                  </div>
+                </div>
+                <div class="diag-item">
+                  <span class="label">Windows Printer Status:</span>
+                  <div class="flex items-center gap-2">
+                    <span class="status-dot offline" id="diagPrinterDot"></span>
+                    <span class="font-bold" id="diagPrinterText">Not Selected</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- 6. Windows System Settings -->
+            <div class="checkbox-group">
+              <label class="checkbox-label">
+                <input type="checkbox" id="checkStartWithWindows" checked />
+                <span>Start Fat Buddha KOT Agent automatically with Windows</span>
+              </label>
+
+              <label class="checkbox-label">
+                <input type="checkbox" id="checkAutoRetry" checked />
+                <span>Automatically retry failed print jobs when printer comes back online</span>
+              </label>
+
+              <label class="checkbox-label">
+                <input type="checkbox" id="checkSoundAlerts" checked />
+                <span>Play audio chime when new KOT arrives</span>
+              </label>
+            </div>
+
+            <!-- Buttons -->
+            <div class="settings-actions">
+              <button type="button" id="btnSettingsTestPrint" class="btn btn-secondary">
+                🖨️ Test Print Slip
+              </button>
+              <div class="flex gap-2">
+                <button type="button" id="btnResetConfig" class="btn btn-ghost text-danger">
+                  Reset to Defaults
+                </button>
+                <button type="submit" class="btn btn-primary">
+                  💾 Save Configuration
+                </button>
+              </div>
+            </div>
+          </form>
+        </div>
+      </section>
+
+    </main>
+
+    <!-- FOOTER BAR -->
+    <footer class="app-footer">
+      <div>Fat Buddha KOT Agent v1.0.0 &bull; Running in Windows Desktop Mode</div>
+      <div id="footerStatusSummary">Ready</div>
+    </footer>
+  </div>
+
+  <!-- Audio element for KOT alert chime -->
+  <audio id="kotAudioChime" preload="auto">
+    <source src="data:audio/wav;base64,UklGRnoGAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQoGAACBhYqFbF1fdJivrJBhNjVgodDbqWE2MDCV2O27ai4pKY7a8sN2KCYmh930yXwqJieF3fTJfconJ4Xd9Ml9yicnhtzzyX3KKSaH2/DJfcopJ4ba8Ml+yyooh9rwx37MKymG2O/HfswrKYba78d+zCsphdjux37MKymE1+7Hfs0rKIXX7sd+zCwohNbtx37MLCiE1u3GfswtKITV7cZ+zC4phNTsxn7NLimE0+zGfc0uKILR68V+zS8ogM/qxX3NMCaAzunEfs4wJ3/M6MN+zjAnfcrlwn7OMyZ7yePAf9A0JHrH371/0TQleMDcvIDSNiNvvNu5gdQ3I2mx1bSD1TkhZa3NroHVOSJjpsakgdY8HmGZwaCB1j0eW5CvnYHWPh1UjKGVgtZAHU6Cm4uD2EEcS3qWhIPYQxxHeZODg9lFG0FzkH6B2kcZP3GAe3/aSRw7b3x2etpKGTloc3B2200ZNWlxb3PbThkxZG5rc9xPGStgbGls3FIZK15paWrdVRolWWVkZ91ZGB9SZGJh3l0UFE5dXVzeYBEJTFlaWtxkDw==" type="audio/wav">
+  </audio>
+
+  <!-- Load Renderer Logic -->
+  <script type="module" src="renderer.js"></script>
+</body>
+</html>

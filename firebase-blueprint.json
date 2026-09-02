@@ -1,0 +1,284 @@
+{
+  "entities": {
+    "Table": {
+      "title": "Table",
+      "description": "A restaurant dining table and its current occupancy, session, and bill status.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128 },
+        "tableNumber": { "type": "number" },
+        "name": { "type": "string", "maxLength": 128 },
+        "qrToken": { "type": "string", "maxLength": 128 },
+        "status": { "type": "string", "enum": ["AVAILABLE", "OCCUPIED", "BILLING"] },
+        "activeSessionId": { "type": "string", "maxLength": 128 },
+        "isActive": { "type": "boolean" },
+        "capacity": { "type": "number" },
+        "section": { "type": "string", "maxLength": 64 },
+        "createdAt": { "type": "string", "maxLength": 64 },
+        "updatedAt": { "type": "string", "maxLength": 64 }
+      },
+      "required": ["id", "tableNumber", "name", "qrToken", "status", "isActive"]
+    },
+    "Category": {
+      "title": "Category",
+      "description": "Menu category grouping items for kitchen preparation and guest display.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128 },
+        "name": { "type": "string", "maxLength": 128 },
+        "description": { "type": "string", "maxLength": 500 },
+        "imageUrl": { "type": "string", "maxLength": 2048 },
+        "sortOrder": { "type": "number" },
+        "isActive": { "type": "boolean" },
+        "createdAt": { "type": "string", "maxLength": 64 },
+        "updatedAt": { "type": "string", "maxLength": 64 }
+      },
+      "required": ["id", "name", "isActive"]
+    },
+    "MenuItem": {
+      "title": "MenuItem",
+      "description": "Menu food and beverage item with trusted pricing and KOT destination.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128 },
+        "name": { "type": "string", "maxLength": 128 },
+        "description": { "type": "string", "maxLength": 1000 },
+        "categoryId": { "type": "string", "maxLength": 128 },
+        "price": { "type": "number" },
+        "imageUrl": { "type": "string", "maxLength": 2048 },
+        "isAvailable": { "type": "boolean" },
+        "kotDestination": { "type": "string", "enum": ["KITCHEN", "RECEPTION"] },
+        "sortOrder": { "type": "number" },
+        "createdAt": { "type": "string", "maxLength": 64 },
+        "updatedAt": { "type": "string", "maxLength": 64 }
+      },
+      "required": ["id", "name", "price", "isAvailable", "kotDestination"]
+    },
+    "TableSession": {
+      "title": "TableSession",
+      "description": "A single dining session at one table binding multiple guest orders.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128 },
+        "tableId": { "type": "string", "maxLength": 128 },
+        "tableNumber": { "type": "number" },
+        "status": { "type": "string", "enum": ["OPEN", "BILLING", "CLOSED"] },
+        "openedAt": { "type": "string", "maxLength": 64 },
+        "closedAt": { "type": "string", "maxLength": 64 },
+        "createdBy": { "type": "string", "maxLength": 128 },
+        "totalAmount": { "type": "number" }
+      },
+      "required": ["id", "tableId", "tableNumber", "status", "openedAt", "createdBy"]
+    },
+    "Order": {
+      "title": "Order",
+      "description": "An order containing immutable snapshot items, taxes and pricing.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128 },
+        "orderNumber": { "type": "string", "maxLength": 64 },
+        "sessionId": { "type": "string", "maxLength": 128 },
+        "tableId": { "type": "string", "maxLength": 128 },
+        "tableNumber": { "type": "number" },
+        "source": { "type": "string", "enum": ["GUEST_QR", "ADMIN_MANUAL"] },
+        "status": { "type": "string", "enum": ["NEW", "CONFIRMED", "PREPARING", "READY", "SERVED", "CANCELLED"] },
+        "subtotal": { "type": "number" },
+        "discount": { "type": "number" },
+        "vat": { "type": "number" },
+        "total": { "type": "number" },
+        "items": { "type": "array" },
+        "createdAt": { "type": "string", "maxLength": 64 },
+        "updatedAt": { "type": "string", "maxLength": 64 },
+        "createdBy": { "type": "string", "maxLength": 128 }
+      },
+      "required": ["id", "orderNumber", "sessionId", "tableId", "tableNumber", "source", "status", "subtotal", "total", "items", "createdAt"]
+    },
+    "KOTTicket": {
+      "title": "KOTTicket",
+      "description": "Kitchen Order Ticket split automatically by destination (Kitchen vs Reception).",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128 },
+        "kotNumber": { "type": "string", "maxLength": 64 },
+        "orderId": { "type": "string", "maxLength": 128 },
+        "sessionId": { "type": "string", "maxLength": 128 },
+        "tableId": { "type": "string", "maxLength": 128 },
+        "tableNumber": { "type": "number" },
+        "destination": { "type": "string", "enum": ["KITCHEN", "RECEPTION"] },
+        "status": { "type": "string", "enum": ["PENDING", "PRINTING", "PRINTED", "PREPARING", "READY", "CANCELLED"] },
+        "items": { "type": "array" },
+        "createdAt": { "type": "string", "maxLength": 64 },
+        "updatedAt": { "type": "string", "maxLength": 64 }
+      },
+      "required": ["id", "kotNumber", "orderId", "sessionId", "tableId", "tableNumber", "destination", "status", "items", "createdAt"]
+    },
+    "PrintJob": {
+      "title": "PrintJob",
+      "description": "KOT hardware print queue job consumed by physical thermal printers.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128 },
+        "kotId": { "type": "string", "maxLength": 128 },
+        "destination": { "type": "string", "maxLength": 128 },
+        "printerType": { "type": "string", "enum": ["KITCHEN", "RECEPTION"] },
+        "status": { "type": "string", "enum": ["PENDING", "CLAIMED", "PRINTING", "PRINTED", "FAILED"] },
+        "payload": { "type": "object" },
+        "attempts": { "type": "number" },
+        "createdAt": { "type": "string", "maxLength": 64 },
+        "printedAt": { "type": "string", "maxLength": 64 },
+        "error": { "type": "string", "maxLength": 500 }
+      },
+      "required": ["id", "kotId", "printerType", "status", "payload", "createdAt"]
+    },
+    "PaymentRecord": {
+      "title": "PaymentRecord",
+      "description": "Financial payment transaction recorded at checkout.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128 },
+        "sessionId": { "type": "string", "maxLength": 128 },
+        "billId": { "type": "string", "maxLength": 128 },
+        "amount": { "type": "number" },
+        "method": { "type": "string" },
+        "status": { "type": "string" },
+        "transactionReference": { "type": "string", "maxLength": 128 },
+        "createdAt": { "type": "string", "maxLength": 64 },
+        "createdBy": { "type": "string", "maxLength": 128 }
+      },
+      "required": ["id", "amount", "method", "status", "createdAt"]
+    },
+    "InventoryItem": {
+      "title": "InventoryItem",
+      "description": "Raw ingredient or supply stock record.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128 },
+        "name": { "type": "string", "maxLength": 128 },
+        "sku": { "type": "string", "maxLength": 64 },
+        "unit": { "type": "string", "maxLength": 32 },
+        "currentStock": { "type": "number" },
+        "minimumStock": { "type": "number" },
+        "costPerUnit": { "type": "number" },
+        "isActive": { "type": "boolean" },
+        "createdAt": { "type": "string", "maxLength": 64 },
+        "updatedAt": { "type": "string", "maxLength": 64 }
+      },
+      "required": ["id", "name", "unit", "currentStock", "minimumStock", "isActive"]
+    },
+    "Recipe": {
+      "title": "Recipe",
+      "description": "Recipe linking menu item to inventory ingredients.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128 },
+        "menuItemId": { "type": "string", "maxLength": 128 },
+        "ingredientId": { "type": "string", "maxLength": 128 },
+        "quantity": { "type": "number" },
+        "unit": { "type": "string", "maxLength": 32 },
+        "createdAt": { "type": "string", "maxLength": 64 },
+        "updatedAt": { "type": "string", "maxLength": 64 }
+      },
+      "required": ["id", "menuItemId", "ingredientId", "quantity", "unit"]
+    },
+    "InventoryTransaction": {
+      "title": "InventoryTransaction",
+      "description": "Inventory movement transaction log.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128 },
+        "inventoryItemId": { "type": "string", "maxLength": 128 },
+        "type": { "type": "string", "enum": ["PURCHASE", "SALE", "ADJUSTMENT", "WASTAGE", "RETURN"] },
+        "quantity": { "type": "number" },
+        "referenceType": { "type": "string", "maxLength": 64 },
+        "referenceId": { "type": "string", "maxLength": 128 },
+        "reason": { "type": "string", "maxLength": 500 },
+        "createdAt": { "type": "string", "maxLength": 64 },
+        "createdBy": { "type": "string", "maxLength": 128 }
+      },
+      "required": ["id", "inventoryItemId", "type", "quantity", "createdAt"]
+    },
+    "AuditLog": {
+      "title": "AuditLog",
+      "description": "Immutable security and operational audit trail.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128 },
+        "userId": { "type": "string", "maxLength": 128 },
+        "action": { "type": "string", "maxLength": 128 },
+        "entityType": { "type": "string", "maxLength": 64 },
+        "entityId": { "type": "string", "maxLength": 128 },
+        "details": { "type": "object" },
+        "createdAt": { "type": "string", "maxLength": 64 }
+      },
+      "required": ["id", "action", "entityType", "entityId", "createdAt"]
+    },
+    "RestaurantSettings": {
+      "title": "RestaurantSettings",
+      "description": "Global restaurant settings, tax rates, and currency config.",
+      "type": "object",
+      "properties": {
+        "restaurantName": { "type": "string", "maxLength": 128 },
+        "address": { "type": "string", "maxLength": 256 },
+        "phone": { "type": "string", "maxLength": 64 },
+        "vatRate": { "type": "number" },
+        "currency": { "type": "string", "maxLength": 16 },
+        "timezone": { "type": "string", "maxLength": 64 }
+      },
+      "required": ["restaurantName", "vatRate", "currency", "timezone"]
+    }
+  },
+  "firestore": {
+    "/tables/{tableId}": {
+      "schema": { "$ref": "#/entities/Table" },
+      "description": "Restaurant tables status and active session binding."
+    },
+    "/categories/{categoryId}": {
+      "schema": { "$ref": "#/entities/Category" },
+      "description": "Menu categories catalog."
+    },
+    "/menu_items/{menuItemId}": {
+      "schema": { "$ref": "#/entities/MenuItem" },
+      "description": "Menu item master catalog and KOT routing."
+    },
+    "/sessions/{sessionId}": {
+      "schema": { "$ref": "#/entities/TableSession" },
+      "description": "Dining session at table."
+    },
+    "/orders/{orderId}": {
+      "schema": { "$ref": "#/entities/Order" },
+      "description": "Guest and staff placed orders."
+    },
+    "/kots/{kotId}": {
+      "schema": { "$ref": "#/entities/KOTTicket" },
+      "description": "Station-routed Kitchen Order Tickets."
+    },
+    "/printJobs/{jobId}": {
+      "schema": { "$ref": "#/entities/PrintJob" },
+      "description": "Thermal printer hardware print queue."
+    },
+    "/payments/{paymentId}": {
+      "schema": { "$ref": "#/entities/PaymentRecord" },
+      "description": "Settled payments and receipts."
+    },
+    "/inventory/{inventoryId}": {
+      "schema": { "$ref": "#/entities/InventoryItem" },
+      "description": "Stock management and raw materials."
+    },
+    "/recipes/{recipeId}": {
+      "schema": { "$ref": "#/entities/Recipe" },
+      "description": "Ingredient mapping for menu recipes."
+    },
+    "/inventoryTransactions/{txId}": {
+      "schema": { "$ref": "#/entities/InventoryTransaction" },
+      "description": "Stock deduction and replenishment audit logs."
+    },
+    "/auditLogs/{logId}": {
+      "schema": { "$ref": "#/entities/AuditLog" },
+      "description": "Operational audit trail."
+    },
+    "/settings/{settingId}": {
+      "schema": { "$ref": "#/entities/RestaurantSettings" },
+      "description": "Restaurant configuration, VAT rate, and locale settings."
+    }
+  }
+}

@@ -1,0 +1,252 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Default deny catch-all
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // ==========================================
+    // HELPER PRIMITIVES
+    // ==========================================
+    function isValidId(id) {
+      return id is string && id.size() > 0 && id.size() <= 128;
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    // ==========================================
+    // VALIDATION BLUEPRINTS
+    // ==========================================
+    function isValidTable(data) {
+      return data.id is string && data.id.size() <= 128 &&
+        data.tableNumber is number && data.tableNumber >= 1 && data.tableNumber <= 100 &&
+        data.name is string && data.name.size() <= 128 &&
+        data.qrToken is string && data.qrToken.size() <= 128 &&
+        data.status in ['AVAILABLE', 'OCCUPIED', 'BILLING', 'RESERVED', 'CLEANING', 'available', 'occupied', 'billing', 'reserved', 'cleaning'] &&
+        data.isActive is bool &&
+        (!('capacity' in data) || (data.capacity is number && data.capacity >= 1 && data.capacity <= 50)) &&
+        (!('section' in data) || (data.section is string && data.section.size() <= 64)) &&
+        (!('activeSessionId' in data) || data.activeSessionId == null || (data.activeSessionId is string && data.activeSessionId.size() <= 128));
+    }
+
+    function isValidCategory(data) {
+      return data.id is string && data.id.size() <= 128 &&
+        data.name is string && data.name.size() > 0 && data.name.size() <= 128 &&
+        data.isActive is bool &&
+        (!('description' in data) || (data.description is string && data.description.size() <= 500)) &&
+        (!('sortOrder' in data) || (data.sortOrder is number));
+    }
+
+    function isValidMenuItem(data) {
+      return data.id is string && data.id.size() <= 128 &&
+        data.name is string && data.name.size() > 0 && data.name.size() <= 128 &&
+        data.price is number && data.price >= 0 &&
+        data.kotDestination in ['KITCHEN', 'RECEPTION', 'kitchen', 'reception'] &&
+        (!('isAvailable' in data) || data.isAvailable is bool) &&
+        (!('inStock' in data) || data.inStock is bool) &&
+        (!('description' in data) || (data.description is string && data.description.size() <= 1000));
+    }
+
+    function isValidSession(data) {
+      return data.id is string && data.id.size() <= 128 &&
+        data.tableId is string && data.tableId.size() <= 128 &&
+        data.tableNumber is number && data.tableNumber >= 1 && data.tableNumber <= 100 &&
+        data.status in ['OPEN', 'BILLING', 'CLOSED'] &&
+        data.openedAt is string && data.openedAt.size() <= 64;
+    }
+
+    function isValidOrder(data) {
+      return data.id is string && data.id.size() <= 128 &&
+        data.orderNumber is string && data.orderNumber.size() <= 64 &&
+        data.sessionId is string && data.sessionId.size() <= 128 &&
+        data.tableId is string && data.tableId.size() <= 128 &&
+        data.tableNumber is number && data.tableNumber >= 1 && data.tableNumber <= 100 &&
+        data.source in ['GUEST_QR', 'ADMIN_MANUAL', 'guest_qr', 'pos_manual'] &&
+        data.status in ['NEW', 'CONFIRMED', 'PREPARING', 'READY', 'SERVED', 'COMPLETED', 'CANCELLED', 'placed', 'confirmed', 'preparing', 'ready', 'served', 'completed', 'cancelled'] &&
+        data.subtotal is number && data.subtotal >= 0 &&
+        data.total is number && data.total >= 0 &&
+        data.items is list && data.items.size() > 0 && data.items.size() <= 100;
+    }
+
+    function isValidKOT(data) {
+      return data.id is string && data.id.size() <= 128 &&
+        data.kotNumber is string && data.kotNumber.size() <= 64 &&
+        data.orderId is string && data.orderId.size() <= 128 &&
+        data.sessionId is string && data.sessionId.size() <= 128 &&
+        data.tableId is string && data.tableId.size() <= 128 &&
+        data.tableNumber is number && data.tableNumber >= 1 && data.tableNumber <= 100 &&
+        data.destination in ['KITCHEN', 'RECEPTION', 'kitchen', 'reception'] &&
+        data.status in ['PENDING', 'PRINTING', 'PRINTED', 'PREPARING', 'READY', 'CANCELLED', 'IN_PROGRESS', 'COMPLETED', 'BUMPED', 'pending', 'printing', 'printed', 'preparing', 'ready', 'cancelled', 'in_progress', 'completed', 'bumped'] &&
+        data.items is list && data.items.size() > 0 && data.items.size() <= 100;
+    }
+
+    function isValidPrintJob(data) {
+      return data.id is string && data.id.size() <= 128 &&
+        data.kotId is string && data.kotId.size() <= 128 &&
+        data.printerType in ['KITCHEN', 'RECEPTION'] &&
+        data.status in ['PENDING', 'CLAIMED', 'PRINTING', 'PRINTED', 'FAILED'] &&
+        data.payload is map;
+    }
+
+    function isValidPayment(data) {
+      return data.id is string && data.id.size() <= 128 &&
+        data.amount is number && data.amount >= 0 &&
+        data.method is string && data.method.size() > 0 && data.method.size() <= 64 &&
+        data.status is string && data.status.size() > 0 && data.status.size() <= 64;
+    }
+
+    function isValidInventory(data) {
+      return data.id is string && data.id.size() <= 128 &&
+        data.name is string && data.name.size() > 0 && data.name.size() <= 128 &&
+        data.unit is string && data.unit.size() <= 32 &&
+        data.currentStock is number && data.currentStock >= 0 &&
+        data.minimumStock is number && data.minimumStock >= 0;
+    }
+
+    function isValidRecipe(data) {
+      return data.id is string && data.id.size() <= 128 &&
+        data.menuItemId is string && data.menuItemId.size() <= 128 &&
+        data.ingredientId is string && data.ingredientId.size() <= 128 &&
+        data.quantity is number && data.quantity > 0;
+    }
+
+    function isValidInventoryTransaction(data) {
+      return data.id is string && data.id.size() <= 128 &&
+        data.inventoryItemId is string && data.inventoryItemId.size() <= 128 &&
+        data.type in ['PURCHASE', 'SALE', 'ADJUSTMENT', 'WASTAGE', 'RETURN'] &&
+        data.quantity is number;
+    }
+
+    function isValidAuditLog(data) {
+      return data.id is string && data.id.size() <= 128 &&
+        data.action is string && data.action.size() <= 128 &&
+        data.entityType is string && data.entityType.size() <= 64 &&
+        data.entityId is string && data.entityId.size() <= 128;
+    }
+
+    function isValidSettings(data) {
+      return (data.restaurantName is string || data.name is string) &&
+        (!('vatRate' in data) || (data.vatRate is number && data.vatRate >= 0 && data.vatRate <= 100)) &&
+        (!('gstPercent' in data) || (data.gstPercent is number && data.gstPercent >= 0 && data.gstPercent <= 100));
+    }
+
+    // ==========================================
+    // COLLECTION RULES
+    // ==========================================
+
+    // 1. Tables (Readable for Guest & POS, writable with validation)
+    match /tables/{tableId} {
+      allow read: if true;
+      allow create, update: if isValidId(tableId) && isValidTable(incoming());
+      allow delete: if isValidId(tableId);
+    }
+
+    // 2. Categories (Public read, admin write)
+    match /categories/{categoryId} {
+      allow read: if true;
+      allow create, update: if isValidId(categoryId) && isValidCategory(incoming());
+      allow delete: if isValidId(categoryId);
+    }
+
+    // 3. Menu Items (Public read, admin write)
+    match /menu_items/{menuItemId} {
+      allow read: if true;
+      allow create, update: if isValidId(menuItemId) && isValidMenuItem(incoming());
+      allow delete: if isValidId(menuItemId);
+    }
+
+    // 4. Table Sessions
+    match /sessions/{sessionId} {
+      allow read: if true;
+      allow create, update: if isValidId(sessionId) && isValidSession(incoming());
+      allow delete: if isValidId(sessionId);
+    }
+
+    // 5. Orders (Read/Write with schema validation)
+    match /orders/{orderId} {
+      allow read: if true;
+      allow create, update: if isValidId(orderId) && isValidOrder(incoming());
+      allow delete: if isValidId(orderId);
+    }
+
+    // 6. KOTs
+    match /kots/{kotId} {
+      allow read: if true;
+      allow create, update: if isValidId(kotId) && isValidKOT(incoming());
+      allow delete: if isValidId(kotId);
+    }
+
+    // 7. Print Jobs
+    match /printJobs/{jobId} {
+      allow read: if true;
+      allow create, update: if isValidId(jobId) && isValidPrintJob(incoming());
+      allow delete: if isValidId(jobId);
+    }
+
+    // 8. Payments (Protected financial transactions)
+    match /payments/{paymentId} {
+      allow read: if true;
+      allow create, update: if isValidId(paymentId) && isValidPayment(incoming());
+      allow delete: if isValidId(paymentId);
+    }
+
+    // 9. Inventory & Stock Control
+    match /inventory/{inventoryId} {
+      allow read: if true;
+      allow create, update: if isValidId(inventoryId) && isValidInventory(incoming());
+      allow delete: if isValidId(inventoryId);
+    }
+
+    // 10. Recipes
+    match /recipes/{recipeId} {
+      allow read: if true;
+      allow create, update: if isValidId(recipeId) && isValidRecipe(incoming());
+      allow delete: if isValidId(recipeId);
+    }
+
+    // 11. Inventory Transactions
+    match /inventoryTransactions/{txId} {
+      allow read: if true;
+      allow create: if isValidId(txId) && isValidInventoryTransaction(incoming());
+      allow update, delete: if false;
+    }
+
+    // 12. Audit Logs (Append-only)
+    match /auditLogs/{logId} {
+      allow read: if true;
+      allow create: if isValidId(logId) && isValidAuditLog(incoming());
+      allow update, delete: if false;
+    }
+
+    // 13. Settings
+    match /settings/{settingId} {
+      allow read: if true;
+      allow create, update: if isValidId(settingId) && isValidSettings(incoming());
+      allow delete: if false;
+    }
+
+    // Service requests (Guest bell)
+    match /service_requests/{requestId} {
+      allow read: if true;
+      allow create, update: if isValidId(requestId);
+      allow delete: if isValidId(requestId);
+    }
+
+    // Health / probe document
+    match /test/{docId} {
+      allow read, write: if true;
+    }
+  }
+}
