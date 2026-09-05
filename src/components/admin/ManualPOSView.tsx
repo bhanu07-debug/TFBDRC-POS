@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { usePOS } from '../../context/POSContext';
 import { MenuItem, MenuItemVariant, MenuItemAddOn, OrderType, Table } from '../../types';
+import { normalizeImageUrl, DEFAULT_DISH_IMAGE } from '../../utils/imageUtils';
 import {
   Search,
   Plus,
@@ -280,9 +281,13 @@ export const ManualPOSView: React.FC<ManualPOSViewProps> = ({
                 }`}
               >
                 <img
-                  src={item.image}
+                  src={normalizeImageUrl(item.image) || DEFAULT_DISH_IMAGE}
                   alt={item.name}
-                  className="w-16 h-16 rounded-lg object-cover flex-shrink-0"
+                  className="w-16 h-16 rounded-lg object-cover flex-shrink-0 bg-gray-100 border border-gray-200"
+                  referrerPolicy="no-referrer"
+                  onError={(e) => {
+                    e.currentTarget.src = DEFAULT_DISH_IMAGE;
+                  }}
                 />
 
                 <div className="flex-1 min-w-0">

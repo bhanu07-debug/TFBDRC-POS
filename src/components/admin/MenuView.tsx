@@ -1,6 +1,8 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { usePOS } from '../../context/POSContext';
 import { MenuItem, DietaryType, KOTDestination } from '../../types';
+import { DishImageUploader } from '../common/DishImageUploader';
+import { normalizeImageUrl, DEFAULT_DISH_IMAGE } from '../../utils/imageUtils';
 import {
   Search,
   Plus,
@@ -51,8 +53,8 @@ export const MenuView: React.FC = () => {
     tags: 'Asian, Signature'
   });
 
-  const categories = [
-    'All',
+  // Dynamic categories
+  const defaultCategories = [
     'Momos & Dimsums',
     'Buddha Bowls & Mains',
     'Asian Wok & Starters',
@@ -60,6 +62,81 @@ export const MenuView: React.FC = () => {
     'Artisanal Cafe & Drinks',
     'Desserts'
   ];
+
+  const [customCategories, setCustomCategories] = useState<string[]>(() => {
+    try {
+      const saved = localStorage.getItem('fat_buddha_custom_categories');
+      return saved ? JSON.parse(saved) : [];
+    } catch {
+      return [];
+    }
+  });
+
+  const [isAddingNewCategory, setIsAddingNewCategory] = useState(false);
+  const [newCategoryInput, setNewCategoryInput] = useState('');
+
+  const [isEditAddingNewCategory, setIsEditAddingNewCategory] = useState(false);
+  const [editNewCategoryInput, setEditNewCategoryInput] = useState('');
+
+  // Combine default categories, stored custom categories, and categories from current menu items
+  const allCategories = useMemo(() => {
+    const set = new Set<string>(defaultCategories);
+    customCategories.forEach(c => {
+      if (c && c.trim()) set.add(c.trim());
+    });
+    menuItems.forEach(item => {
+      if (item.category && item.category.trim()) set.add(item.category.trim());
+    });
+    return Array.from(set);
+  }, [menuItems, customCategories]);
+
+  const filterCategories = useMemo(() => {
+    return ['All', ...allCategories];
+  }, [allCategories]);
+
+  const handleAddNewCategory = () => {
+    const trimmed = newCategoryInput.trim();
+    if (!trimmed) return;
+    if (!allCategories.includes(trimmed)) {
+      const updated = [...customCategories, trimmed];
+      setCustomCategories(updated);
+      try {
+        localStorage.setItem('fat_buddha_custom_categories', JSON.stringify(updated));
+      } catch (e) {
+        console.warn('Could not save category to localStorage', e);
+      }
+    }
+    const isRec = trimmed.toLowerCase().includes('cafe') || trimmed.toLowerCase().includes('drink') || trimmed.toLowerCase().includes('dessert') || trimmed.toLowerCase().includes('beverage');
+    setNewItemData(prev => ({
+      ...prev,
+      category: trimmed,
+      kotDestination: isRec ? 'reception' : 'kitchen'
+    }));
+    setIsAddingNewCategory(false);
+    setNewCategoryInput('');
+  };
+
+  const handleAddEditCategory = () => {
+    const trimmed = editNewCategoryInput.trim();
+    if (!trimmed || !editingItem) return;
+    if (!allCategories.includes(trimmed)) {
+      const updated = [...customCategories, trimmed];
+      setCustomCategories(updated);
+      try {
+        localStorage.setItem('fat_buddha_custom_categories', JSON.stringify(updated));
+      } catch (e) {
+        console.warn('Could not save category to localStorage', e);
+      }
+    }
+    const isRec = trimmed.toLowerCase().includes('cafe') || trimmed.toLowerCase().includes('drink') || trimmed.toLowerCase().includes('dessert') || trimmed.toLowerCase().includes('beverage');
+    setEditingItem(prev => prev ? ({
+      ...prev,
+      category: trimmed,
+      kotDestination: isRec ? 'reception' : prev.kotDestination
+    }) : null);
+    setIsEditAddingNewCategory(false);
+    setEditNewCategoryInput('');
+  };
 
   const filteredItems = menuItems.filter(item => {
     if (selectedCategory !== 'All' && item.category !== selectedCategory) return false;
@@ -96,7 +173,7 @@ export const MenuView: React.FC = () => {
       spiceLevel: newItemData.spiceLevel,
       prepTimeMinutes: Number(newItemData.prepTimeMinutes),
       inStock: newItemData.inStock,
-      image: newItemData.image,
+      image: normalizeImageUrl(newItemData.image) || DEFAULT_DISH_IMAGE,
       tags: newItemData.tags.split(',').map(t => t.trim()).filter(Boolean)
     });
     setIsNewItemModalOpen(false);
@@ -104,7 +181,10 @@ export const MenuView: React.FC = () => {
 
   const handleSaveEditItem = () => {
     if (!editingItem) return;
-    updateMenuItem(editingItem);
+    updateMenuItem({
+      ...editingItem,
+      image: normalizeImageUrl(editingItem.image) || DEFAULT_DISH_IMAGE
+    });
     setEditingItem(null);
   };
 
@@ -149,7 +229,7 @@ export const MenuView: React.FC = () => {
         </div>
 
         <div className="flex items-center gap-1.5 overflow-x-auto pb-1 no-scrollbar">
-          {categories.map(cat => (
+          {filterCategories.map(cat => (
             <button
               key={cat}
               onClick={() => setSelectedCategory(cat)}
@@ -195,9 +275,13 @@ export const MenuView: React.FC = () => {
                       <td className="p-3.5">
                         <div className="flex items-center gap-3">
                           <img
-                            src={item.image}
+                            src={normalizeImageUrl(item.image) || DEFAULT_DISH_IMAGE}
                             alt={item.name}
-                            className="w-12 h-12 rounded-lg object-cover flex-shrink-0"
+                            className="w-12 h-12 rounded-lg object-cover flex-shrink-0 bg-gray-100 border border-gray-200"
+                            referrerPolicy="no-referrer"
+                            onError={(e) => {
+                              e.currentTarget.src = DEFAULT_DISH_IMAGE;
+                            }}
                           />
                           <div>
                             <div className="flex items-center gap-1.5">
@@ -311,26 +395,81 @@ export const MenuView: React.FC = () => {
                 />
               </div>
 
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
-                  <label className="font-bold text-gray-900 block mb-1">Category</label>
-                  <select
-                    value={newItemData.category ?? 'Momos & Dimsums'}
-                    onChange={e => {
-                      const cat = e.target.value;
-                      const isRec = cat.includes('Cafe') || cat.includes('Desserts');
-                      setNewItemData({
-                        ...newItemData,
-                        category: cat,
-                        kotDestination: isRec ? 'reception' : 'kitchen'
-                      });
-                    }}
-                    className="w-full px-3 py-2 bg-white text-gray-900 font-semibold border border-gray-300 rounded-lg focus:outline-none focus:border-amber-500 focus:ring-1 focus:ring-amber-500 shadow-2xs"
-                  >
-                    {categories.filter(c => c !== 'All').map(cat => (
-                      <option key={cat} value={cat}>{cat}</option>
-                    ))}
-                  </select>
+                  <div className="flex items-center justify-between mb-1">
+                    <label className="font-bold text-gray-900 block">Category *</label>
+                    {!isAddingNewCategory && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setIsAddingNewCategory(true);
+                          setNewCategoryInput('');
+                        }}
+                        className="text-[11px] font-bold text-amber-600 hover:text-amber-700 flex items-center gap-0.5"
+                      >
+                        <Plus className="w-3 h-3" />
+                        <span>+ New Category</span>
+                      </button>
+                    )}
+                  </div>
+
+                  {isAddingNewCategory ? (
+                    <div className="flex items-center gap-1.5 animate-in fade-in duration-150">
+                      <input
+                        type="text"
+                        autoFocus
+                        value={newCategoryInput}
+                        onChange={e => setNewCategoryInput(e.target.value)}
+                        onKeyDown={e => {
+                          if (e.key === 'Enter') {
+                            e.preventDefault();
+                            handleAddNewCategory();
+                          }
+                        }}
+                        placeholder="e.g. Soups, Continental"
+                        className="flex-1 min-w-0 px-2.5 py-1.5 bg-white text-gray-900 font-semibold border border-amber-500 rounded-lg focus:outline-none focus:ring-1 focus:ring-amber-500 shadow-2xs text-xs"
+                      />
+                      <button
+                        type="button"
+                        onClick={handleAddNewCategory}
+                        className="px-2.5 py-1.5 bg-amber-500 hover:bg-amber-600 text-white font-bold rounded-lg text-xs transition shadow-2xs whitespace-nowrap"
+                      >
+                        Add
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setIsAddingNewCategory(false)}
+                        className="px-2 py-1.5 bg-gray-100 hover:bg-gray-200 text-gray-600 font-semibold rounded-lg text-xs transition"
+                      >
+                        ✕
+                      </button>
+                    </div>
+                  ) : (
+                    <select
+                      value={newItemData.category ?? 'Momos & Dimsums'}
+                      onChange={e => {
+                        if (e.target.value === '__add_new__') {
+                          setIsAddingNewCategory(true);
+                          setNewCategoryInput('');
+                          return;
+                        }
+                        const cat = e.target.value;
+                        const isRec = cat.toLowerCase().includes('cafe') || cat.toLowerCase().includes('drink') || cat.toLowerCase().includes('dessert') || cat.toLowerCase().includes('beverage');
+                        setNewItemData({
+                          ...newItemData,
+                          category: cat,
+                          kotDestination: isRec ? 'reception' : 'kitchen'
+                        });
+                      }}
+                      className="w-full px-3 py-2 bg-white text-gray-900 font-semibold border border-gray-300 rounded-lg focus:outline-none focus:border-amber-500 focus:ring-1 focus:ring-amber-500 shadow-2xs"
+                    >
+                      {allCategories.map(cat => (
+                        <option key={cat} value={cat}>{cat}</option>
+                      ))}
+                      <option value="__add_new__" className="font-bold text-amber-600">+ Create New Category...</option>
+                    </select>
+                  )}
                 </div>
 
                 <div>
@@ -382,15 +521,13 @@ export const MenuView: React.FC = () => {
                 />
               </div>
 
-              <div>
-                <label className="font-bold text-gray-900 block mb-1">Dish Image URL</label>
-                <input
-                  type="text"
-                  value={newItemData.image ?? ''}
-                  onChange={e => setNewItemData({ ...newItemData, image: e.target.value })}
-                  className="w-full px-3 py-2 bg-white text-gray-900 font-medium border border-gray-300 rounded-lg placeholder:text-gray-400 focus:outline-none focus:border-amber-500 focus:ring-1 focus:ring-amber-500 shadow-2xs"
-                />
-              </div>
+              {/* Enhanced Dish Image Upload & Link */}
+              <DishImageUploader
+                value={newItemData.image}
+                onChange={url => setNewItemData({ ...newItemData, image: url })}
+                idPrefix="new-dish-img"
+                label="Dish Image (Device Upload or Google / Web Link)"
+              />
 
               {/* Visible Checkboxes Section */}
               <div className="pt-2 border-t border-gray-200">
@@ -486,18 +623,81 @@ export const MenuView: React.FC = () => {
                 />
               </div>
 
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
-                  <label className="font-bold text-gray-900 block mb-1">Category</label>
-                  <select
-                    value={editingItem.category ?? 'Momos & Dimsums'}
-                    onChange={e => setEditingItem({ ...editingItem, category: e.target.value })}
-                    className="w-full px-3 py-2 bg-white text-gray-900 font-semibold border border-gray-300 rounded-lg focus:outline-none focus:border-amber-500 focus:ring-1 focus:ring-amber-500 shadow-2xs"
-                  >
-                    {categories.filter(c => c !== 'All').map(cat => (
-                      <option key={cat} value={cat}>{cat}</option>
-                    ))}
-                  </select>
+                  <div className="flex items-center justify-between mb-1">
+                    <label className="font-bold text-gray-900 block">Category *</label>
+                    {!isEditAddingNewCategory && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setIsEditAddingNewCategory(true);
+                          setEditNewCategoryInput('');
+                        }}
+                        className="text-[11px] font-bold text-amber-600 hover:text-amber-700 flex items-center gap-0.5"
+                      >
+                        <Plus className="w-3 h-3" />
+                        <span>+ New Category</span>
+                      </button>
+                    )}
+                  </div>
+
+                  {isEditAddingNewCategory ? (
+                    <div className="flex items-center gap-1.5 animate-in fade-in duration-150">
+                      <input
+                        type="text"
+                        autoFocus
+                        value={editNewCategoryInput}
+                        onChange={e => setEditNewCategoryInput(e.target.value)}
+                        onKeyDown={e => {
+                          if (e.key === 'Enter') {
+                            e.preventDefault();
+                            handleAddEditCategory();
+                          }
+                        }}
+                        placeholder="e.g. Soups, Continental"
+                        className="flex-1 min-w-0 px-2.5 py-1.5 bg-white text-gray-900 font-semibold border border-amber-500 rounded-lg focus:outline-none focus:ring-1 focus:ring-amber-500 shadow-2xs text-xs"
+                      />
+                      <button
+                        type="button"
+                        onClick={handleAddEditCategory}
+                        className="px-2.5 py-1.5 bg-amber-500 hover:bg-amber-600 text-white font-bold rounded-lg text-xs transition shadow-2xs whitespace-nowrap"
+                      >
+                        Add
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setIsEditAddingNewCategory(false)}
+                        className="px-2 py-1.5 bg-gray-100 hover:bg-gray-200 text-gray-600 font-semibold rounded-lg text-xs transition"
+                      >
+                        ✕
+                      </button>
+                    </div>
+                  ) : (
+                    <select
+                      value={editingItem.category ?? 'Momos & Dimsums'}
+                      onChange={e => {
+                        if (e.target.value === '__add_new__') {
+                          setIsEditAddingNewCategory(true);
+                          setEditNewCategoryInput('');
+                          return;
+                        }
+                        const cat = e.target.value;
+                        const isRec = cat.toLowerCase().includes('cafe') || cat.toLowerCase().includes('drink') || cat.toLowerCase().includes('dessert') || cat.toLowerCase().includes('beverage');
+                        setEditingItem({
+                          ...editingItem,
+                          category: cat,
+                          kotDestination: isRec ? 'reception' : editingItem.kotDestination
+                        });
+                      }}
+                      className="w-full px-3 py-2 bg-white text-gray-900 font-semibold border border-gray-300 rounded-lg focus:outline-none focus:border-amber-500 focus:ring-1 focus:ring-amber-500 shadow-2xs"
+                    >
+                      {allCategories.map(cat => (
+                        <option key={cat} value={cat}>{cat}</option>
+                      ))}
+                      <option value="__add_new__" className="font-bold text-amber-600">+ Create New Category...</option>
+                    </select>
+                  )}
                 </div>
 
                 <div>
@@ -548,15 +748,13 @@ export const MenuView: React.FC = () => {
                 />
               </div>
 
-              <div>
-                <label className="font-bold text-gray-900 block mb-1">Dish Image URL</label>
-                <input
-                  type="text"
-                  value={editingItem.image ?? ''}
-                  onChange={e => setEditingItem({ ...editingItem, image: e.target.value })}
-                  className="w-full px-3 py-2 bg-white text-gray-900 font-medium border border-gray-300 rounded-lg placeholder:text-gray-400 focus:outline-none focus:border-amber-500 focus:ring-1 focus:ring-amber-500 shadow-2xs"
-                />
-              </div>
+              {/* Enhanced Dish Image Upload & Link */}
+              <DishImageUploader
+                value={editingItem.image}
+                onChange={url => setEditingItem({ ...editingItem, image: url })}
+                idPrefix="edit-dish-img"
+                label="Dish Image (Device Upload or Google / Web Link)"
+              />
 
               {/* Checkboxes in Edit Modal */}
               <div className="pt-2 border-t border-gray-200">
@@ -645,9 +843,13 @@ export const MenuView: React.FC = () => {
             <div className="p-3 bg-gray-50 rounded-xl border border-gray-200 flex items-center gap-3">
               {itemToDelete.image ? (
                 <img
-                  src={itemToDelete.image}
+                  src={normalizeImageUrl(itemToDelete.image) || DEFAULT_DISH_IMAGE}
                   alt={itemToDelete.name}
-                  className="w-12 h-12 rounded-lg object-cover flex-shrink-0 border border-gray-200"
+                  className="w-12 h-12 rounded-lg object-cover flex-shrink-0 border border-gray-200 bg-gray-100"
+                  referrerPolicy="no-referrer"
+                  onError={(e) => {
+                    e.currentTarget.src = DEFAULT_DISH_IMAGE;
+                  }}
                 />
               ) : (
                 <div className="w-12 h-12 rounded-lg bg-gray-200 flex items-center justify-center text-gray-400">

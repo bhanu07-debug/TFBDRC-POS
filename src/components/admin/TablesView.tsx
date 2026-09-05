@@ -706,6 +706,36 @@ export const TablesView: React.FC<TablesViewProps> = ({
           table={settleTable}
           isOpen={!!settleTable}
           onClose={() => setSettleTable(null)}
+          onReceiptOpen={() => {
+            const tableOrders = getTableOrders(settleTable.number);
+            if (tableOrders.length === 1) {
+              onOpenReceipt?.(tableOrders[0]);
+            } else if (tableOrders.length > 1) {
+              const allItems = tableOrders.flatMap(o => o.items);
+              const subtotal = tableOrders.reduce((sum, o) => sum + (o.subtotal ?? o.total ?? 0), 0);
+              const consolidatedOrder: Order = {
+                id: `BILL-T${settleTable.number}-${Date.now().toString().slice(-4)}`,
+                orderNumber: `INV-T${settleTable.number < 10 ? '0' + settleTable.number : settleTable.number}`,
+                sessionId: settleTable.currentSessionId || `SES-${settleTable.number}`,
+                tableId: settleTable.id || `T${settleTable.number}`,
+                tableNumber: settleTable.number,
+                items: allItems,
+                subtotal: subtotal,
+                discount: 0,
+                vat: 0,
+                total: subtotal,
+                finalAmount: subtotal,
+                status: 'completed',
+                paymentStatus: 'unpaid',
+                orderType: 'dine_in',
+                source: 'ADMIN_MANUAL',
+                createdBy: 'Cashier POS',
+                createdAt: new Date().toISOString(),
+                updatedAt: new Date().toISOString()
+              };
+              onOpenReceipt?.(consolidatedOrder);
+            }
+          }}
           onSettled={() => {
             setSettleTable(null);
           }}

@@ -217,15 +217,32 @@ export const SettleBillModal: React.FC<SettleBillModalProps> = ({
               </div>
             </div>
 
-            {/* Footer action button */}
-            <button
-              id="btn-confirm-settle-bill"
-              onClick={handleSettle}
-              disabled={tableOrders.length === 0}
-              className="w-full py-3 rounded-xl bg-emerald-500 hover:bg-emerald-600 text-white font-black text-sm shadow-sm transition transform active:scale-98 disabled:opacity-40"
-            >
-              Collect & Settle {settings.currencySymbol || 'Rs.'} {finalPayable} ({paymentMethod.toUpperCase()})
-            </button>
+            {/* Footer action buttons */}
+            <div className="flex items-center gap-2 pt-1">
+              {onReceiptOpen && tableOrders.length > 0 && (
+                <button
+                  type="button"
+                  onClick={() => onReceiptOpen()}
+                  className="px-4 py-3 rounded-xl bg-gray-100 hover:bg-gray-200 text-gray-800 font-bold text-xs transition flex items-center justify-center gap-1.5 border border-gray-300"
+                  title="Preview & Print Thermal Bill"
+                >
+                  <Receipt className="w-4 h-4 text-amber-600" />
+                  <span>Print Bill</span>
+                </button>
+              )}
+              <button
+                id="btn-confirm-settle-bill"
+                onClick={handleSettle}
+                disabled={tableOrders.length === 0 || isProcessing}
+                className="flex-1 py-3 rounded-xl bg-emerald-500 hover:bg-emerald-600 text-white font-black text-sm shadow-sm transition transform active:scale-98 disabled:opacity-40 flex items-center justify-center gap-2"
+              >
+                {isProcessing ? (
+                  <span>Processing...</span>
+                ) : (
+                  <span>Collect & Settle {settings.currencySymbol || 'Rs.'} {finalPayable} ({paymentMethod.toUpperCase()})</span>
+                )}
+              </button>
+            </div>
           </div>
         )}
       </div>

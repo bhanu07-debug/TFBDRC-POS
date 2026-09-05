@@ -723,20 +723,31 @@ export const POSProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       : 0;
     const finalAmount = discountedSubtotal + serviceCharge + vatAmount;
     const nowIso = new Date().toISOString();
+    const txRef = `TX-${Math.floor(100000 + Math.random() * 900000)}`;
+    const billId = `BILL-${Date.now().toString(36).toUpperCase()}`;
+    const primaryOrder = tableOrders[0];
+    const ordNumber = primaryOrder?.orderNumber || `T${tableNumber < 10 ? '0' + tableNumber : tableNumber}`;
 
     // 1. Record payment in Firestore
     try {
-      await recordPayment({
+      const rec = await recordPayment({
         sessionId: table.activeSessionId || `SES-${tableNumber}`,
-        billId: `BILL-${Date.now().toString(36).toUpperCase()}`,
+        billId,
         amount: finalAmount,
         method: paymentMethod,
         status: 'PAID',
-        transactionReference: `TX-${Math.floor(100000 + Math.random() * 900000)}`,
+        transactionReference: txRef,
+        transactionRef: txRef,
         createdBy: cashierName || currentUser?.email || 'Admin',
         tableNumber,
-        orderNumber: tableOrders[0]?.orderNumber || 'POS'
+        orderNumber: ordNumber,
+        orderId: primaryOrder?.id,
+        createdAt: nowIso,
+        timestamp: nowIso,
+        paidAt: nowIso,
+        cashierName: cashierName || 'Cashier'
       });
+      setPayments(prev => [rec, ...prev.filter(p => p.id !== rec.id)]);
     } catch (err) {
       console.error("Payment record error:", err);
     }
@@ -842,17 +853,25 @@ export const POSProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         updatedAt: nowIso
       });
 
-      await recordPayment({
+      const txRef = `TX-${Math.floor(100000 + Math.random() * 900000)}`;
+      const rec = await recordPayment({
         sessionId: order.sessionId || `SES-${order.tableNumber}`,
         billId: `BILL-${order.orderNumber || orderId}`,
         amount: order.finalAmount || order.total || order.subtotal || 0,
         method: paymentMethod,
         status: 'PAID',
-        transactionReference: `TX-${Math.floor(100000 + Math.random() * 900000)}`,
+        transactionReference: txRef,
+        transactionRef: txRef,
         createdBy: cashierName || currentUser?.email || 'POS Staff',
         tableNumber: order.tableNumber,
-        orderNumber: order.orderNumber
+        orderNumber: order.orderNumber,
+        orderId: order.id,
+        createdAt: nowIso,
+        timestamp: nowIso,
+        paidAt: nowIso,
+        cashierName: cashierName || 'Cashier'
       });
+      setPayments(prev => [rec, ...prev.filter(p => p.id !== rec.id)]);
 
       setOrders(prev =>
         prev.map(o =>

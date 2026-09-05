@@ -72,13 +72,47 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
   const totalTablesCount = 10;
   const occupiedPercent = Math.round((activeTablesCount / totalTablesCount) * 100);
 
-  // Today's non-cancelled real orders from Firestore
-  const todayOrders = orders.filter(o => o.status !== 'CANCELLED' && (o.status as any) !== 'cancelled');
+  // Helper to strictly check if a date string/timestamp belongs to the present day
+  const isDateToday = (dateStr?: string): boolean => {
+    if (!dateStr) return false;
+    const d = new Date(dateStr);
+    if (isNaN(d.getTime())) return false;
+    const now = new Date();
+    return (
+      d.getFullYear() === now.getFullYear() &&
+      d.getMonth() === now.getMonth() &&
+      d.getDate() === now.getDate()
+    );
+  };
+
+  // Today's non-cancelled real orders from Firestore strictly for the present day
+  const todayOrders = useMemo(() => {
+    return orders.filter(o => {
+      const notCancelled = o.status !== 'CANCELLED' && (o.status as any) !== 'cancelled';
+      return notCancelled && isDateToday(o.createdAt);
+    });
+  }, [orders]);
   const todayOrdersCount = todayOrders.length;
 
-  // Real-time revenue from actual paid payment records
-  const completedPayments = payments.filter(p => p.status === 'PAID' || (p.status as any) === 'completed');
-  const totalRevenue = completedPayments.reduce((sum, p) => sum + (p.amount || 0), 0);
+  // Real-time completed payments strictly for the present day
+  const todayCompletedPayments = useMemo(() => {
+    return payments.filter(p => {
+      const isPaid = p.status === 'PAID' || (p.status as any) === 'completed';
+      return isPaid && isDateToday(p.createdAt || (p as any).timestamp);
+    });
+  }, [payments]);
+
+  // Today's Sales: Sum of today's settled payments, or fallback to today's paid/completed orders
+  const todaySales = useMemo(() => {
+    const paymentSum = todayCompletedPayments.reduce((sum, p) => sum + (p.amount || 0), 0);
+    if (paymentSum > 0) return paymentSum;
+    return todayOrders.reduce((sum, o) => {
+      if (o.paymentStatus === 'paid' || o.status === 'completed' || o.status === 'served') {
+        return sum + (o.finalAmount ?? o.total ?? 0);
+      }
+      return sum;
+    }, 0);
+  }, [todayCompletedPayments, todayOrders]);
 
   // Pending KOTs in progress or awaiting preparation
   const pendingKots = kots.filter(k => {
@@ -95,23 +129,26 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
     k => (k.destination || '').toUpperCase() === 'RECEPTION' || k.station === 'Beverage & Barista' || k.station === 'Dessert & Bakery'
   ).length;
 
-  // Actual items sold from non-cancelled real orders
+  // Actual items sold today from non-cancelled present day orders
   const totalItemsSold = todayOrders.reduce(
     (sum, o) => sum + (o.items || []).reduce((iSum, it) => iSum + (it.quantity || 0), 0),
     0
   );
 
-  // Actual payment breakdown
-  const cashPayments = completedPayments
-    .filter(p => (p.method || '').toUpperCase() === 'CASH')
+  // Today's payment breakdown with full Nepal digital wallet support
+  const cashPayments = todayCompletedPayments
+    .filter(p => (p.method || '').toLowerCase() === 'cash')
     .reduce((sum, p) => sum + (p.amount || 0), 0);
 
-  const cardPayments = completedPayments
-    .filter(p => (p.method || '').toUpperCase() === 'CARD')
+  const cardPayments = todayCompletedPayments
+    .filter(p => (p.method || '').toLowerCase() === 'card')
     .reduce((sum, p) => sum + (p.amount || 0), 0);
 
-  const qrPayments = completedPayments
-    .filter(p => (p.method || '').toUpperCase() === 'QR_WALLET' || (p.method || '').toLowerCase() === 'upi')
+  const qrPayments = todayCompletedPayments
+    .filter(p => {
+      const m = (p.method || '').toLowerCase();
+      return m === 'qr_wallet' || m === 'upi' || m === 'esewa' || m === 'khalti' || m === 'fonepay';
+    })
     .reduce((sum, p) => sum + (p.amount || 0), 0);
 
   // Real-time low stock items from inventory
@@ -120,7 +157,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
   );
   const lowStockCount = lowStockList.length;
 
-  // Hourly sales buckets based purely on actual completed payments
+  // Hourly sales buckets based on today's transactions
   const hourlySalesData = useMemo(() => {
     const buckets = [
       { time: '10 AM', hour: 10, amount: 0 },
@@ -132,47 +169,51 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
       { time: '10 PM', hour: 22, amount: 0 }
     ];
 
-    if (completedPayments.length === 0) {
+    const sourceData = todayCompletedPayments.length > 0
+      ? todayCompletedPayments.map(p => ({ amount: p.amount || 0, createdAt: p.createdAt || (p as any).timestamp }))
+      : todayOrders.map(o => ({ amount: o.finalAmount ?? o.total ?? 0, createdAt: o.createdAt }));
+
+    if (sourceData.length === 0) {
       return buckets.map(b => ({ time: b.time, amount: 0 }));
     }
 
-    completedPayments.forEach(p => {
-      let paymentHour = -1;
-      if (p.createdAt) {
-        const d = new Date(p.createdAt);
+    sourceData.forEach(item => {
+      let itemHour = -1;
+      if (item.createdAt) {
+        const d = new Date(item.createdAt);
         if (!isNaN(d.getTime())) {
-          paymentHour = d.getHours();
+          itemHour = d.getHours();
         }
       }
-      if (paymentHour === -1) {
-        const timeStr = (p.createdAt || (p as any).timestamp || '').toUpperCase();
-        if (timeStr.includes('10') && timeStr.includes('AM')) paymentHour = 10;
-        else if (timeStr.includes('12') && timeStr.includes('PM')) paymentHour = 12;
-        else if (timeStr.includes('2') && timeStr.includes('PM')) paymentHour = 14;
-        else if (timeStr.includes('4') && timeStr.includes('PM')) paymentHour = 16;
-        else if (timeStr.includes('6') && timeStr.includes('PM')) paymentHour = 18;
-        else if (timeStr.includes('8') && timeStr.includes('PM')) paymentHour = 20;
-        else if (timeStr.includes('10') && timeStr.includes('PM')) paymentHour = 22;
+      if (itemHour === -1) {
+        const timeStr = (item.createdAt || '').toUpperCase();
+        if (timeStr.includes('10') && timeStr.includes('AM')) itemHour = 10;
+        else if (timeStr.includes('12') && timeStr.includes('PM')) itemHour = 12;
+        else if (timeStr.includes('2') && timeStr.includes('PM')) itemHour = 14;
+        else if (timeStr.includes('4') && timeStr.includes('PM')) itemHour = 16;
+        else if (timeStr.includes('6') && timeStr.includes('PM')) itemHour = 18;
+        else if (timeStr.includes('8') && timeStr.includes('PM')) itemHour = 20;
+        else if (timeStr.includes('10') && timeStr.includes('PM')) itemHour = 22;
       }
 
-      if (paymentHour >= 0) {
+      if (itemHour >= 0) {
         let closest = buckets[0];
-        let minDiff = Math.abs(buckets[0].hour - paymentHour);
+        let minDiff = Math.abs(buckets[0].hour - itemHour);
         for (let i = 1; i < buckets.length; i++) {
-          const diff = Math.abs(buckets[i].hour - paymentHour);
+          const diff = Math.abs(buckets[i].hour - itemHour);
           if (diff < minDiff) {
             minDiff = diff;
             closest = buckets[i];
           }
         }
-        closest.amount += p.amount || 0;
+        closest.amount += item.amount || 0;
       }
     });
 
     return buckets.map(({ time, amount }) => ({ time, amount }));
-  }, [completedPayments]);
+  }, [todayCompletedPayments, todayOrders]);
 
-  const hasSalesData = totalRevenue > 0;
+  const hasSalesData = todaySales > 0 || todayOrdersCount > 0;
 
   // Table status style helper
   const getTableStatusStyle = (table: Table) => {
@@ -281,10 +322,10 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
           </div>
           <div className="mt-3">
             <div className="text-xl font-bold text-white font-mono">
-              Rs. {(totalRevenue || 0).toFixed(2)}
+              Rs. {(todaySales || 0).toFixed(2)}
             </div>
             <div className="text-[11px] text-slate-400 font-medium mt-1">
-              {completedPayments.length} completed bills
+              {todayCompletedPayments.length} completed bills today
             </div>
           </div>
         </div>
@@ -302,7 +343,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
               {todayOrdersCount}
             </div>
             <div className="text-[11px] text-slate-400 font-medium mt-1">
-              Active order tickets
+              Orders placed today
             </div>
           </div>
         </div>

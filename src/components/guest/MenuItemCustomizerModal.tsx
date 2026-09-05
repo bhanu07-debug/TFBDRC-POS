@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { MenuItem, MenuItemVariant, MenuItemAddOn } from '../../types';
+import { normalizeImageUrl, DEFAULT_DISH_IMAGE } from '../../utils/imageUtils';
 import { X, Flame, Leaf, Plus, Minus, Check, Clock, Sparkles } from 'lucide-react';
 
 interface MenuItemCustomizerModalProps {
@@ -57,10 +58,13 @@ export const MenuItemCustomizerModal: React.FC<MenuItemCustomizerModalProps> = (
         {/* Header with image */}
         <div className="relative h-48 sm:h-56 w-full bg-gray-900 flex-shrink-0">
           <img
-            src={item.image}
+            src={normalizeImageUrl(item.image) || DEFAULT_DISH_IMAGE}
             alt={item.name}
             className="w-full h-full object-cover"
             referrerPolicy="no-referrer"
+            onError={(e) => {
+              e.currentTarget.src = DEFAULT_DISH_IMAGE;
+            }}
           />
           <div className="absolute inset-0 bg-gradient-to-t from-gray-950 via-gray-950/40 to-transparent" />
           

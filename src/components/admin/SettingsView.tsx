@@ -32,13 +32,12 @@ export const SettingsView: React.FC = () => {
       tagline: settings.tagline ?? '',
       address: settings.address ?? '',
       phone: settings.phone ?? '',
+      panNumber: settings.panNumber ?? settings.panNo ?? '302194821',
+      panNo: settings.panNumber ?? settings.panNo ?? '302194821',
       gstNumber: settings.gstNumber ?? '',
       wifiSsid: settings.wifiSsid ?? '',
       wifiPassword: settings.wifiPassword ?? '',
-      gstPercent: settings.gstPercent ?? settings.vatRate ?? 13,
-      serviceChargePercent: settings.serviceChargePercent ?? 0,
       currencySymbol: settings.currencySymbol ?? 'Rs.',
-      fssaiNumber: settings.fssaiNumber ?? '',
       autoPrintKOT: settings.autoPrintKOT ?? true,
       soundAlerts: settings.soundAlerts ?? true,
     });
@@ -78,7 +77,7 @@ export const SettingsView: React.FC = () => {
             </span>
           </div>
           <p className="text-xs text-gray-500 mt-0.5">
-            Configure business profile, GSTIN taxes, Firestore real-time cloud sync, and print Table 01-10 QR codes.
+            Configure business profile, PAN number, Firestore real-time cloud sync, and print Table 01-10 QR codes.
           </p>
         </div>
 
@@ -126,7 +125,7 @@ export const SettingsView: React.FC = () => {
 
       {/* Batch Table QR Codes Sheet for Printing */}
       {isQrSheetVisible && (
-        <div className="p-6 bg-white text-gray-900 rounded-xl shadow-md border border-gray-200 space-y-6 animate-in fade-in duration-200 print:m-0 print:p-0 print:border-none">
+        <div id="printable-qr-sheet" className="p-6 bg-white text-gray-900 rounded-xl shadow-md border border-gray-200 space-y-6 animate-in fade-in duration-200 print:m-0 print:p-0 print:border-none">
           <div className="flex flex-col sm:flex-row items-center justify-between gap-4 pb-4 border-b border-gray-200 print:hidden">
             <div>
               <h3 className="text-sm font-bold uppercase text-gray-900">
@@ -238,12 +237,13 @@ export const SettingsView: React.FC = () => {
               </div>
 
               <div>
-                <label className="block text-gray-700 font-bold mb-1">GSTIN Tax ID</label>
+                <label className="block text-gray-700 font-bold mb-1">PAN NO</label>
                 <input
                   type="text"
-                  value={formData.gstNumber ?? ''}
-                  onChange={e => setFormData({ ...formData, gstNumber: e.target.value })}
-                  className="w-full px-3 py-2 bg-gray-50 border border-gray-200 rounded-lg text-gray-800 focus:outline-none focus:border-amber-500 font-mono"
+                  value={formData.panNumber ?? formData.panNo ?? ''}
+                  onChange={e => setFormData({ ...formData, panNumber: e.target.value, panNo: e.target.value, gstNumber: e.target.value })}
+                  placeholder="e.g. 302194821"
+                  className="w-full px-3 py-2 bg-gray-50 border border-gray-200 rounded-lg text-gray-800 focus:outline-none focus:border-amber-500 font-mono font-bold"
                 />
               </div>
             </div>
@@ -280,48 +280,14 @@ export const SettingsView: React.FC = () => {
           </div>
 
           <div className="space-y-3 text-xs">
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <label className="block text-gray-700 font-bold mb-1">GST Rate (%)</label>
-                <input
-                  type="number"
-                  value={formData.gstPercent ?? 0}
-                  onChange={e => setFormData({ ...formData, gstPercent: Number(e.target.value) })}
-                  className="w-full px-3 py-2 bg-gray-50 border border-gray-200 rounded-lg text-gray-800 focus:outline-none focus:border-amber-500 font-mono"
-                />
-              </div>
-
-              <div>
-                <label className="block text-gray-700 font-bold mb-1">Service Charge (%)</label>
-                <input
-                  type="number"
-                  value={formData.serviceChargePercent ?? 0}
-                  onChange={e => setFormData({ ...formData, serviceChargePercent: Number(e.target.value) })}
-                  className="w-full px-3 py-2 bg-gray-50 border border-gray-200 rounded-lg text-gray-800 focus:outline-none focus:border-amber-500 font-mono"
-                />
-              </div>
-            </div>
-
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <label className="block text-gray-700 font-bold mb-1">Currency Symbol</label>
-                <input
-                  type="text"
-                  value={formData.currencySymbol ?? 'Rs.'}
-                  onChange={e => setFormData({ ...formData, currencySymbol: e.target.value })}
-                  className="w-full px-3 py-2 bg-gray-50 border border-gray-200 rounded-lg text-gray-800 focus:outline-none focus:border-amber-500 font-mono font-bold"
-                />
-              </div>
-
-              <div>
-                <label className="block text-gray-700 font-bold mb-1">FSSAI License #</label>
-                <input
-                  type="text"
-                  value={formData.fssaiNumber ?? ''}
-                  onChange={e => setFormData({ ...formData, fssaiNumber: e.target.value })}
-                  className="w-full px-3 py-2 bg-gray-50 border border-gray-200 rounded-lg text-gray-800 focus:outline-none focus:border-amber-500 font-mono"
-                />
-              </div>
+            <div>
+              <label className="block text-gray-700 font-bold mb-1">Currency Symbol</label>
+              <input
+                type="text"
+                value={formData.currencySymbol ?? 'Rs.'}
+                onChange={e => setFormData({ ...formData, currencySymbol: e.target.value })}
+                className="w-full px-3 py-2 bg-gray-50 border border-gray-200 rounded-lg text-gray-800 focus:outline-none focus:border-amber-500 font-mono font-bold"
+              />
             </div>
 
             {/* Sound alert switch */}

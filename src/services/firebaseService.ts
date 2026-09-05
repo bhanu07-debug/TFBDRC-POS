@@ -767,15 +767,23 @@ export const listenKOTs = (
 // 6. PAYMENTS & SETTLEMENTS
 // ====================================================
 export const recordPayment = async (
-  payment: Omit<PaymentRecord, 'id' | 'createdAt'>
+  payment: Omit<PaymentRecord, 'id' | 'createdAt'> & { createdAt?: string; timestamp?: string }
 ): Promise<PaymentRecord> => {
   const path = 'payments';
   try {
     const paymentId = `PAY-${Date.now().toString(36).toUpperCase()}`;
+    const nowIso = new Date().toISOString();
+    const effectiveTime = payment.timestamp || payment.createdAt || payment.paidAt || nowIso;
+    const txRef = payment.transactionRef || payment.transactionReference || `TX-${Math.floor(100000 + Math.random() * 900000)}`;
+
     const newRecord: PaymentRecord = {
       ...payment,
       id: paymentId,
-      createdAt: new Date().toISOString()
+      transactionReference: txRef,
+      transactionRef: txRef,
+      createdAt: payment.createdAt || effectiveTime,
+      timestamp: effectiveTime,
+      paidAt: payment.paidAt || effectiveTime
     };
 
     // Save payment record

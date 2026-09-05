@@ -206,6 +206,7 @@ export interface Order {
   guestPhone?: string;
   paymentStatus?: 'unpaid' | 'paid' | 'partial' | 'refunded';
   paymentMethod?: 'cash' | 'card' | 'upi' | 'split';
+  paidAt?: string;
   finalAmount?: number;
   taxAmount?: number;
   serviceCharge?: number;
@@ -319,10 +320,12 @@ export interface PaymentRecord {
   createdBy: string;
 
   // Compatibility
+  transactionRef?: string;
   orderId?: string;
   orderNumber?: string;
   tableNumber?: number;
   timestamp?: string;
+  paidAt?: string;
   cashierName?: string;
   notes?: string;
 }

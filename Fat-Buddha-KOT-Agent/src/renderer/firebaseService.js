@@ -1,5 +1,6 @@
 import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.14.1/firebase-app.js';
 import {
+  initializeFirestore,
   getFirestore,
   collection,
   query,
@@ -8,8 +9,7 @@ import {
   doc,
   getDoc,
   updateDoc,
-  runTransaction,
-  getDocFromServer
+  runTransaction
 } from 'https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore.js';
 
 class AgentFirebaseService {
@@ -28,7 +28,13 @@ class AgentFirebaseService {
       }
 
       this.app = initializeApp(firebaseConfig);
-      this.db = getFirestore(this.app, firebaseConfig.firestoreDatabaseId || undefined);
+      try {
+        this.db = initializeFirestore(this.app, {
+          experimentalAutoDetectLongPolling: true,
+        }, firebaseConfig.firestoreDatabaseId || undefined);
+      } catch (e) {
+        this.db = getFirestore(this.app, firebaseConfig.firestoreDatabaseId || undefined);
+      }
 
       // Verify connection
       await this.checkConnection();
@@ -53,20 +59,17 @@ class AgentFirebaseService {
   async checkConnection() {
     if (!this.db) return false;
     try {
-      // Light ping to health/test document
-      await getDocFromServer(doc(this.db, 'test', 'connection'));
+      // Light ping to health/test document or settings
+      await getDoc(doc(this.db, 'settings', 'restaurant_config'));
       this.setConnected(true);
       return true;
     } catch (err) {
-      // In Firestore, if collection exists or query completes, connection is active
-      try {
-        await getDoc(doc(this.db, 'settings', 'restaurant_profile'));
-        this.setConnected(true);
-        return true;
-      } catch {
-        this.setConnected(false, err.message);
-        return false;
+      if (err?.code === 'unavailable') {
+        this.setConnected(false, 'Offline / Reconnecting');
+      } else {
+        this.setConnected(true); // Connected to client cache/offline queue
       }
+      return false;
     }
   }
 
