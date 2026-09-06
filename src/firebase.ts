@@ -1,14 +1,21 @@
 import { initializeApp, getApps, getApp } from 'firebase/app';
 import { getAuth } from 'firebase/auth';
-import { initializeFirestore, getFirestore, doc, getDoc } from 'firebase/firestore';
+import { initializeFirestore, getFirestore, doc, getDoc, setLogLevel } from 'firebase/firestore';
 import firebaseConfig from '../firebase-applet-config.json';
 
 const app = getApps().length > 0 ? getApp() : initializeApp(firebaseConfig);
 
+// Silence benign connection handshake warnings in iframe / sandboxed network
+try {
+  setLogLevel('error');
+} catch {
+  // Ignore if already set
+}
+
 let firestoreDb;
 try {
   firestoreDb = initializeFirestore(app, {
-    experimentalAutoDetectLongPolling: true,
+    experimentalForceLongPolling: true,
   }, firebaseConfig.firestoreDatabaseId);
 } catch (e) {
   firestoreDb = getFirestore(app, firebaseConfig.firestoreDatabaseId);

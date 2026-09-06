@@ -143,7 +143,7 @@ export const GuestQRView: React.FC = () => {
       {/* Mobile Frame Container Wrapper (toggleable) */}
       <div className={`w-full ${
         mobileFrameMode
-          ? 'max-w-md bg-[#FDFCF0] rounded-[40px] border-[8px] border-gray-800 shadow-2xl overflow-hidden min-h-[840px] flex flex-col relative'
+          ? 'max-w-md bg-[#FDFCF0] rounded-[40px] border-[8px] border-gray-800 shadow-2xl overflow-y-auto max-h-[90vh] min-h-[840px] flex flex-col relative'
           : 'max-w-4xl mx-auto px-3 sm:px-6 py-4 flex flex-col'
       }`}>
         
@@ -325,15 +325,15 @@ export const GuestQRView: React.FC = () => {
           </div>
         )}
 
-        {/* Search Bar & Dietary Filter Toggles */}
-        <div className="space-y-2.5 mb-4 sticky top-16 z-20 bg-[#FDFCF0]/95 backdrop-blur-md py-2 -mx-1 px-1">
+        {/* Search Bar & Dietary Filter Toggles - Fixed cleanly on top during menu scroll */}
+        <div className="space-y-2.5 mb-4 sticky top-0 z-30 bg-[#FDFCF0]/98 backdrop-blur-md pt-2.5 pb-2.5 -mx-3 px-3 sm:-mx-6 sm:px-6 border-b border-amber-900/10 shadow-xs translate-z-0">
           <div className="relative">
             <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
             <input
               type="text"
               value={searchQuery}
               onChange={e => setSearchQuery(e.target.value)}
-              placeholder="Search dimsums, bowls, noodles, iced brews..."
+              placeholder="Search momos, sekuwa, chilly, fried rice, drinks..."
               className="w-full pl-10 pr-4 py-2.5 bg-white border border-gray-200 rounded-xl text-xs sm:text-sm text-gray-800 placeholder-gray-400 focus:outline-none focus:border-amber-500 shadow-sm"
             />
             {searchQuery && (
@@ -347,7 +347,7 @@ export const GuestQRView: React.FC = () => {
           </div>
 
           {/* Dietary Badges */}
-          <div className="flex items-center gap-1.5 overflow-x-auto pb-1">
+          <div className="flex items-center gap-1.5 overflow-x-auto pb-1 no-scrollbar overscroll-x-contain touch-pan-x">
             <button
               onClick={() => setDietaryFilter('all')}
               className={`px-3 py-1 rounded-lg text-xs font-semibold transition ${
@@ -394,7 +394,7 @@ export const GuestQRView: React.FC = () => {
           </div>
 
           {/* Category Tabs Scroll */}
-          <div className="flex items-center gap-1.5 overflow-x-auto pb-1 pt-1 no-scrollbar">
+          <div className="flex items-center gap-1.5 overflow-x-auto pb-1 pt-1 no-scrollbar overscroll-x-contain touch-pan-x">
             {categories.map(cat => (
               <button
                 key={cat}

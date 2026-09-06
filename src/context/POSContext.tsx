@@ -237,12 +237,6 @@ export const POSProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
 
     const initialize = async () => {
       try {
-        await testConnection();
-      } catch (err) {
-        // Non-blocking connection probe
-      }
-
-      try {
         await seedInitial10TablesIfEmpty();
       } catch (err) {
         console.warn("Table seeding deferred until online connection stabilizes:", err);
