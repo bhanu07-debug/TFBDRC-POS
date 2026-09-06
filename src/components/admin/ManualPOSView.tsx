@@ -1,7 +1,8 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { usePOS } from '../../context/POSContext';
 import { MenuItem, MenuItemVariant, MenuItemAddOn, OrderType, Table } from '../../types';
 import { normalizeImageUrl, DEFAULT_DISH_IMAGE } from '../../utils/imageUtils';
+import { CATEGORY_NAMES } from '../../data/restaurantMenu';
 import {
   Search,
   Plus,
@@ -64,15 +65,14 @@ export const ManualPOSView: React.FC<ManualPOSViewProps> = ({
   const [editingNoteItemId, setEditingNoteItemId] = useState<string | null>(null);
   const [tempNote, setTempNote] = useState('');
 
-  const categories = [
-    'All',
-    'Momos & Dimsums',
-    'Buddha Bowls & Mains',
-    'Asian Wok & Starters',
-    'Clay Oven & Tandoor',
-    'Artisanal Cafe & Drinks',
-    'Desserts'
-  ];
+  const categories = useMemo(() => {
+    const set = new Set<string>();
+    CATEGORY_NAMES.forEach(c => set.add(c));
+    menuItems.forEach(item => {
+      if (item.category && item.category.trim()) set.add(item.category.trim());
+    });
+    return ['All', ...Array.from(set)];
+  }, [menuItems]);
 
   const filteredMenuItems = menuItems.filter(item => {
     if (selectedCategory !== 'All' && item.category !== selectedCategory) return false;

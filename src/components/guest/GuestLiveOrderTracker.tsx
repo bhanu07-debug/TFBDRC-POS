@@ -32,7 +32,9 @@ export const GuestLiveOrderTracker: React.FC<GuestLiveOrderTrackerProps> = ({
     getTableOrders,
     getCurrentTable,
     addServiceRequest,
-    settings
+    settings,
+    tableNotifications,
+    markTableNotificationRead
   } = usePOS();
 
   const [billRequested, setBillRequested] = useState(false);
@@ -41,6 +43,9 @@ export const GuestLiveOrderTracker: React.FC<GuestLiveOrderTrackerProps> = ({
 
   const currentTable = getCurrentTable();
   const tableOrders = getTableOrders(currentGuestTableNumber);
+  const unreadTableAlerts = (tableNotifications || []).filter(
+    n => n.tableNumber === currentGuestTableNumber && !n.read
+  );
 
   const totalSessionAmount = tableOrders
     .filter(o => o.status !== 'cancelled')
@@ -62,11 +67,13 @@ export const GuestLiveOrderTracker: React.FC<GuestLiveOrderTrackerProps> = ({
       case 'confirmed':
       case 'preparing':
       case 'cooking':
-      case 'ready':
+      case 'in_progress':
         return 2;
+      case 'ready':
+        return 3;
       case 'served':
       case 'completed':
-        return 3;
+        return 4;
       default:
         return 1;
     }
@@ -106,6 +113,40 @@ export const GuestLiveOrderTracker: React.FC<GuestLiveOrderTrackerProps> = ({
 
         {/* Content */}
         <div className="flex-1 overflow-y-auto p-4 space-y-4">
+          {/* Real-time Notifications for this Table */}
+          {unreadTableAlerts.length > 0 && (
+            <div className="space-y-2">
+              {unreadTableAlerts.map(alert => (
+                <div
+                  key={alert.id}
+                  className={`p-3.5 rounded-xl border text-xs flex items-start justify-between gap-3 shadow-xs ${
+                    alert.type === 'order_ready'
+                      ? 'bg-emerald-50 border-emerald-300 text-emerald-950'
+                      : 'bg-rose-50 border-rose-300 text-rose-950'
+                  }`}
+                >
+                  <div className="flex items-start gap-2.5">
+                    {alert.type === 'order_ready' ? (
+                      <CheckCircle2 className="w-4 h-4 text-emerald-600 mt-0.5 flex-shrink-0" />
+                    ) : (
+                      <AlertCircle className="w-4 h-4 text-rose-600 mt-0.5 flex-shrink-0" />
+                    )}
+                    <div>
+                      <p className="font-bold">{alert.title}</p>
+                      <p className="text-[11px] mt-0.5 opacity-90">{alert.message}</p>
+                    </div>
+                  </div>
+                  <button
+                    onClick={() => markTableNotificationRead(alert.id)}
+                    className="p-1 text-gray-400 hover:text-gray-700 rounded-md"
+                    title="Dismiss alert"
+                  >
+                    <X className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
           {tableOrders.length === 0 ? (
             <div className="text-center py-10">
               <Clock className="w-12 h-12 text-gray-400 mx-auto mb-2" />
@@ -143,74 +184,119 @@ export const GuestLiveOrderTracker: React.FC<GuestLiveOrderTrackerProps> = ({
                         <span className="text-[11px] text-gray-400">{order.createdAt}</span>
                         <span
                           className={`text-[10px] uppercase tracking-wider font-bold px-2.5 py-0.5 rounded-full ${
-                            step === 3
+                            order.status === 'cancelled'
+                              ? 'bg-rose-50 text-rose-700 border border-rose-200'
+                              : step === 4
                               ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
+                              : step === 3
+                              ? 'bg-emerald-100 text-emerald-900 border border-emerald-300 font-black'
                               : step === 2
                               ? 'bg-blue-50 text-blue-700 border border-blue-200'
                               : 'bg-amber-50 text-amber-800 border border-amber-200'
                           }`}
                         >
-                          {step === 3 ? 'Served' : step === 2 ? 'Confirmed' : 'Placed'}
+                          {order.status === 'cancelled'
+                            ? 'Cancelled'
+                            : step === 4
+                            ? 'Served'
+                            : step === 3
+                            ? 'Ready to Serve'
+                            : step === 2
+                            ? 'Preparing'
+                            : 'Placed'}
                         </span>
                       </div>
                     </div>
 
-                    {/* Visual Progress Stepper (Placed -> Confirmed -> Served) */}
-                    <div className="py-2.5 px-2 bg-gray-50/70 rounded-xl border border-gray-100">
-                      <div className="grid grid-cols-3 gap-2 text-center relative">
-                        {/* Connecting track */}
-                        <div className="absolute top-3 left-[20%] right-[20%] h-0.5 bg-gray-200 -z-0">
-                          <div
-                            className="h-full bg-amber-500 transition-all duration-300"
-                            style={{
-                              width: step === 1 ? '0%' : step === 2 ? '50%' : '100%'
-                            }}
-                          />
-                        </div>
-
-                        {/* Step 1: Placed */}
-                        <div className="flex flex-col items-center relative z-10">
-                          <div
-                            className={`w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-bold mb-1 transition-all ${
-                              step >= 1 ? 'bg-amber-500 text-white shadow-xs' : 'bg-gray-200 text-gray-500'
-                            }`}
-                          >
-                            {step > 1 ? '✓' : '1'}
-                          </div>
-                          <span className={`text-[11px] font-bold ${step >= 1 ? 'text-amber-800' : 'text-gray-400'}`}>
-                            Placed
-                          </span>
-                        </div>
-
-                        {/* Step 2: Confirmed */}
-                        <div className="flex flex-col items-center relative z-10">
-                          <div
-                            className={`w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-bold mb-1 transition-all ${
-                              step >= 2 ? 'bg-blue-600 text-white shadow-xs' : 'bg-gray-200 text-gray-500'
-                            }`}
-                          >
-                            {step > 2 ? '✓' : '2'}
-                          </div>
-                          <span className={`text-[11px] font-bold ${step >= 2 ? 'text-blue-800' : 'text-gray-400'}`}>
-                            Confirmed
-                          </span>
-                        </div>
-
-                        {/* Step 3: Served */}
-                        <div className="flex flex-col items-center relative z-10">
-                          <div
-                            className={`w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-bold mb-1 transition-all ${
-                              step >= 3 ? 'bg-emerald-600 text-white shadow-xs' : 'bg-gray-200 text-gray-500'
-                            }`}
-                          >
-                            ✓
-                          </div>
-                          <span className={`text-[11px] font-bold ${step >= 3 ? 'text-emerald-800' : 'text-gray-400'}`}>
-                            Served
-                          </span>
+                    {order.status === 'cancelled' ? (
+                      <div className="p-3 bg-rose-50 border border-rose-200 rounded-xl text-xs text-rose-800 flex items-start gap-2">
+                        <AlertCircle className="w-4 h-4 text-rose-600 flex-shrink-0 mt-0.5" />
+                        <div>
+                          <p className="font-bold">Item Not Available</p>
+                          <p className="text-[11px] mt-0.5 opacity-90">
+                            {order.cancellationReason || 'Order cancelled by kitchen staff due to availability.'}
+                          </p>
                         </div>
                       </div>
-                    </div>
+                    ) : (
+                      /* Visual Progress Stepper (Placed -> Preparing -> Ready -> Served) */
+                      <div className="py-2.5 px-2 bg-gray-50/70 rounded-xl border border-gray-100">
+                        <div className="grid grid-cols-4 gap-1 text-center relative">
+                          {/* Connecting track */}
+                          <div className="absolute top-3 left-[12%] right-[12%] h-0.5 bg-gray-200 -z-0">
+                            <div
+                              className="h-full bg-amber-500 transition-all duration-300"
+                              style={{
+                                width:
+                                  step === 1
+                                    ? '0%'
+                                    : step === 2
+                                    ? '33%'
+                                    : step === 3
+                                    ? '66%'
+                                    : '100%'
+                              }}
+                            />
+                          </div>
+
+                          {/* Step 1: Placed */}
+                          <div className="flex flex-col items-center relative z-10">
+                            <div
+                              className={`w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-bold mb-1 transition-all ${
+                                step >= 1 ? 'bg-amber-500 text-white shadow-xs' : 'bg-gray-200 text-gray-500'
+                              }`}
+                            >
+                              {step > 1 ? '✓' : '1'}
+                            </div>
+                            <span className={`text-[10px] font-bold ${step >= 1 ? 'text-amber-800' : 'text-gray-400'}`}>
+                              Placed
+                            </span>
+                          </div>
+
+                          {/* Step 2: Preparing */}
+                          <div className="flex flex-col items-center relative z-10">
+                            <div
+                              className={`w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-bold mb-1 transition-all ${
+                                step >= 2 ? 'bg-blue-600 text-white shadow-xs' : 'bg-gray-200 text-gray-500'
+                              }`}
+                            >
+                              {step > 2 ? '✓' : '2'}
+                            </div>
+                            <span className={`text-[10px] font-bold ${step >= 2 ? 'text-blue-800' : 'text-gray-400'}`}>
+                              Preparing
+                            </span>
+                          </div>
+
+                          {/* Step 3: Ready */}
+                          <div className="flex flex-col items-center relative z-10">
+                            <div
+                              className={`w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-bold mb-1 transition-all ${
+                                step >= 3 ? 'bg-emerald-600 text-white shadow-xs animate-pulse' : 'bg-gray-200 text-gray-500'
+                              }`}
+                            >
+                              {step > 3 ? '✓' : '3'}
+                            </div>
+                            <span className={`text-[10px] font-bold ${step >= 3 ? 'text-emerald-800' : 'text-gray-400'}`}>
+                              Ready
+                            </span>
+                          </div>
+
+                          {/* Step 4: Served */}
+                          <div className="flex flex-col items-center relative z-10">
+                            <div
+                              className={`w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-bold mb-1 transition-all ${
+                                step >= 4 ? 'bg-emerald-600 text-white shadow-xs' : 'bg-gray-200 text-gray-500'
+                              }`}
+                            >
+                              ✓
+                            </div>
+                            <span className={`text-[10px] font-bold ${step >= 4 ? 'text-emerald-800' : 'text-gray-400'}`}>
+                              Served
+                            </span>
+                          </div>
+                        </div>
+                      </div>
+                    )}
 
                     {/* Item list in this order */}
                     <div className="divide-y divide-gray-100 pt-1">

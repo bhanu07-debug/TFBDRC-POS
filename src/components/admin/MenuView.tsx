@@ -3,6 +3,7 @@ import { usePOS } from '../../context/POSContext';
 import { MenuItem, DietaryType, KOTDestination } from '../../types';
 import { DishImageUploader } from '../common/DishImageUploader';
 import { normalizeImageUrl, DEFAULT_DISH_IMAGE } from '../../utils/imageUtils';
+import { CATEGORY_NAMES, RESTAURANT_PROFILE } from '../../data/restaurantMenu';
 import {
   Search,
   Plus,
@@ -18,6 +19,7 @@ import {
   Image as ImageIcon,
   ChefHat,
   Coffee,
+  RotateCcw,
   X
 } from 'lucide-react';
 
@@ -27,7 +29,8 @@ export const MenuView: React.FC = () => {
     toggleMenuItemStock,
     updateMenuItem,
     addMenuItem,
-    deleteMenuItem
+    deleteMenuItem,
+    syncOfficialMenu
   } = usePOS();
 
   const [searchQuery, setSearchQuery] = useState('');
@@ -35,14 +38,16 @@ export const MenuView: React.FC = () => {
   const [editingItem, setEditingItem] = useState<MenuItem | null>(null);
   const [isNewItemModalOpen, setIsNewItemModalOpen] = useState(false);
   const [itemToDelete, setItemToDelete] = useState<MenuItem | null>(null);
+  const [isSyncing, setIsSyncing] = useState(false);
+  const [syncMessage, setSyncMessage] = useState<string | null>(null);
 
   // New Item Form State
   const [newItemData, setNewItemData] = useState({
     name: '',
-    category: 'Momos & Dimsums',
+    category: CATEGORY_NAMES[0] || 'Special',
     description: '',
-    price: 320,
-    dietary: 'veg' as DietaryType,
+    price: 350,
+    dietary: 'non-veg' as DietaryType,
     kotDestination: 'kitchen' as KOTDestination,
     isChefSpecial: false,
     isPopular: false,
@@ -50,27 +55,38 @@ export const MenuView: React.FC = () => {
     prepTimeMinutes: 15,
     inStock: true,
     image: 'https://images.unsplash.com/photo-1541696432-82c6da8ce7bf?auto=format&fit=crop&w=600&q=80',
-    tags: 'Asian, Signature'
+    tags: 'Delight, Special'
   });
 
   // Dynamic categories
-  const defaultCategories = [
-    'Momos & Dimsums',
-    'Buddha Bowls & Mains',
-    'Asian Wok & Starters',
-    'Clay Oven & Tandoor',
-    'Artisanal Cafe & Drinks',
-    'Desserts'
-  ];
+  const defaultCategories = CATEGORY_NAMES;
 
   const [customCategories, setCustomCategories] = useState<string[]>(() => {
     try {
-      const saved = localStorage.getItem('fat_buddha_custom_categories');
+      const saved = localStorage.getItem('delight_custom_categories');
       return saved ? JSON.parse(saved) : [];
     } catch {
       return [];
     }
   });
+
+  const handleSyncOfficialMenu = async () => {
+    const ok = window.confirm("Restore official restaurant menu? This will replace any old dummy menu items with the authentic 6-section catalog from The New Delight Restaurant.");
+    if (!ok) return;
+
+    setIsSyncing(true);
+    setSyncMessage(null);
+    try {
+      await syncOfficialMenu(true);
+      setSyncMessage('Official Delight Restaurant Menu successfully restored with all items and categories!');
+      setTimeout(() => setSyncMessage(null), 5000);
+    } catch (err) {
+      console.error(err);
+      setSyncMessage('Sync failed. Please check your connection.');
+    } finally {
+      setIsSyncing(false);
+    }
+  };
 
   const [isAddingNewCategory, setIsAddingNewCategory] = useState(false);
   const [newCategoryInput, setNewCategoryInput] = useState('');
@@ -202,18 +218,42 @@ export const MenuView: React.FC = () => {
             </span>
           </div>
           <p className="text-xs text-gray-500 mt-0.5">
-            Manage recipes, dietary categories, KOT dispatch routing, and instant 86 out-of-stock toggles.
+            {RESTAURANT_PROFILE.name} — Manage recipes, categories, KOT dispatch routing, and pricing.
           </p>
         </div>
 
-        <button
-          onClick={() => setIsNewItemModalOpen(true)}
-          className="px-4 py-2 bg-amber-500 hover:bg-amber-600 text-white font-bold rounded-xl text-xs shadow-xs transition flex items-center gap-1.5 self-start sm:self-auto"
-        >
-          <Plus className="w-4 h-4" />
-          <span>Add New Dish</span>
-        </button>
+        <div className="flex items-center gap-2 flex-wrap">
+          <button
+            onClick={handleSyncOfficialMenu}
+            disabled={isSyncing}
+            className="px-3.5 py-2 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-300 font-bold rounded-xl text-xs transition flex items-center gap-1.5 shadow-xs disabled:opacity-50 cursor-pointer"
+            title="Reload and sync the authentic menu catalog from restaurant WhatsApp menu images"
+          >
+            <RotateCcw className={`w-3.5 h-3.5 text-emerald-600 ${isSyncing ? 'animate-spin' : ''}`} />
+            <span>{isSyncing ? 'Restoring Catalog...' : 'Restore Official Menu'}</span>
+          </button>
+
+          <button
+            onClick={() => setIsNewItemModalOpen(true)}
+            className="px-4 py-2 bg-amber-500 hover:bg-amber-600 text-white font-bold rounded-xl text-xs shadow-xs transition flex items-center gap-1.5 cursor-pointer"
+          >
+            <Plus className="w-4 h-4" />
+            <span>Add New Dish</span>
+          </button>
+        </div>
       </div>
+
+      {syncMessage && (
+        <div className="p-3.5 bg-emerald-50 border border-emerald-300 text-emerald-900 rounded-xl text-xs font-medium flex items-center justify-between gap-2 shadow-xs animate-in fade-in">
+          <div className="flex items-center gap-2">
+            <CheckCircle2 className="w-4 h-4 text-emerald-600 flex-shrink-0" />
+            <span>{syncMessage}</span>
+          </div>
+          <button onClick={() => setSyncMessage(null)} className="text-emerald-700 hover:text-emerald-900">
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+      )}
 
       {/* Search & Category Pills */}
       <div className="bg-white p-4 rounded-xl border border-gray-200 shadow-xs space-y-3">
@@ -284,7 +324,7 @@ export const MenuView: React.FC = () => {
                             }}
                           />
                           <div>
-                            <div className="flex items-center gap-1.5">
+                            <div className="flex items-center gap-1.5 flex-wrap">
                               <span
                                 className={`w-2 h-2 rounded-full flex-shrink-0 ${
                                   item.dietary === 'veg' ? 'bg-emerald-500' : 'bg-rose-500'
@@ -293,8 +333,18 @@ export const MenuView: React.FC = () => {
                               <span className="font-bold text-gray-900 text-xs">
                                 {item.name}
                               </span>
+                              {item.code && (
+                                <span className="px-1.5 py-0.2 rounded text-[10px] font-mono font-bold bg-amber-50 text-amber-900 border border-amber-200">
+                                  #{item.code}
+                                </span>
+                              )}
+                              {item.isChefSpecial && (
+                                <span className="px-1.5 py-0.2 rounded text-[9px] font-bold bg-amber-100 text-amber-800 border border-amber-300">
+                                  ★ Special
+                                </span>
+                              )}
                             </div>
-                            <p className="text-[11px] text-gray-400 max-w-xs truncate mt-0.5">
+                            <p className="text-[11px] text-gray-500 max-w-xs truncate mt-0.5">
                               {item.description}
                             </p>
                           </div>

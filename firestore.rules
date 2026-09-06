@@ -142,6 +142,15 @@ service cloud.firestore {
         (!('gstPercent' in data) || (data.gstPercent is number && data.gstPercent >= 0 && data.gstPercent <= 100));
     }
 
+    function isValidTableNotification(data) {
+      return data.id is string && data.id.size() <= 128 &&
+        data.tableNumber is number && data.tableNumber >= 1 && data.tableNumber <= 100 &&
+        data.type in ['order_ready', 'order_cancelled', 'order_placed', 'service_call', 'custom'] &&
+        data.title is string && data.title.size() <= 128 &&
+        data.message is string && data.message.size() <= 500 &&
+        data.read is bool;
+    }
+
     // ==========================================
     // COLLECTION RULES
     // ==========================================
@@ -242,6 +251,13 @@ service cloud.firestore {
       allow read: if true;
       allow create, update: if isValidId(requestId);
       allow delete: if isValidId(requestId);
+    }
+
+    // Table notifications (Kitchen/Reception alerts dispatched to guest tables)
+    match /table_notifications/{notificationId} {
+      allow read: if true;
+      allow create, update: if isValidId(notificationId) && isValidTableNotification(incoming());
+      allow delete: if isValidId(notificationId);
     }
 
     // Health / probe document

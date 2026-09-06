@@ -226,7 +226,9 @@ export type KOTStatus =
   | 'CANCELLED'
   | 'in_progress'
   | 'completed'
-  | 'bumped';
+  | 'bumped'
+  | 'ready'
+  | 'cancelled';
 
 export interface KOTItem {
   id: string;
@@ -240,6 +242,8 @@ export interface KOTItem {
   // Compatibility
   name?: string;
   category?: string;
+  variant?: string;
+  instructions?: string;
 }
 
 export interface KOTTicket {
@@ -261,6 +265,8 @@ export interface KOTTicket {
   station?: string;
   notes?: string;
   waiterName?: string;
+  orderSource?: OrderSource | string;
+  cancellationReason?: string;
 }
 
 // ==========================================
@@ -440,4 +446,18 @@ export interface ServiceRequest {
   message?: string;
   createdAt: string;
   status: 'pending' | 'attended';
+}
+
+// Table Notification for Kitchen/Reception to Guest Table alerts (Order Ready, Cancelled, etc.)
+export interface TableNotification {
+  id: string;
+  tableNumber: number;
+  type: 'order_ready' | 'order_cancelled' | 'order_placed' | 'service_call' | 'custom';
+  title: string;
+  message: string;
+  orderId?: string;
+  kotId?: string;
+  station?: 'kitchen' | 'reception' | 'all';
+  createdAt: string;
+  read: boolean;
 }

@@ -57,8 +57,10 @@ import {
   InventoryTransaction,
   AuditLog,
   RestaurantSettings,
-  ServiceRequest
+  ServiceRequest,
+  TableNotification
 } from '../types';
+import { OFFICIAL_CATEGORIES, OFFICIAL_MENU_ITEMS } from '../data/restaurantMenu';
 
 // ====================================================
 // CONSTANTS & SEED DATA
@@ -108,15 +110,15 @@ export const INITIAL_10_TABLES: Table[] = Array.from({ length: 10 }, (_, i) => {
 export const INITIAL_20_TABLES = INITIAL_10_TABLES;
 
 export const DEFAULT_SETTINGS: RestaurantSettings = {
-  restaurantName: "The Fat Buddha Delight Restro & Cafe",
-  name: "The Fat Buddha Delight Restro & Cafe",
+  restaurantName: "The New Delight Restaurant",
+  name: "The New Delight Restaurant",
   panNumber: "302194821",
   panNo: "302194821",
-  address: "Main Street, Heritage Zone, Kathmandu, Nepal",
-  phone: "+977 1 4220000 / +977 9801234567",
-  email: "contact@thefatbuddha.com",
+  address: "Main Street, Nature View Zone, Nepal",
+  phone: "+977 9800000000 / +977 9841000000",
+  email: "info@thedelightrestaurant.com",
   logoUrl: "https://images.unsplash.com/photo-1555396273-367ea4eb4db5?w=300&auto=format&fit=crop&q=80",
-  tagline: "Soulful Asian Wok, Artisanal Cafe & Clay Oven Delights",
+  tagline: "Best Place to Hangout and Enjoy Nature",
   currency: "NPR",
   currencySymbol: "Rs.",
   vatEnabled: false, // OFF by default
@@ -125,8 +127,8 @@ export const DEFAULT_SETTINGS: RestaurantSettings = {
   serviceChargePercent: 10,
   discountEnabled: true,
   timezone: "Asia/Kathmandu",
-  wifiSsid: "FatBuddha_Guest_5G",
-  wifiPassword: "eatdelightful",
+  wifiSsid: "Delight_Restaurant_Guest",
+  wifiPassword: "delightnature",
   autoPrintKOT: true,
   soundAlerts: true,
   tableCount: 10
@@ -278,6 +280,14 @@ export const clearAllTestDataAndResetTables = async (): Promise<boolean> => {
       const serviceBatch = writeBatch(db);
       serviceSnap.docs.forEach(d => serviceBatch.delete(d.ref));
       await serviceBatch.commit();
+    }
+
+    // 7. Clear table notifications
+    const notifSnap = await getDocs(collection(db, 'table_notifications'));
+    if (!notifSnap.empty) {
+      const notifBatch = writeBatch(db);
+      notifSnap.docs.forEach(d => notifBatch.delete(d.ref));
+      await notifBatch.commit();
     }
 
     return true;
@@ -442,6 +452,63 @@ export const listenMenuItems = (
       if (onError) onError(error);
     }
   );
+};
+
+export const syncOfficialRestaurantMenu = async (forceReplace: boolean = false): Promise<boolean> => {
+  try {
+    const menuColl = collection(db, 'menu_items');
+    const existingSnap = await getDocs(menuColl);
+    
+    // Check if empty, or contains old dummy items, or forceReplace
+    const hasOldDummy = existingSnap.docs.some(d => {
+      const cat = (d.data().category || '') as string;
+      return cat === 'Buddha Bowls & Mains' || cat === 'Momos & Dimsums' || cat === 'Clay Oven & Tandoor' || cat === 'Artisanal Cafe & Drinks';
+    });
+
+    const hasNewItems = existingSnap.docs.some(d => d.id === 'food-sp-6' || d.id === 'food-sp-1');
+
+    if (existingSnap.empty || hasOldDummy || !hasNewItems || forceReplace) {
+      // 1. Delete all old menu items
+      if (!existingSnap.empty) {
+        const delBatch = writeBatch(db);
+        existingSnap.docs.forEach(d => delBatch.delete(d.ref));
+        await delBatch.commit();
+      }
+
+      // 2. Delete all old categories
+      const catColl = collection(db, 'categories');
+      const catSnap = await getDocs(catColl);
+      if (!catSnap.empty) {
+        const catDelBatch = writeBatch(db);
+        catSnap.docs.forEach(d => catDelBatch.delete(d.ref));
+        await catDelBatch.commit();
+      }
+
+      // 3. Batch insert official categories
+      const catAddBatch = writeBatch(db);
+      OFFICIAL_CATEGORIES.forEach(cat => {
+        catAddBatch.set(doc(db, 'categories', cat.id), cleanFirestoreData(cat));
+      });
+      await catAddBatch.commit();
+
+      // 4. Batch insert official menu items in chunks
+      const chunkSize = 400;
+      for (let i = 0; i < OFFICIAL_MENU_ITEMS.length; i += chunkSize) {
+        const chunk = OFFICIAL_MENU_ITEMS.slice(i, i + chunkSize);
+        const itemBatch = writeBatch(db);
+        chunk.forEach(item => {
+          itemBatch.set(doc(db, 'menu_items', item.id), cleanFirestoreData(item));
+        });
+        await itemBatch.commit();
+      }
+
+      return true;
+    }
+    return false;
+  } catch (error) {
+    console.error("Error syncing official restaurant menu:", error);
+    return false;
+  }
 };
 
 // ====================================================
@@ -1093,3 +1160,58 @@ export const listenServiceRequests = (
     }
   );
 };
+
+// ====================================================
+// 10. TABLE NOTIFICATIONS (KITCHEN/RECEPTION TO GUEST)
+// ====================================================
+export const listenTableNotifications = (
+  onSuccess: (notifications: TableNotification[]) => void,
+  onError?: (err: any) => void
+) => {
+  const path = 'table_notifications';
+  return onSnapshot(
+    collection(db, path),
+    snapshot => {
+      const list: TableNotification[] = [];
+      snapshot.forEach(docSnap => {
+        list.push({ ...docSnap.data(), id: docSnap.id } as TableNotification);
+      });
+      list.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+      onSuccess(list);
+    },
+    error => {
+      handleFirestoreError(error, OperationType.LIST, path);
+      if (onError) onError(error);
+    }
+  );
+};
+
+export const createTableNotification = async (
+  notification: Omit<TableNotification, 'id' | 'createdAt' | 'read'>
+): Promise<TableNotification> => {
+  const path = 'table_notifications';
+  const id = `NOTIF-${Date.now().toString(36).toUpperCase()}-${Math.floor(100 + Math.random() * 900)}`;
+  const notif: TableNotification = {
+    ...notification,
+    id,
+    createdAt: new Date().toISOString(),
+    read: false
+  };
+  try {
+    await setDoc(doc(db, path, id), cleanFirestoreData(notif));
+    return notif;
+  } catch (error) {
+    handleFirestoreError(error, OperationType.CREATE, path);
+    return notif;
+  }
+};
+
+export const markTableNotificationAsRead = async (id: string) => {
+  const path = `table_notifications/${id}`;
+  try {
+    await updateDoc(doc(db, 'table_notifications', id), { read: true });
+  } catch (error) {
+    handleFirestoreError(error, OperationType.UPDATE, path);
+  }
+};
+

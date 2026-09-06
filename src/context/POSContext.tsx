@@ -31,7 +31,8 @@ import {
   MenuItemAddOn,
   AdminTab,
   Category,
-  TableSession
+  TableSession,
+  TableNotification
 } from '../types';
 import {
   INITIAL_10_TABLES,
@@ -47,6 +48,9 @@ import {
   listenInventory,
   listenSettings,
   listenServiceRequests,
+  listenTableNotifications,
+  createTableNotification,
+  markTableNotificationAsRead,
   createOrderWithKOTs,
   createTableSession,
   recordPayment,
@@ -54,8 +58,16 @@ import {
   loginAdmin as authLoginAdmin,
   logoutAdmin as authLogoutAdmin,
   subscribeAdminAuth,
-  cleanFirestoreData
+  cleanFirestoreData,
+  syncOfficialRestaurantMenu
 } from '../services/firebaseService';
+import { OFFICIAL_CATEGORIES, OFFICIAL_MENU_ITEMS } from '../data/restaurantMenu';
+import {
+  playNewOrderSound,
+  playReadySound,
+  playCancelSound,
+  playPrintSound
+} from '../utils/sound';
 
 interface POSContextType {
   tables: Table[];
@@ -119,8 +131,17 @@ interface POSContextType {
   updateOrderStatus: (orderId: string, status: OrderStatus) => Promise<void>;
   updateTableOrdersStatus: (tableNumber: number, status: 'placed' | 'confirmed' | 'served') => Promise<void>;
   updateOrderItemStatus: (orderId: string, itemId: string, status: OrderItemStatus) => Promise<void>;
-  updateKOTStatus: (kotId: string, status: 'pending' | 'in_progress' | 'completed' | 'bumped') => Promise<void>;
+  updateKOTStatus: (
+    kotId: string,
+    status: 'pending' | 'in_progress' | 'ready' | 'completed' | 'cancelled' | 'bumped',
+    cancellationReason?: string
+  ) => Promise<void>;
   markOrderPaid: (orderId: string, paymentMethod?: PaymentMethod, cashierName?: string) => Promise<void>;
+
+  // Table notifications
+  tableNotifications: TableNotification[];
+  sendTableNotification: (notification: Omit<TableNotification, 'id' | 'createdAt' | 'read'>) => Promise<TableNotification>;
+  markTableNotificationRead: (id: string) => Promise<void>;
 
   // Table management
   settleTableBill: (
@@ -152,6 +173,7 @@ interface POSContextType {
   // Settings & Reset
   updateSettings: (newSettings: Partial<RestaurantSettings>) => Promise<void>;
   resetToDemoData: () => Promise<void>;
+  syncOfficialMenu: (force?: boolean) => Promise<boolean>;
 
   // Helpers
   getTableOrders: (tableNumber: number) => Order[];
@@ -163,13 +185,14 @@ const POSContext = createContext<POSContextType | undefined>(undefined);
 export const POSProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
   // Real Firestore state
   const [tables, setTables] = useState<Table[]>(INITIAL_10_TABLES);
-  const [menuItems, setMenuItems] = useState<MenuItem[]>([]);
-  const [categories, setCategories] = useState<Category[]>([]);
+  const [menuItems, setMenuItems] = useState<MenuItem[]>(OFFICIAL_MENU_ITEMS);
+  const [categories, setCategories] = useState<Category[]>(OFFICIAL_CATEGORIES);
   const [orders, setOrders] = useState<Order[]>([]);
   const [kots, setKots] = useState<KOTTicket[]>([]);
   const [inventory, setInventory] = useState<InventoryItem[]>([]);
   const [payments, setPayments] = useState<PaymentRecord[]>([]);
   const [serviceRequests, setServiceRequests] = useState<ServiceRequest[]>([]);
+  const [tableNotifications, setTableNotifications] = useState<TableNotification[]>([]);
   const [settings, setSettings] = useState<RestaurantSettings>(DEFAULT_SETTINGS);
   const [currentUser, setCurrentUser] = useState<User | null>(null);
 
@@ -209,6 +232,7 @@ export const POSProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     let unsubscribeInventory: () => void = () => {};
     let unsubscribeSettings: () => void = () => {};
     let unsubscribeService: () => void = () => {};
+    let unsubscribeNotifications: () => void = () => {};
     let unsubscribeAuth: () => void = () => {};
 
     const initialize = async () => {
@@ -222,6 +246,12 @@ export const POSProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         await seedInitial10TablesIfEmpty();
       } catch (err) {
         console.warn("Table seeding deferred until online connection stabilizes:", err);
+      }
+
+      try {
+        await syncOfficialRestaurantMenu(false);
+      } catch (err) {
+        console.warn("Official menu sync deferred until online connection stabilizes:", err);
       }
 
       // Auth subscription
@@ -238,12 +268,16 @@ export const POSProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
 
       // Categories listener
       unsubscribeCats = listenCategories(liveCats => {
-        setCategories(liveCats);
+        if (liveCats.length > 0) {
+          setCategories(liveCats);
+        }
       });
 
       // Menu items listener
       unsubscribeMenu = listenMenuItems(liveMenu => {
-        setMenuItems(liveMenu);
+        if (liveMenu.length > 0) {
+          setMenuItems(liveMenu);
+        }
       });
 
       // Orders listener
@@ -271,6 +305,11 @@ export const POSProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         setServiceRequests(liveRequests);
       });
 
+      // Table Notifications listener (Kitchen/Reception to Guest & Tables)
+      unsubscribeNotifications = listenTableNotifications(liveNotifs => {
+        setTableNotifications(liveNotifs);
+      });
+
       // Settings listener
       unsubscribeSettings = listenSettings(liveSettings => {
         if (liveSettings) {
@@ -294,6 +333,7 @@ export const POSProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       unsubscribePayments();
       unsubscribeInventory();
       unsubscribeService();
+      unsubscribeNotifications();
       unsubscribeSettings();
       unsubscribeAuth();
     };
@@ -681,17 +721,96 @@ export const POSProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     }
   };
 
-  const updateKOTStatus = async (kotId: string, status: 'pending' | 'in_progress' | 'completed' | 'bumped') => {
+  const updateKOTStatus = async (
+    kotId: string,
+    status: 'pending' | 'in_progress' | 'ready' | 'completed' | 'cancelled' | 'bumped',
+    cancellationReason?: string
+  ) => {
     const path = `kots/${kotId}`;
+    const nowIso = new Date().toISOString();
+    const mappedStatus =
+      status === 'pending'
+        ? 'PENDING'
+        : status === 'in_progress'
+        ? 'PREPARING'
+        : status === 'ready' || status === 'completed' || status === 'bumped'
+        ? 'READY'
+        : status === 'cancelled'
+        ? 'CANCELLED'
+        : 'PENDING';
+
+    // 1. Optimistic state update for instant UI feedback
+    setKots(prev =>
+      prev.map(k => (k.id === kotId ? { ...k, status: mappedStatus as any, updatedAt: nowIso } : k))
+    );
+
+    const targetKot = kots.find(k => k.id === kotId);
+
+    // 2. Persist to Firestore
     try {
-      const mappedStatus = status === 'pending' ? 'PENDING' : status === 'in_progress' ? 'PREPARING' : status === 'completed' || status === 'bumped' ? 'READY' : 'PENDING';
-      await updateDoc(doc(db, 'kots', kotId), {
-        status: mappedStatus,
-        updatedAt: new Date().toISOString()
-      });
+      await setDoc(
+        doc(db, 'kots', kotId),
+        cleanFirestoreData({
+          status: mappedStatus,
+          updatedAt: nowIso,
+          ...(cancellationReason ? { cancellationReason } : {})
+        }),
+        { merge: true }
+      );
+
+      // 3. Keep linked order in sync
+      if (targetKot && targetKot.orderId) {
+        if (status === 'ready' || status === 'completed' || status === 'bumped') {
+          // Update linked order state to 'ready'
+          setOrders(prev =>
+            prev.map(o => (o.id === targetKot.orderId ? { ...o, status: 'ready', updatedAt: nowIso } : o))
+          );
+          await setDoc(
+            doc(db, 'orders', targetKot.orderId),
+            { status: 'ready', updatedAt: nowIso },
+            { merge: true }
+          );
+        } else if (status === 'cancelled') {
+          // Check if other active KOTs exist for this order
+          const otherKots = kots.filter(
+            k => k.orderId === targetKot.orderId && k.id !== kotId && (k.status || '').toLowerCase() !== 'cancelled'
+          );
+          if (otherKots.length === 0) {
+            setOrders(prev =>
+              prev.map(o =>
+                o.id === targetKot.orderId
+                  ? { ...o, status: 'cancelled', updatedAt: nowIso, notes: cancellationReason ? `Cancelled: ${cancellationReason}` : o.notes }
+                  : o
+              )
+            );
+            await setDoc(
+              doc(db, 'orders', targetKot.orderId),
+              {
+                status: 'cancelled',
+                updatedAt: nowIso,
+                cancellationReason: cancellationReason || 'Cancelled by Kitchen'
+              },
+              { merge: true }
+            );
+          }
+        }
+      }
     } catch (error) {
       handleFirestoreError(error, OperationType.UPDATE, path);
     }
+  };
+
+  const sendTableNotification = async (
+    notification: Omit<TableNotification, 'id' | 'createdAt' | 'read'>
+  ): Promise<TableNotification> => {
+    const notif = await createTableNotification(notification);
+    setTableNotifications(prev => [notif, ...prev.filter(n => n.id !== notif.id)]);
+    return notif;
+  };
+
+  const markTableNotificationRead = async (id: string) => {
+    setTableNotifications(prev => prev.map(n => (n.id === id ? { ...n, read: true } : n)));
+    await markTableNotificationAsRead(id);
   };
 
   // Table status and bill settlement
@@ -1173,6 +1292,21 @@ export const POSProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
 
   const resetToDemoData = async () => {
     await clearAllTestDataAndResetTables();
+    await syncOfficialRestaurantMenu(true);
+    setMenuItems(OFFICIAL_MENU_ITEMS);
+    setCategories(OFFICIAL_CATEGORIES);
+  };
+
+  const syncOfficialMenu = async (force: boolean = false): Promise<boolean> => {
+    try {
+      const res = await syncOfficialRestaurantMenu(force);
+      setMenuItems(OFFICIAL_MENU_ITEMS);
+      setCategories(OFFICIAL_CATEGORIES);
+      return res;
+    } catch (err) {
+      console.error("Error syncing official menu:", err);
+      return false;
+    }
   };
 
   // Helpers
@@ -1229,6 +1363,10 @@ export const POSProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         updateKOTStatus,
         markOrderPaid,
 
+        tableNotifications,
+        sendTableNotification,
+        markTableNotificationRead,
+
         settleTableBill,
         occupyTable,
         setTableStatus,
@@ -1249,6 +1387,7 @@ export const POSProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
 
         updateSettings,
         resetToDemoData,
+        syncOfficialMenu,
 
         getTableOrders,
         getCurrentTable

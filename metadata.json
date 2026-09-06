@@ -1,6 +1,6 @@
 {
   "name": "The Fat Buddha Delight Restro & Cafe",
-  "description": "Modern restaurant POS and guest QR ordering system with 10-table management, live KOT kitchen display, manual punching, menu & inventory management, payments, and real-time order sync.",
+  "description": "Modern restaurant POS and guest QR ordering system with 10-table management, official authentic restaurant menu catalog across 17 sections, live KOT kitchen display, manual punching, and real-time order sync.",
   "requestFramePermissions": [],
   "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
 }

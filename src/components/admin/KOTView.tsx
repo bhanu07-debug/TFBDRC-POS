@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import { usePOS } from '../../context/POSContext';
 import { KOTTicket, KOTItem } from '../../types';
 import {
@@ -12,100 +12,325 @@ import {
   Volume2,
   VolumeX,
   Filter,
-  Check
+  Check,
+  XCircle,
+  AlertTriangle,
+  Send,
+  X,
+  RefreshCw,
+  BellRing
 } from 'lucide-react';
+import {
+  playReadySound,
+  playCancelSound,
+  playPrintSound,
+  playNewOrderSound
+} from '../../utils/sound';
+
+interface StationTicket extends KOTTicket {
+  station: 'kitchen' | 'reception';
+  filteredItems: Array<{
+    id?: string;
+    quantity: number;
+    name: string;
+    variant?: string;
+    instructions?: string;
+    category?: string;
+  }>;
+}
 
 export const KOTView: React.FC = () => {
-  const { kots, updateKOTStatus, settings, updateSettings } = usePOS();
-  const [activeSection, setActiveSection] = useState<'all' | 'kitchen' | 'reception'>('all');
-  const [statusFilter, setStatusFilter] = useState<'active' | 'completed'>('active');
+  const {
+    kots,
+    menuItems,
+    updateKOTStatus,
+    settings,
+    updateSettings,
+    sendTableNotification
+  } = usePOS();
 
-  // Helper to determine if item belongs to Kitchen or Reception
-  const isReceptionItem = (item: KOTItem | { category: string; name: string }) => {
+  // Local filter states
+  const [activeSection, setActiveSection] = useState<'all' | 'kitchen' | 'reception'>('all');
+  const [statusFilter, setStatusFilter] = useState<'active' | 'ready' | 'cancelled' | 'all'>('active');
+
+  // Cancel dialog state
+  const [cancellingTicket, setCancellingTicket] = useState<{
+    kot: KOTTicket;
+    station: 'kitchen' | 'reception';
+  } | null>(null);
+  const [cancelReason, setCancelReason] = useState('Ingredients Out of Stock / Item Unavailable');
+  const [customReason, setCustomReason] = useState('');
+
+  // Print slip active state
+  const [activePrintTicket, setActivePrintTicket] = useState<StationTicket | null>(null);
+  const [actionNotice, setActionNotice] = useState<{
+    type: 'ready' | 'cancel' | 'print';
+    message: string;
+  } | null>(null);
+
+  // Helper to determine if an item belongs to Reception/Cafe or Kitchen
+  const isReceptionItem = (item: any) => {
     const cat = (item.category || '').toLowerCase();
-    const name = (item.name || '').toLowerCase();
+    const name = (item.name || item.nameSnapshot || '').toLowerCase();
+    
+    // Check linked menuItem in catalog if category is missing
+    let catalogCat = '';
+    if (item.menuItemId) {
+      const found = menuItems.find(m => m.id === item.menuItemId);
+      if (found) catalogCat = (found.category || '').toLowerCase();
+    }
+
+    const fullCategory = `${cat} ${catalogCat}`;
     return (
-      cat.includes('cafe') ||
-      cat.includes('drink') ||
-      cat.includes('beverage') ||
-      cat.includes('dessert') ||
-      cat.includes('barista') ||
+      fullCategory.includes('cafe') ||
+      fullCategory.includes('drink') ||
+      fullCategory.includes('beverage') ||
+      fullCategory.includes('dessert') ||
+      fullCategory.includes('barista') ||
       name.includes('coffee') ||
       name.includes('shake') ||
       name.includes('tea') ||
       name.includes('ice cream') ||
+      name.includes('lassi') ||
+      name.includes('smoothie') ||
       name.includes('cake')
     );
   };
 
-  // Split KOT tickets into Kitchen and Reception
-  const getTicketItemsForSection = (kot: KOTTicket, section: 'kitchen' | 'reception') => {
-    return kot.items.filter(item => {
-      const isRec = isReceptionItem(item);
-      return section === 'reception' ? isRec : !isRec;
-    });
+  // Helper for status matching
+  const isTicketActive = (status: string) => {
+    const s = (status || '').toLowerCase();
+    return s === 'pending' || s === 'in_progress' || s === 'preparing';
   };
 
-  // Kitchen tickets (tickets that have at least 1 kitchen item)
-  const kitchenTickets = kots
+  const isTicketReady = (status: string) => {
+    const s = (status || '').toLowerCase();
+    return s === 'ready' || s === 'completed' || s === 'bumped' || s === 'done';
+  };
+
+  const isTicketCancelled = (status: string) => {
+    return (status || '').toLowerCase() === 'cancelled';
+  };
+
+  // Split KOT ticket items for a specific station
+  const getTicketItemsForSection = (kot: KOTTicket, section: 'kitchen' | 'reception') => {
+    return (kot.items || [])
+      .filter(item => {
+        const isRec = isReceptionItem(item);
+        return section === 'reception' ? isRec : !isRec;
+      })
+      .map(item => ({
+        id: item.id || item.orderItemId,
+        quantity: item.quantity || 1,
+        name: (item as any).name || item.nameSnapshot || 'Dish Item',
+        variant: item.variant,
+        instructions: item.instructions,
+        category: (item as any).category
+      }));
+  };
+
+  // Filter KOTs for Kitchen
+  const kitchenTickets: StationTicket[] = kots
     .filter(kot => {
       const items = getTicketItemsForSection(kot, 'kitchen');
       if (items.length === 0) return false;
-      if (statusFilter === 'active' && (kot.status === 'completed' || kot.status === 'bumped')) return false;
-      if (statusFilter === 'completed' && (kot.status !== 'completed' && kot.status !== 'bumped')) return false;
-      return true;
+
+      if (statusFilter === 'active') return isTicketActive(kot.status);
+      if (statusFilter === 'ready') return isTicketReady(kot.status);
+      if (statusFilter === 'cancelled') return isTicketCancelled(kot.status);
+      return true; // 'all'
     })
     .map(kot => ({
       ...kot,
+      station: 'kitchen' as const,
       filteredItems: getTicketItemsForSection(kot, 'kitchen')
     }));
 
-  // Reception tickets (tickets that have at least 1 reception item)
-  const receptionTickets = kots
+  // Filter KOTs for Reception
+  const receptionTickets: StationTicket[] = kots
     .filter(kot => {
       const items = getTicketItemsForSection(kot, 'reception');
       if (items.length === 0) return false;
-      if (statusFilter === 'active' && (kot.status === 'completed' || kot.status === 'bumped')) return false;
-      if (statusFilter === 'completed' && (kot.status !== 'completed' && kot.status !== 'bumped')) return false;
-      return true;
+
+      if (statusFilter === 'active') return isTicketActive(kot.status);
+      if (statusFilter === 'ready') return isTicketReady(kot.status);
+      if (statusFilter === 'cancelled') return isTicketCancelled(kot.status);
+      return true; // 'all'
     })
     .map(kot => ({
       ...kot,
+      station: 'reception' as const,
       filteredItems: getTicketItemsForSection(kot, 'reception')
     }));
 
-  const activeKitchenCount = kots.filter(k => (k.status === 'pending' || k.status === 'in_progress') && getTicketItemsForSection(k, 'kitchen').length > 0).length;
-  const activeReceptionCount = kots.filter(k => (k.status === 'pending' || k.status === 'in_progress') && getTicketItemsForSection(k, 'reception').length > 0).length;
+  // Counts for badge counters
+  const activeKitchenCount = kots.filter(
+    k => isTicketActive(k.status) && getTicketItemsForSection(k, 'kitchen').length > 0
+  ).length;
+  const activeReceptionCount = kots.filter(
+    k => isTicketActive(k.status) && getTicketItemsForSection(k, 'reception').length > 0
+  ).length;
 
-  const handleBump = (kotId: string) => {
-    updateKOTStatus(kotId, 'completed');
+  const showToast = (type: 'ready' | 'cancel' | 'print', message: string) => {
+    setActionNotice({ type, message });
+    setTimeout(() => {
+      setActionNotice(null);
+    }, 4500);
   };
 
-  const handleStartCooking = (kotId: string) => {
-    updateKOTStatus(kotId, 'in_progress');
+  // 1. ACTION: Print KOT for specific location (Kitchen / Reception)
+  const handlePrintKOT = (ticket: StationTicket) => {
+    setActivePrintTicket(ticket);
+    playPrintSound();
+
+    showToast(
+      'print',
+      `Printing ${ticket.station === 'kitchen' ? 'Kitchen' : 'Reception'} KOT (${ticket.kotNumber}) for Table ${
+        ticket.tableNumber < 10 ? '0' + ticket.tableNumber : ticket.tableNumber
+      }...`
+    );
+
+    // Give browser small render tick to populate `#printable-kot` DOM before window.print()
+    setTimeout(() => {
+      window.print();
+    }, 150);
+  };
+
+  // 2. ACTION: Mark Ready & notify table number
+  const handleMarkReady = async (ticket: StationTicket) => {
+    const tableNumStr = ticket.tableNumber < 10 ? `0${ticket.tableNumber}` : `${ticket.tableNumber}`;
+    const stationLabel = ticket.station === 'kitchen' ? 'Kitchen Food' : 'Cafe & Reception Bar';
+
+    // Update KOT in POS context & Firestore
+    await updateKOTStatus(ticket.id, 'ready');
+
+    // Send real-time notification to the guest table
+    await sendTableNotification({
+      tableNumber: ticket.tableNumber,
+      type: 'order_ready',
+      title: `Order Ready: ${stationLabel}`,
+      message: `Your ${stationLabel.toLowerCase()} order (${ticket.kotNumber}) is freshly prepared and ready to be served to Table ${tableNumStr}!`,
+      kotId: ticket.id,
+      orderId: ticket.orderId,
+      station: ticket.station
+    });
+
+    playReadySound();
+
+    showToast(
+      'ready',
+      `Table ${tableNumStr} notified: Order (${ticket.kotNumber}) is Ready!`
+    );
+  };
+
+  // 3. ACTION: Open Cancel Dialog
+  const handleOpenCancelDialog = (kot: KOTTicket, station: 'kitchen' | 'reception') => {
+    setCancellingTicket({ kot, station });
+    setCancelReason('Ingredients Out of Stock / Item Unavailable');
+    setCustomReason('');
+  };
+
+  // 4. ACTION: Confirm Cancel & notify guest order not available
+  const handleConfirmCancel = async () => {
+    if (!cancellingTicket) return;
+
+    const { kot, station } = cancellingTicket;
+    const finalReason = customReason.trim() ? customReason.trim() : cancelReason;
+    const tableNumStr = kot.tableNumber < 10 ? `0${kot.tableNumber}` : `${kot.tableNumber}`;
+    const stationLabel = station === 'kitchen' ? 'Kitchen items' : 'Beverages / Cafe items';
+
+    // Update KOT in POS context & Firestore
+    await updateKOTStatus(kot.id, 'cancelled', finalReason);
+
+    // Send real-time notification to the guest table that order is unavailable
+    await sendTableNotification({
+      tableNumber: kot.tableNumber,
+      type: 'order_cancelled',
+      title: `Order Update: ${stationLabel} Not Available`,
+      message: `We apologize, ${stationLabel} in order (${kot.kotNumber}) cannot be prepared at this time: ${finalReason}. Please check with staff or choose an alternative from the menu.`,
+      kotId: kot.id,
+      orderId: kot.orderId,
+      station
+    });
+
+    playCancelSound();
+
+    showToast(
+      'cancel',
+      `KOT ${kot.kotNumber} cancelled. Table ${tableNumStr} received cancellation alert.`
+    );
+
+    setCancellingTicket(null);
+  };
+
+  // Test sound alert
+  const handleTestChime = () => {
+    playNewOrderSound();
+    showToast('print', 'Testing speaker chime: Audio context is active!');
+  };
+
+  // Helper for time elapsed
+  const getTimeElapsed = (createdAt: string) => {
+    try {
+      const created = new Date(createdAt).getTime();
+      const diffMins = Math.max(0, Math.floor((Date.now() - created) / 60000));
+      if (diffMins < 1) return 'Just now';
+      if (diffMins < 60) return `${diffMins}m ago`;
+      const hours = Math.floor(diffMins / 60);
+      return `${hours}h ${diffMins % 60}m ago`;
+    } catch {
+      return '';
+    }
   };
 
   return (
     <div className="space-y-6">
-      {/* KOT Header & Controls */}
-      <div className="bg-white p-5 rounded-xl border border-gray-200 shadow-xs flex flex-col md:flex-row md:items-center justify-between gap-4">
+      {/* Real-time Notification Banner / Toast */}
+      {actionNotice && (
+        <div
+          className={`p-4 rounded-xl border flex items-center justify-between shadow-md transition-all duration-300 animate-in slide-in-from-top-2 ${
+            actionNotice.type === 'ready'
+              ? 'bg-emerald-50 border-emerald-300 text-emerald-900'
+              : actionNotice.type === 'cancel'
+              ? 'bg-rose-50 border-rose-300 text-rose-900'
+              : 'bg-neutral-900 border-neutral-800 text-white'
+          }`}
+        >
+          <div className="flex items-center gap-3">
+            {actionNotice.type === 'ready' && <CheckCircle2 className="w-5 h-5 text-emerald-600 flex-shrink-0" />}
+            {actionNotice.type === 'cancel' && <AlertTriangle className="w-5 h-5 text-rose-600 flex-shrink-0" />}
+            {actionNotice.type === 'print' && <Printer className="w-5 h-5 text-amber-400 flex-shrink-0" />}
+            <span className="text-xs sm:text-sm font-semibold">{actionNotice.message}</span>
+          </div>
+          <button
+            onClick={() => setActionNotice(null)}
+            className="text-xs opacity-70 hover:opacity-100 p-1"
+          >
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+      )}
+
+      {/* KOT Top Bar & Filtering */}
+      <div className="bg-white p-5 rounded-xl border border-gray-200 shadow-xs flex flex-col lg:flex-row lg:items-center justify-between gap-4">
         <div>
-          <div className="flex items-center gap-2">
-            <h2 className="text-lg font-bold text-gray-900 tracking-tight">
-              Kitchen Order Tickets (KOT)
+          <div className="flex items-center gap-2.5 flex-wrap">
+            <h2 className="text-lg font-bold text-gray-900 tracking-tight flex items-center gap-2">
+              <ChefHat className="w-5 h-5 text-amber-600" />
+              <span>Kitchen Order Tickets (KOT)</span>
             </h2>
             <span className="px-2.5 py-0.5 rounded-full text-xs font-bold bg-amber-50 text-amber-800 border border-amber-200 font-mono">
-              {activeKitchenCount + activeReceptionCount} Active Tickets
+              {activeKitchenCount + activeReceptionCount} Active Orders
             </span>
           </div>
-          <p className="text-xs text-gray-500 mt-0.5">
-            Automated ticket routing separating Kitchen items from Cafe / Reception Barista orders.
+          <p className="text-xs text-gray-500 mt-1">
+            Dispatch, print thermal slips, signal table readiness, and notify guests in real-time.
           </p>
         </div>
 
-        {/* Action Controls */}
-        <div className="flex items-center gap-2">
-          {/* Active vs Bumped Toggle */}
+        {/* Action Controls & Sound Settings */}
+        <div className="flex items-center flex-wrap gap-2.5">
+          {/* Status Filter Buttons */}
           <div className="flex p-1 bg-gray-100 rounded-lg text-xs font-semibold">
             <button
               onClick={() => setStatusFilter('active')}
@@ -115,47 +340,81 @@ export const KOTView: React.FC = () => {
                   : 'text-gray-600 hover:text-gray-900'
               }`}
             >
-              Active Tickets
+              Active ({activeKitchenCount + activeReceptionCount})
             </button>
             <button
-              onClick={() => setStatusFilter('completed')}
+              onClick={() => setStatusFilter('ready')}
               className={`px-3 py-1.5 rounded-md transition ${
-                statusFilter === 'completed'
+                statusFilter === 'ready'
+                  ? 'bg-white text-emerald-800 shadow-xs'
+                  : 'text-gray-600 hover:text-gray-900'
+              }`}
+            >
+              Ready
+            </button>
+            <button
+              onClick={() => setStatusFilter('cancelled')}
+              className={`px-3 py-1.5 rounded-md transition ${
+                statusFilter === 'cancelled'
+                  ? 'bg-white text-rose-800 shadow-xs'
+                  : 'text-gray-600 hover:text-gray-900'
+              }`}
+            >
+              Cancelled
+            </button>
+            <button
+              onClick={() => setStatusFilter('all')}
+              className={`px-3 py-1.5 rounded-md transition ${
+                statusFilter === 'all'
                   ? 'bg-white text-gray-900 shadow-xs'
                   : 'text-gray-600 hover:text-gray-900'
               }`}
             >
-              Completed / Bumped
+              All
             </button>
           </div>
 
-          <button
-            onClick={() => updateSettings({ soundAlerts: !settings.soundAlerts })}
-            className={`p-2 rounded-lg border transition ${
-              settings.soundAlerts
-                ? 'bg-amber-50 text-amber-700 border-amber-200'
-                : 'bg-gray-50 text-gray-500 border-gray-200'
-            }`}
-            title="KOT Audio Chime"
-          >
-            {settings.soundAlerts ? <Volume2 className="w-4 h-4" /> : <VolumeX className="w-4 h-4" />}
-          </button>
+          {/* Sound alert toggle & test */}
+          <div className="flex items-center gap-1 bg-gray-50 border border-gray-200 p-1 rounded-lg">
+            <button
+              onClick={() => updateSettings({ soundAlerts: !settings.soundAlerts })}
+              className={`px-2.5 py-1 rounded-md text-xs font-semibold flex items-center gap-1.5 transition ${
+                settings.soundAlerts
+                  ? 'bg-amber-100 text-amber-900'
+                  : 'bg-transparent text-gray-400'
+              }`}
+              title={settings.soundAlerts ? 'Sound Alerts: Enabled' : 'Sound Alerts: Muted'}
+            >
+              {settings.soundAlerts ? <Volume2 className="w-3.5 h-3.5" /> : <VolumeX className="w-3.5 h-3.5" />}
+              <span>{settings.soundAlerts ? 'Sound On' : 'Muted'}</span>
+            </button>
+
+            <button
+              onClick={handleTestChime}
+              className="px-2 py-1 text-xs text-gray-600 hover:text-gray-900 hover:bg-gray-200 rounded transition flex items-center gap-1"
+              title="Test audio chime on your speakers"
+            >
+              <BellRing className="w-3.5 h-3.5 text-amber-600" />
+              <span>Test Chime</span>
+            </button>
+          </div>
         </div>
       </div>
 
-      {/* Section Navigation Tabs */}
-      <div className="flex items-center gap-2 border-b border-gray-200 pb-2">
+      {/* Station Selector Sub-Tabs */}
+      <div className="flex items-center gap-2 border-b border-gray-200 pb-3">
         <button
           onClick={() => setActiveSection('all')}
           className={`px-4 py-2 rounded-lg text-xs font-bold transition flex items-center gap-2 ${
             activeSection === 'all'
-              ? 'bg-gray-900 text-white shadow-xs'
-              : 'bg-white border border-gray-200 text-gray-600 hover:bg-gray-50'
+              ? 'bg-neutral-900 text-white shadow-xs'
+              : 'bg-white text-gray-600 hover:bg-gray-100 border border-gray-200'
           }`}
         >
+          <Filter className="w-3.5 h-3.5" />
           <span>All Stations</span>
-          <span className="px-1.5 py-0.2 rounded-full text-[10px] font-mono bg-white/20">
-            {activeKitchenCount + activeReceptionCount}
+          <span className="px-1.5 py-0.2 rounded-full text-[10px] bg-neutral-700 text-neutral-200 font-mono">
+            {kitchenTickets.length + receptionTickets.length}
           </span>
         </button>
 
@@ -163,14 +422,14 @@ export const KOTView: React.FC = () => {
           onClick={() => setActiveSection('kitchen')}
           className={`px-4 py-2 rounded-lg text-xs font-bold transition flex items-center gap-2 ${
             activeSection === 'kitchen'
-              ? 'bg-amber-500 text-white shadow-xs'
-              : 'bg-white border border-gray-200 text-amber-800 hover:bg-amber-50'
+              ? 'bg-amber-600 text-white shadow-xs'
+              : 'bg-white text-gray-600 hover:bg-gray-100 border border-gray-200'
           }`}
         >
-          <ChefHat className="w-3.5 h-3.5" />
-          <span>Kitchen KOT (Food, Wok, Tandoor)</span>
-          <span className="px-1.5 py-0.2 rounded-full text-[10px] font-mono bg-white/20">
-            {activeKitchenCount}
+          <ChefHat className="w-3.5 h-3.5 text-amber-500" />
+          <span>Kitchen Station</span>
+          <span className="px-1.5 py-0.2 rounded-full text-[10px] bg-amber-100 text-amber-800 font-mono">
+            {kitchenTickets.length}
           </span>
         </button>
 
@@ -179,224 +438,526 @@ export const KOTView: React.FC = () => {
           className={`px-4 py-2 rounded-lg text-xs font-bold transition flex items-center gap-2 ${
             activeSection === 'reception'
               ? 'bg-purple-600 text-white shadow-xs'
-              : 'bg-white border border-gray-200 text-purple-800 hover:bg-purple-50'
+              : 'bg-white text-gray-600 hover:bg-gray-100 border border-gray-200'
           }`}
         >
-          <Coffee className="w-3.5 h-3.5" />
-          <span>Reception KOT (Drinks, Cafe, Desserts)</span>
-          <span className="px-1.5 py-0.2 rounded-full text-[10px] font-mono bg-white/20">
-            {activeReceptionCount}
+          <Coffee className="w-3.5 h-3.5 text-purple-500" />
+          <span>Reception / Barista</span>
+          <span className="px-1.5 py-0.2 rounded-full text-[10px] bg-purple-100 text-purple-800 font-mono">
+            {receptionTickets.length}
           </span>
         </button>
       </div>
 
-      {/* KOT Display Area */}
+      {/* Main Dual-Station KOT Grid */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* KITCHEN KOT COLUMN */}
+        {/* ====================================================
+            1. KITCHEN KOT COLUMN
+           ==================================================== */}
         {(activeSection === 'all' || activeSection === 'kitchen') && (
           <div className="space-y-4">
-            <div className="flex items-center justify-between p-3 bg-amber-50/70 border border-amber-200 rounded-xl">
+            <div className="flex items-center justify-between p-3.5 bg-amber-50/80 border border-amber-200 rounded-xl">
               <div className="flex items-center gap-2">
-                <ChefHat className="w-5 h-5 text-amber-600" />
-                <h3 className="font-bold text-sm text-amber-950">
-                  Kitchen KOT
-                </h3>
+                <ChefHat className="w-5 h-5 text-amber-700" />
+                <div>
+                  <h3 className="font-bold text-sm text-amber-950">Kitchen Station KOT</h3>
+                  <p className="text-[11px] text-amber-800">Momos, Bowls, Tandoor, Asian Wok & Food</p>
+                </div>
               </div>
-              <span className="text-xs font-bold text-amber-800 font-mono">
+              <span className="text-xs font-bold px-2.5 py-1 rounded-full bg-white text-amber-900 border border-amber-300 font-mono">
                 {kitchenTickets.length} Tickets
               </span>
             </div>
 
             {kitchenTickets.length === 0 ? (
-              <div className="p-8 bg-white rounded-xl border border-gray-200 text-center text-gray-400 text-xs">
-                No active kitchen tickets.
+              <div className="p-12 bg-white rounded-xl border border-gray-200 text-center text-gray-400 text-xs">
+                <ChefHat className="w-8 h-8 text-gray-300 mx-auto mb-2" />
+                <p className="font-medium text-gray-600">No tickets found for Kitchen Station</p>
+                <p className="text-gray-400 text-[11px] mt-0.5">
+                  Orders placed by guests or staff will route here automatically.
+                </p>
               </div>
             ) : (
-              kitchenTickets.map(kot => (
-                <div
-                  key={`kitchen-${kot.id}`}
-                  className="bg-white rounded-xl border border-gray-200 shadow-xs overflow-hidden"
-                >
-                  {/* Ticket Header */}
-                  <div className="p-3.5 bg-gray-50 border-b border-gray-200 flex items-center justify-between">
-                    <div>
-                      <div className="flex items-center gap-2">
-                        <span className="font-mono font-bold text-sm text-gray-900">
-                          {kot.kotNumber}
+              kitchenTickets.map(kot => {
+                const tableNumStr = kot.tableNumber < 10 ? `0${kot.tableNumber}` : `${kot.tableNumber}`;
+                const isReady = isTicketReady(kot.status);
+                const isCancelled = isTicketCancelled(kot.status);
+
+                return (
+                  <div
+                    key={`kitchen-${kot.id}`}
+                    className={`bg-white rounded-xl border shadow-xs overflow-hidden transition-all ${
+                      isReady
+                        ? 'border-emerald-200 bg-emerald-50/10'
+                        : isCancelled
+                        ? 'border-rose-200 bg-rose-50/10 opacity-75'
+                        : 'border-gray-200 hover:border-amber-300'
+                    }`}
+                  >
+                    {/* Header */}
+                    <div className="p-3.5 bg-gray-50 border-b border-gray-200 flex items-center justify-between">
+                      <div>
+                        <div className="flex items-center gap-2">
+                          <span className="font-mono font-bold text-sm text-gray-900">
+                            {kot.kotNumber}
+                          </span>
+                          <span className="text-xs font-bold text-amber-900 px-2.5 py-0.5 rounded-full bg-amber-100 border border-amber-200 font-mono">
+                            Table {tableNumStr}
+                          </span>
+                        </div>
+                        <p className="text-[11px] text-gray-500 mt-1 flex items-center gap-1.5">
+                          <Clock className="w-3 h-3 text-gray-400" />
+                          <span>Order #{kot.orderNumber}</span>
+                          <span>•</span>
+                          <span>{getTimeElapsed(kot.createdAt)}</span>
+                          <span>({new Date(kot.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })})</span>
+                        </p>
+                      </div>
+
+                      <div className="flex flex-col items-end gap-1">
+                        <span
+                          className={`text-[10px] font-bold px-2.5 py-0.5 rounded-full capitalize border ${
+                            isReady
+                              ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                              : isCancelled
+                              ? 'bg-rose-50 text-rose-700 border-rose-200'
+                              : kot.status === 'PREPARING' || kot.status === 'in_progress'
+                              ? 'bg-blue-50 text-blue-700 border-blue-200'
+                              : 'bg-amber-50 text-amber-700 border-amber-200'
+                          }`}
+                        >
+                          {kot.status}
                         </span>
-                        <span className="text-xs font-bold text-amber-800 px-2 py-0.5 rounded-full bg-amber-100">
-                          Table {kot.tableNumber < 10 ? `0${kot.tableNumber}` : kot.tableNumber}
+                        <span className="text-[10px] font-semibold text-gray-400">
+                          {kot.orderSource === 'GUEST_QR' ? 'Guest Self-Order' : 'POS Waiter'}
                         </span>
                       </div>
-                      <p className="text-[11px] text-gray-500 mt-0.5">
-                        Order #{kot.orderNumber} • {new Date(kot.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                      </p>
                     </div>
 
-                    <span
-                      className={`text-[10px] font-bold px-2 py-0.5 rounded-full capitalize border ${
-                        kot.status === 'completed'
-                          ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
-                          : kot.status === 'in_progress'
-                          ? 'bg-blue-50 text-blue-700 border-blue-200'
-                          : 'bg-amber-50 text-amber-700 border-amber-200'
-                      }`}
-                    >
-                      {kot.status === 'in_progress' ? 'Cooking' : kot.status}
-                    </span>
-                  </div>
-
-                  {/* Ticket Items (Only Kitchen Items) */}
-                  <div className="p-4 space-y-2 divide-y divide-gray-100 text-xs">
-                    {kot.filteredItems.map((item, idx) => (
-                      <div key={idx} className="pt-2 first:pt-0 flex items-start justify-between">
-                        <div className="flex items-start gap-2.5">
-                          <span className="w-6 h-6 rounded-md bg-amber-100 text-amber-900 font-bold flex items-center justify-center font-mono text-xs flex-shrink-0">
-                            {item.quantity}
-                          </span>
-                          <div>
-                            <p className="font-bold text-gray-900">{item.name}</p>
-                            {item.variant && (
-                              <p className="text-[11px] text-gray-500">Size: {item.variant}</p>
-                            )}
-                            {item.instructions && (
-                              <p className="text-[11px] text-rose-600 font-semibold bg-rose-50 px-1.5 py-0.5 rounded-sm inline-block mt-0.5">
-                                Note: {item.instructions}
-                              </p>
-                            )}
+                    {/* Filtered Kitchen Items */}
+                    <div className="p-4 space-y-2.5 divide-y divide-gray-100 text-xs">
+                      {kot.filteredItems.map((item, idx) => (
+                        <div key={idx} className="pt-2.5 first:pt-0 flex items-start justify-between">
+                          <div className="flex items-start gap-3">
+                            <span className="w-7 h-7 rounded-lg bg-amber-100 text-amber-900 font-bold flex items-center justify-center font-mono text-xs flex-shrink-0 shadow-2xs">
+                              {item.quantity}
+                            </span>
+                            <div>
+                              <p className="font-bold text-gray-900 text-sm">{item.name}</p>
+                              {item.variant && (
+                                <p className="text-[11px] text-gray-500 font-medium">Variant: {item.variant}</p>
+                              )}
+                              {item.instructions && (
+                                <p className="text-[11px] text-rose-700 font-semibold bg-rose-50 border border-rose-200 px-2 py-0.5 rounded-md inline-block mt-1">
+                                  Note: {item.instructions}
+                                </p>
+                              )}
+                            </div>
                           </div>
+                          <span className="text-[10px] font-semibold text-amber-800 bg-amber-50 px-2 py-0.5 rounded-md border border-amber-200 flex-shrink-0">
+                            Kitchen
+                          </span>
                         </div>
-                        <span className="text-[10px] font-semibold text-gray-400 bg-gray-50 px-2 py-0.5 rounded-md">
-                          Kitchen
-                        </span>
-                      </div>
-                    ))}
-                  </div>
+                      ))}
+                    </div>
 
-                  {/* Ticket Actions */}
-                  <div className="p-3 bg-gray-50 border-t border-gray-200 flex items-center gap-2">
-                    {kot.status === 'pending' && (
-                      <button
-                        onClick={() => handleStartCooking(kot.id)}
-                        className="flex-1 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs font-bold transition flex items-center justify-center gap-1.5 shadow-xs"
-                      >
-                        <Flame className="w-3.5 h-3.5" />
-                        <span>Start Cooking</span>
-                      </button>
+                    {/* Cancellation Note if cancelled */}
+                    {isCancelled && (kot as any).cancellationReason && (
+                      <div className="px-4 py-2 bg-rose-50/70 border-t border-rose-100 text-[11px] text-rose-700">
+                        <strong>Reason:</strong> {(kot as any).cancellationReason}
+                      </div>
                     )}
-                    {kot.status !== 'completed' && (
+
+                    {/* Three Separate Action Buttons: Print, Ready, and Cancel */}
+                    <div className="p-3 bg-gray-50 border-t border-gray-200 flex items-center gap-2 flex-wrap">
+                      {/* 1. PRINT BUTTON */}
                       <button
-                        onClick={() => handleBump(kot.id)}
-                        className="flex-1 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-bold transition flex items-center justify-center gap-1.5 shadow-xs"
+                        onClick={() => handlePrintKOT(kot)}
+                        className="flex-1 min-w-[90px] py-2 px-3 bg-neutral-900 hover:bg-neutral-800 text-white rounded-lg text-xs font-bold transition flex items-center justify-center gap-1.5 shadow-xs cursor-pointer"
+                        title="Print Kitchen KOT thermal slip"
                       >
-                        <Check className="w-3.5 h-3.5" />
-                        <span>Mark Ready / Bump</span>
+                        <Printer className="w-3.5 h-3.5 text-amber-400" />
+                        <span>Print</span>
                       </button>
-                    )}
+
+                      {/* 2. READY BUTTON */}
+                      {!isReady && !isCancelled && (
+                        <button
+                          onClick={() => handleMarkReady(kot)}
+                          className="flex-1 min-w-[90px] py-2 px-3 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-bold transition flex items-center justify-center gap-1.5 shadow-xs cursor-pointer"
+                          title="Mark KOT Ready and notify table"
+                        >
+                          <CheckCircle2 className="w-3.5 h-3.5" />
+                          <span>Ready</span>
+                        </button>
+                      )}
+
+                      {/* 3. CANCEL BUTTON */}
+                      {!isCancelled && (
+                        <button
+                          onClick={() => handleOpenCancelDialog(kot, 'kitchen')}
+                          className="py-2 px-3 bg-white hover:bg-rose-50 text-rose-700 border border-rose-200 hover:border-rose-300 rounded-lg text-xs font-bold transition flex items-center justify-center gap-1.5 cursor-pointer"
+                          title="Cancel KOT and notify table item is not available"
+                        >
+                          <XCircle className="w-3.5 h-3.5" />
+                          <span>Cancel</span>
+                        </button>
+                      )}
+                    </div>
                   </div>
-                </div>
-              ))
+                );
+              })
             )}
           </div>
         )}
 
-        {/* RECEPTION KOT COLUMN */}
+        {/* ====================================================
+            2. RECEPTION / BARISTA KOT COLUMN
+           ==================================================== */}
         {(activeSection === 'all' || activeSection === 'reception') && (
           <div className="space-y-4">
-            <div className="flex items-center justify-between p-3 bg-purple-50/70 border border-purple-200 rounded-xl">
+            <div className="flex items-center justify-between p-3.5 bg-purple-50/80 border border-purple-200 rounded-xl">
               <div className="flex items-center gap-2">
-                <Coffee className="w-5 h-5 text-purple-600" />
-                <h3 className="font-bold text-sm text-purple-950">
-                  Reception KOT
-                </h3>
+                <Coffee className="w-5 h-5 text-purple-700" />
+                <div>
+                  <h3 className="font-bold text-sm text-purple-950">Reception & Barista KOT</h3>
+                  <p className="text-[11px] text-purple-800">Espresso, Drinks, Smoothies, Beverages & Bakery</p>
+                </div>
               </div>
-              <span className="text-xs font-bold text-purple-800 font-mono">
+              <span className="text-xs font-bold px-2.5 py-1 rounded-full bg-white text-purple-900 border border-purple-300 font-mono">
                 {receptionTickets.length} Tickets
               </span>
             </div>
 
             {receptionTickets.length === 0 ? (
-              <div className="p-8 bg-white rounded-xl border border-gray-200 text-center text-gray-400 text-xs">
-                No active reception / barista tickets.
+              <div className="p-12 bg-white rounded-xl border border-gray-200 text-center text-gray-400 text-xs">
+                <Coffee className="w-8 h-8 text-gray-300 mx-auto mb-2" />
+                <p className="font-medium text-gray-600">No tickets found for Reception / Barista</p>
+                <p className="text-gray-400 text-[11px] mt-0.5">
+                  Beverages and cafe orders will appear here automatically.
+                </p>
               </div>
             ) : (
-              receptionTickets.map(kot => (
-                <div
-                  key={`reception-${kot.id}`}
-                  className="bg-white rounded-xl border border-gray-200 shadow-xs overflow-hidden"
-                >
-                  {/* Ticket Header */}
-                  <div className="p-3.5 bg-gray-50 border-b border-gray-200 flex items-center justify-between">
-                    <div>
-                      <div className="flex items-center gap-2">
-                        <span className="font-mono font-bold text-sm text-gray-900">
-                          {kot.kotNumber}
+              receptionTickets.map(kot => {
+                const tableNumStr = kot.tableNumber < 10 ? `0${kot.tableNumber}` : `${kot.tableNumber}`;
+                const isReady = isTicketReady(kot.status);
+                const isCancelled = isTicketCancelled(kot.status);
+
+                return (
+                  <div
+                    key={`reception-${kot.id}`}
+                    className={`bg-white rounded-xl border shadow-xs overflow-hidden transition-all ${
+                      isReady
+                        ? 'border-emerald-200 bg-emerald-50/10'
+                        : isCancelled
+                        ? 'border-rose-200 bg-rose-50/10 opacity-75'
+                        : 'border-gray-200 hover:border-purple-300'
+                    }`}
+                  >
+                    {/* Header */}
+                    <div className="p-3.5 bg-gray-50 border-b border-gray-200 flex items-center justify-between">
+                      <div>
+                        <div className="flex items-center gap-2">
+                          <span className="font-mono font-bold text-sm text-gray-900">
+                            {kot.kotNumber}
+                          </span>
+                          <span className="text-xs font-bold text-purple-900 px-2.5 py-0.5 rounded-full bg-purple-100 border border-purple-200 font-mono">
+                            Table {tableNumStr}
+                          </span>
+                        </div>
+                        <p className="text-[11px] text-gray-500 mt-1 flex items-center gap-1.5">
+                          <Clock className="w-3 h-3 text-gray-400" />
+                          <span>Order #{kot.orderNumber}</span>
+                          <span>•</span>
+                          <span>{getTimeElapsed(kot.createdAt)}</span>
+                          <span>({new Date(kot.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })})</span>
+                        </p>
+                      </div>
+
+                      <div className="flex flex-col items-end gap-1">
+                        <span
+                          className={`text-[10px] font-bold px-2.5 py-0.5 rounded-full capitalize border ${
+                            isReady
+                              ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                              : isCancelled
+                              ? 'bg-rose-50 text-rose-700 border-rose-200'
+                              : 'bg-purple-50 text-purple-700 border-purple-200'
+                          }`}
+                        >
+                          {kot.status}
                         </span>
-                        <span className="text-xs font-bold text-purple-800 px-2 py-0.5 rounded-full bg-purple-100">
-                          Table {kot.tableNumber < 10 ? `0${kot.tableNumber}` : kot.tableNumber}
+                        <span className="text-[10px] font-semibold text-gray-400">
+                          {kot.orderSource === 'GUEST_QR' ? 'Guest Self-Order' : 'POS Waiter'}
                         </span>
                       </div>
-                      <p className="text-[11px] text-gray-500 mt-0.5">
-                        Order #{kot.orderNumber} • {new Date(kot.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                      </p>
                     </div>
 
-                    <span
-                      className={`text-[10px] font-bold px-2 py-0.5 rounded-full capitalize border ${
-                        kot.status === 'completed'
-                          ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
-                          : 'bg-purple-50 text-purple-700 border-purple-200'
-                      }`}
-                    >
-                      {kot.status}
-                    </span>
-                  </div>
-
-                  {/* Ticket Items (Only Reception Items) */}
-                  <div className="p-4 space-y-2 divide-y divide-gray-100 text-xs">
-                    {kot.filteredItems.map((item, idx) => (
-                      <div key={idx} className="pt-2 first:pt-0 flex items-start justify-between">
-                        <div className="flex items-start gap-2.5">
-                          <span className="w-6 h-6 rounded-md bg-purple-100 text-purple-900 font-bold flex items-center justify-center font-mono text-xs flex-shrink-0">
-                            {item.quantity}
-                          </span>
-                          <div>
-                            <p className="font-bold text-gray-900">{item.name}</p>
-                            {item.variant && (
-                              <p className="text-[11px] text-gray-500">Size: {item.variant}</p>
-                            )}
-                            {item.instructions && (
-                              <p className="text-[11px] text-rose-600 font-semibold bg-rose-50 px-1.5 py-0.5 rounded-sm inline-block mt-0.5">
-                                Note: {item.instructions}
-                              </p>
-                            )}
+                    {/* Filtered Reception Items */}
+                    <div className="p-4 space-y-2.5 divide-y divide-gray-100 text-xs">
+                      {kot.filteredItems.map((item, idx) => (
+                        <div key={idx} className="pt-2.5 first:pt-0 flex items-start justify-between">
+                          <div className="flex items-start gap-3">
+                            <span className="w-7 h-7 rounded-lg bg-purple-100 text-purple-900 font-bold flex items-center justify-center font-mono text-xs flex-shrink-0 shadow-2xs">
+                              {item.quantity}
+                            </span>
+                            <div>
+                              <p className="font-bold text-gray-900 text-sm">{item.name}</p>
+                              {item.variant && (
+                                <p className="text-[11px] text-gray-500 font-medium">Size: {item.variant}</p>
+                              )}
+                              {item.instructions && (
+                                <p className="text-[11px] text-rose-700 font-semibold bg-rose-50 border border-rose-200 px-2 py-0.5 rounded-md inline-block mt-1">
+                                  Note: {item.instructions}
+                                </p>
+                              )}
+                            </div>
                           </div>
+                          <span className="text-[10px] font-semibold text-purple-800 bg-purple-50 px-2 py-0.5 rounded-md border border-purple-200 flex-shrink-0">
+                            Reception
+                          </span>
                         </div>
-                        <span className="text-[10px] font-semibold text-purple-600 bg-purple-50 px-2 py-0.5 rounded-md">
-                          Reception Bar
-                        </span>
-                      </div>
-                    ))}
-                  </div>
+                      ))}
+                    </div>
 
-                  {/* Ticket Actions */}
-                  <div className="p-3 bg-gray-50 border-t border-gray-200 flex items-center gap-2">
-                    {kot.status !== 'completed' && (
-                      <button
-                        onClick={() => handleBump(kot.id)}
-                        className="flex-1 py-1.5 bg-purple-600 hover:bg-purple-700 text-white rounded-lg text-xs font-bold transition flex items-center justify-center gap-1.5 shadow-xs"
-                      >
-                        <Check className="w-3.5 h-3.5" />
-                        <span>Mark Ready / Prepared</span>
-                      </button>
+                    {/* Cancellation Note if cancelled */}
+                    {isCancelled && (kot as any).cancellationReason && (
+                      <div className="px-4 py-2 bg-rose-50/70 border-t border-rose-100 text-[11px] text-rose-700">
+                        <strong>Reason:</strong> {(kot as any).cancellationReason}
+                      </div>
                     )}
+
+                    {/* Three Separate Action Buttons: Print, Ready, and Cancel */}
+                    <div className="p-3 bg-gray-50 border-t border-gray-200 flex items-center gap-2 flex-wrap">
+                      {/* 1. PRINT BUTTON */}
+                      <button
+                        onClick={() => handlePrintKOT(kot)}
+                        className="flex-1 min-w-[90px] py-2 px-3 bg-neutral-900 hover:bg-neutral-800 text-white rounded-lg text-xs font-bold transition flex items-center justify-center gap-1.5 shadow-xs cursor-pointer"
+                        title="Print Reception KOT thermal slip"
+                      >
+                        <Printer className="w-3.5 h-3.5 text-purple-300" />
+                        <span>Print</span>
+                      </button>
+
+                      {/* 2. READY BUTTON */}
+                      {!isReady && !isCancelled && (
+                        <button
+                          onClick={() => handleMarkReady(kot)}
+                          className="flex-1 min-w-[90px] py-2 px-3 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-bold transition flex items-center justify-center gap-1.5 shadow-xs cursor-pointer"
+                          title="Mark KOT Ready and notify table"
+                        >
+                          <CheckCircle2 className="w-3.5 h-3.5" />
+                          <span>Ready</span>
+                        </button>
+                      )}
+
+                      {/* 3. CANCEL BUTTON */}
+                      {!isCancelled && (
+                        <button
+                          onClick={() => handleOpenCancelDialog(kot, 'reception')}
+                          className="py-2 px-3 bg-white hover:bg-rose-50 text-rose-700 border border-rose-200 hover:border-rose-300 rounded-lg text-xs font-bold transition flex items-center justify-center gap-1.5 cursor-pointer"
+                          title="Cancel KOT and notify table item is not available"
+                        >
+                          <XCircle className="w-3.5 h-3.5" />
+                          <span>Cancel</span>
+                        </button>
+                      )}
+                    </div>
                   </div>
-                </div>
-              ))
+                );
+              })
             )}
           </div>
         )}
       </div>
+
+      {/* ====================================================
+          CANCELLATION REASON & TABLE NOTIFICATION MODAL
+         ==================================================== */}
+      {cancellingTicket && (
+        <div className="fixed inset-0 z-50 overflow-hidden flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs animate-in fade-in duration-150">
+          <div className="bg-white rounded-2xl border border-gray-200 shadow-2xl w-full max-w-md overflow-hidden">
+            <div className="p-5 border-b border-gray-100 flex items-center justify-between bg-rose-50/50">
+              <div className="flex items-center gap-2.5 text-rose-900">
+                <AlertTriangle className="w-5 h-5 text-rose-600" />
+                <h3 className="font-bold text-base">Cancel KOT & Notify Guest</h3>
+              </div>
+              <button
+                onClick={() => setCancellingTicket(null)}
+                className="p-1 text-gray-400 hover:text-gray-700 rounded-md"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <div className="p-5 space-y-4 text-xs">
+              <div className="p-3 bg-gray-50 rounded-xl border border-gray-200 flex items-center justify-between">
+                <div>
+                  <span className="text-gray-500 font-medium">Ticket:</span>{' '}
+                  <strong className="font-mono text-gray-900">{cancellingTicket.kot.kotNumber}</strong>
+                  <span className="mx-2 text-gray-300">•</span>
+                  <span className="text-gray-500 font-medium">Station:</span>{' '}
+                  <strong className="capitalize text-gray-900">{cancellingTicket.station}</strong>
+                </div>
+                <span className="px-2.5 py-0.5 rounded-full bg-amber-100 text-amber-900 font-bold font-mono">
+                  Table {cancellingTicket.kot.tableNumber < 10 ? `0${cancellingTicket.kot.tableNumber}` : cancellingTicket.kot.tableNumber}
+                </span>
+              </div>
+
+              <div>
+                <label className="block font-bold text-gray-700 mb-2">
+                  Select Reason (Guest Notification):
+                </label>
+                <div className="space-y-2">
+                  {[
+                    'Ingredients Out of Stock / Item Unavailable',
+                    'Kitchen Equipment Maintenance / Temporarily Unavailable',
+                    'Guest Requested Cancellation',
+                    'Duplicate Order Submitted by Mistake'
+                  ].map(reason => (
+                    <label
+                      key={reason}
+                      className={`flex items-center gap-2.5 p-2.5 rounded-lg border cursor-pointer transition ${
+                        cancelReason === reason && !customReason
+                          ? 'bg-rose-50 border-rose-300 text-rose-900 font-semibold'
+                          : 'bg-white border-gray-200 text-gray-700 hover:bg-gray-50'
+                      }`}
+                    >
+                      <input
+                        type="radio"
+                        name="cancelReason"
+                        checked={cancelReason === reason && !customReason}
+                        onChange={() => {
+                          setCancelReason(reason);
+                          setCustomReason('');
+                        }}
+                        className="text-rose-600 focus:ring-rose-500"
+                      />
+                      <span>{reason}</span>
+                    </label>
+                  ))}
+                </div>
+              </div>
+
+              <div>
+                <label className="block font-bold text-gray-700 mb-1">
+                  Or Custom Reason to Guest:
+                </label>
+                <input
+                  type="text"
+                  placeholder="e.g., Momos freshly sold out today, chef recommends chowmein"
+                  value={customReason}
+                  onChange={e => setCustomReason(e.target.value)}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg text-xs focus:ring-2 focus:ring-rose-500 focus:border-rose-500 outline-none"
+                />
+              </div>
+
+              <div className="p-3 bg-amber-50 border border-amber-200 rounded-xl text-amber-900 text-[11px] leading-relaxed">
+                <strong>Real-Time Table Notice:</strong> When confirmed, Table{' '}
+                {cancellingTicket.kot.tableNumber < 10 ? `0${cancellingTicket.kot.tableNumber}` : cancellingTicket.kot.tableNumber}{' '}
+                will immediately receive an on-screen alert indicating this order is not available.
+              </div>
+            </div>
+
+            <div className="p-4 bg-gray-50 border-t border-gray-200 flex items-center justify-end gap-2.5">
+              <button
+                onClick={() => setCancellingTicket(null)}
+                className="px-4 py-2 bg-white hover:bg-gray-100 text-gray-700 border border-gray-300 rounded-lg text-xs font-bold transition"
+              >
+                Keep Order
+              </button>
+              <button
+                onClick={handleConfirmCancel}
+                className="px-4 py-2 bg-rose-600 hover:bg-rose-700 text-white rounded-lg text-xs font-bold transition shadow-xs flex items-center gap-1.5"
+              >
+                <XCircle className="w-3.5 h-3.5" />
+                <span>Confirm Cancel & Notify Table</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ====================================================
+          PRINTABLE THERMAL KOT DOCUMENT (Visible ONLY during window.print())
+         ==================================================== */}
+      {activePrintTicket && (
+        <div id="printable-kot" className="hidden print:block text-black">
+          <div className="text-center pb-2 border-b-2 border-dashed border-black">
+            <h1 className="text-base font-bold uppercase tracking-wider">
+              {settings.restaurantName || 'The Fat Buddha Deli'}
+            </h1>
+            <p className="text-[10px]">
+              {settings.tagline || 'Artisanal Himalayan Deli & Cafe'}
+            </p>
+            <div className="mt-2 py-1 px-2 border-2 border-black font-bold text-xs uppercase tracking-widest inline-block">
+              {activePrintTicket.station === 'kitchen' ? '★ KITCHEN KOT ★' : '★ RECEPTION / BARISTA KOT ★'}
+            </div>
+          </div>
+
+          {/* Ticket Metadata */}
+          <div className="py-2 text-[11px] border-b border-dashed border-black space-y-1">
+            <div className="flex justify-between items-center text-sm font-black">
+              <span>TABLE:</span>
+              <span className="text-base">
+                TABLE {activePrintTicket.tableNumber < 10 ? `0${activePrintTicket.tableNumber}` : activePrintTicket.tableNumber}
+              </span>
+            </div>
+            <div className="flex justify-between items-center">
+              <span>KOT #:</span>
+              <span className="font-bold">{activePrintTicket.kotNumber}</span>
+            </div>
+            <div className="flex justify-between items-center">
+              <span>ORDER #:</span>
+              <span>#{activePrintTicket.orderNumber}</span>
+            </div>
+            <div className="flex justify-between items-center">
+              <span>DATE & TIME:</span>
+              <span>{new Date().toLocaleDateString()} {new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+            </div>
+            <div className="flex justify-between items-center">
+              <span>SOURCE:</span>
+              <span>{activePrintTicket.orderSource === 'GUEST_QR' ? 'Guest Self-Order (QR)' : 'POS Counter'}</span>
+            </div>
+          </div>
+
+          {/* Line Items Table */}
+          <div className="py-2 border-b-2 border-dashed border-black">
+            <div className="flex justify-between font-bold text-[11px] pb-1 border-b border-black">
+              <span className="w-10">QTY</span>
+              <span className="flex-1">ITEM</span>
+              <span className="w-16 text-right">SIZE</span>
+            </div>
+
+            <div className="divide-y divide-dashed divide-black/40 pt-1">
+              {activePrintTicket.filteredItems.map((item, idx) => (
+                <div key={idx} className="py-1.5 avoid-break">
+                  <div className="flex items-start justify-between text-xs font-bold">
+                    <span className="w-10 text-sm font-black">[{item.quantity}]</span>
+                    <span className="flex-1">{item.name}</span>
+                    <span className="w-16 text-right text-[10px] font-normal">{item.variant || '-'}</span>
+                  </div>
+                  {item.instructions && (
+                    <div className="pl-10 text-[10px] italic font-semibold">
+                      *** Note: {item.instructions} ***
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* Summary */}
+          <div className="pt-2 text-[11px] flex justify-between font-bold">
+            <span>TOTAL ITEMS:</span>
+            <span>{activePrintTicket.filteredItems.reduce((acc, i) => acc + i.quantity, 0)} Items</span>
+          </div>
+
+          <div className="pt-4 text-center text-[10px] border-t border-dashed border-black mt-2">
+            <div>*** TICKET DISPATCHED ***</div>
+            <div className="text-[9px] mt-0.5">Printed at {new Date().toLocaleTimeString()}</div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

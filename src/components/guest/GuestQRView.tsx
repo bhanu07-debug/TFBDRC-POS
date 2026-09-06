@@ -1,7 +1,8 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { usePOS } from '../../context/POSContext';
 import { MenuItem } from '../../types';
 import { normalizeImageUrl, DEFAULT_DISH_IMAGE } from '../../utils/imageUtils';
+import { CATEGORY_NAMES, RESTAURANT_PROFILE } from '../../data/restaurantMenu';
 import {
   Search,
   SlidersHorizontal,
@@ -20,8 +21,15 @@ import {
   PhoneCall,
   Smartphone,
   Maximize2,
-  Check
+  Check,
+  BellRing,
+  AlertTriangle,
+  X
 } from 'lucide-react';
+import {
+  playReadySound,
+  playCancelSound
+} from '../../utils/sound';
 import { MenuItemCustomizerModal } from './MenuItemCustomizerModal';
 import { GuestCartDrawer } from './GuestCartDrawer';
 import { GuestLiveOrderTracker } from './GuestLiveOrderTracker';
@@ -39,7 +47,9 @@ export const GuestQRView: React.FC = () => {
     addToCart,
     getTableOrders,
     getCurrentTable,
-    settings
+    settings,
+    tableNotifications,
+    markTableNotificationRead
   } = usePOS();
 
   // Local View States
@@ -59,16 +69,34 @@ export const GuestQRView: React.FC = () => {
   const activeOrders = getTableOrders(currentGuestTableNumber);
   const hasActiveOrders = activeOrders.length > 0;
 
-  // Categories list
-  const categories = [
-    'All',
-    'Momos & Dimsums',
-    'Buddha Bowls & Mains',
-    'Asian Wok & Starters',
-    'Clay Oven & Tandoor',
-    'Artisanal Cafe & Drinks',
-    'Desserts'
-  ];
+  // Active notifications for this specific table
+  const unreadTableAlerts = (tableNotifications || []).filter(
+    n => n.tableNumber === currentGuestTableNumber && !n.read
+  );
+
+  // Audio trigger on incoming notification for this table
+  const prevAlertCount = React.useRef(unreadTableAlerts.length);
+  React.useEffect(() => {
+    if (unreadTableAlerts.length > prevAlertCount.current && unreadTableAlerts.length > 0) {
+      const latest = unreadTableAlerts[0];
+      if (latest.type === 'order_ready') {
+        playReadySound();
+      } else if (latest.type === 'order_cancelled') {
+        playCancelSound();
+      }
+    }
+    prevAlertCount.current = unreadTableAlerts.length;
+  }, [unreadTableAlerts]);
+
+  // Categories list derived dynamically from menuItems & official list
+  const categories = useMemo(() => {
+    const set = new Set<string>();
+    CATEGORY_NAMES.forEach(c => set.add(c));
+    menuItems.forEach(item => {
+      if (item.category && item.category.trim()) set.add(item.category.trim());
+    });
+    return ['All', ...Array.from(set)];
+  }, [menuItems]);
 
   // Filtered Menu Items
   const filteredItems = menuItems.filter(item => {
@@ -154,11 +182,16 @@ export const GuestQRView: React.FC = () => {
                   </span>
                 </div>
                 <h1 className="text-xl sm:text-2xl font-bold text-white tracking-tight">
-                  The Fat Buddha Delight
+                  {settings.restaurantName || RESTAURANT_PROFILE.name}
                 </h1>
-                <p className="text-xs text-gray-300 mt-1 max-w-sm">
-                  {settings.tagline}
+                <p className="text-xs text-amber-200/90 mt-1 max-w-sm">
+                  {settings.tagline || RESTAURANT_PROFILE.tagline}
                 </p>
+                <div className="flex items-center gap-2 mt-1 text-[10px] text-gray-300">
+                  <span>📸 {RESTAURANT_PROFILE.social.instagram}</span>
+                  <span>•</span>
+                  <span>🎵 {RESTAURANT_PROFILE.social.tiktok}</span>
+                </div>
               </div>
 
               {/* Table QR Button */}
@@ -198,6 +231,99 @@ export const GuestQRView: React.FC = () => {
             </div>
           </div>
         </div>
+
+        {/* Real-Time Table Order Notifications (Ready / Unavailable Alerts from Kitchen) */}
+        {unreadTableAlerts.length > 0 && (
+          <div className="space-y-2 mb-4">
+            {unreadTableAlerts.map(alert => (
+              <div
+                key={alert.id}
+                className={`p-4 rounded-2xl border-2 shadow-md flex items-start justify-between gap-3 animate-in fade-in slide-in-from-top-2 duration-300 ${
+                  alert.type === 'order_ready'
+                    ? 'bg-emerald-50 border-emerald-400 text-emerald-950'
+                    : 'bg-rose-50 border-rose-300 text-rose-950'
+                }`}
+              >
+                <div className="flex items-start gap-3">
+                  <div
+                    className={`w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0 shadow-xs ${
+                      alert.type === 'order_ready'
+                        ? 'bg-emerald-600 text-white'
+                        : 'bg-rose-600 text-white'
+                    }`}
+                  >
+                    {alert.type === 'order_ready' ? (
+                      <BellRing className="w-5 h-5 animate-bounce" />
+                    ) : (
+                      <AlertTriangle className="w-5 h-5" />
+                    )}
+                  </div>
+
+                  <div>
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <h4 className="font-bold text-sm">
+                        {alert.title}
+                      </h4>
+                      <span
+                        className={`px-2 py-0.2 rounded-full text-[10px] font-bold uppercase tracking-wider ${
+                          alert.type === 'order_ready'
+                            ? 'bg-emerald-200 text-emerald-800'
+                            : 'bg-rose-200 text-rose-800'
+                        }`}
+                      >
+                        {alert.type === 'order_ready' ? 'Ready to Serve' : 'Item Notice'}
+                      </span>
+                    </div>
+
+                    <p className="text-xs mt-1 leading-relaxed opacity-90">
+                      {alert.message}
+                    </p>
+
+                    <div className="mt-3 flex items-center gap-2 flex-wrap">
+                      {alert.type === 'order_ready' ? (
+                        <button
+                          onClick={() => {
+                            setIsTrackerOpen(true);
+                            markTableNotificationRead(alert.id);
+                          }}
+                          className="px-3.5 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs shadow-xs transition cursor-pointer"
+                        >
+                          View Order Tracker
+                        </button>
+                      ) : (
+                        <button
+                          onClick={() => {
+                            setIsServiceModalOpen(true);
+                            markTableNotificationRead(alert.id);
+                          }}
+                          className="px-3.5 py-1.5 rounded-lg bg-rose-600 hover:bg-rose-700 text-white font-bold text-xs shadow-xs transition flex items-center gap-1 cursor-pointer"
+                        >
+                          <PhoneCall className="w-3 h-3" />
+                          <span>Call Waiter</span>
+                        </button>
+                      )}
+
+                      <button
+                        onClick={() => markTableNotificationRead(alert.id)}
+                        className="px-3 py-1.5 rounded-lg bg-white border border-gray-300 text-gray-700 text-xs font-semibold hover:bg-gray-50 transition cursor-pointer"
+                      >
+                        Dismiss
+                      </button>
+                    </div>
+                  </div>
+                </div>
+
+                <button
+                  onClick={() => markTableNotificationRead(alert.id)}
+                  className="text-gray-400 hover:text-gray-700 p-1"
+                  title="Dismiss notification"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
 
         {/* Search Bar & Dietary Filter Toggles */}
         <div className="space-y-2.5 mb-4 sticky top-16 z-20 bg-[#FDFCF0]/95 backdrop-blur-md py-2 -mx-1 px-1">
