@@ -4,6 +4,7 @@ import { MenuItem, DietaryType, KOTDestination } from '../../types';
 import { DishImageUploader } from '../common/DishImageUploader';
 import { normalizeImageUrl, DEFAULT_DISH_IMAGE } from '../../utils/imageUtils';
 import { CATEGORY_NAMES, RESTAURANT_PROFILE } from '../../data/restaurantMenu';
+import { CategoryManagerModal } from './CategoryManagerModal';
 import {
   Search,
   Plus,
@@ -20,16 +21,23 @@ import {
   ChefHat,
   Coffee,
   RotateCcw,
-  X
+  X,
+  Layers,
+  ArrowRightLeft
 } from 'lucide-react';
 
 export const MenuView: React.FC = () => {
   const {
     menuItems,
+    categories: firestoreCategories,
     toggleMenuItemStock,
     updateMenuItem,
     addMenuItem,
     deleteMenuItem,
+    updateMenuItemKOT,
+    addCategory,
+    updateCategory,
+    deleteCategory,
     syncOfficialMenu
   } = usePOS();
 
@@ -37,6 +45,7 @@ export const MenuView: React.FC = () => {
   const [selectedCategory, setSelectedCategory] = useState('All');
   const [editingItem, setEditingItem] = useState<MenuItem | null>(null);
   const [isNewItemModalOpen, setIsNewItemModalOpen] = useState(false);
+  const [isCategoryModalOpen, setIsCategoryModalOpen] = useState(false);
   const [itemToDelete, setItemToDelete] = useState<MenuItem | null>(null);
   const [isSyncing, setIsSyncing] = useState(false);
   const [syncMessage, setSyncMessage] = useState<string | null>(null);
@@ -58,17 +67,11 @@ export const MenuView: React.FC = () => {
     tags: 'Delight, Special'
   });
 
-  // Dynamic categories
-  const defaultCategories = CATEGORY_NAMES;
+  const [isAddingNewCategory, setIsAddingNewCategory] = useState(false);
+  const [newCategoryInput, setNewCategoryInput] = useState('');
 
-  const [customCategories, setCustomCategories] = useState<string[]>(() => {
-    try {
-      const saved = localStorage.getItem('delight_custom_categories');
-      return saved ? JSON.parse(saved) : [];
-    } catch {
-      return [];
-    }
-  });
+  const [isEditAddingNewCategory, setIsEditAddingNewCategory] = useState(false);
+  const [editNewCategoryInput, setEditNewCategoryInput] = useState('');
 
   const handleSyncOfficialMenu = async () => {
     const ok = window.confirm("Restore official restaurant menu? This will replace any old dummy menu items with the authentic 6-section catalog from The New Delight Restaurant.");
@@ -88,62 +91,48 @@ export const MenuView: React.FC = () => {
     }
   };
 
-  const [isAddingNewCategory, setIsAddingNewCategory] = useState(false);
-  const [newCategoryInput, setNewCategoryInput] = useState('');
+  // Dynamic categories combined from Firestore, defaults, and menu items
+  const defaultCategories = CATEGORY_NAMES;
 
-  const [isEditAddingNewCategory, setIsEditAddingNewCategory] = useState(false);
-  const [editNewCategoryInput, setEditNewCategoryInput] = useState('');
-
-  // Combine default categories, stored custom categories, and categories from current menu items
   const allCategories = useMemo(() => {
-    const set = new Set<string>(defaultCategories);
-    customCategories.forEach(c => {
-      if (c && c.trim()) set.add(c.trim());
+    const set = new Set<string>();
+    // 1. Categories from Firestore
+    (firestoreCategories || []).forEach(c => {
+      if (c.name && c.name.trim() && c.isActive !== false) {
+        set.add(c.name.trim());
+      }
     });
-    menuItems.forEach(item => {
-      if (item.category && item.category.trim()) set.add(item.category.trim());
+    // 2. Default restaurant categories
+    (defaultCategories || []).forEach(c => set.add(c));
+    // 3. Menu items categories
+    (menuItems || []).forEach(item => {
+      if (item && item.category && item.category.trim()) set.add(item.category.trim());
     });
     return Array.from(set);
-  }, [menuItems, customCategories]);
+  }, [defaultCategories, firestoreCategories, menuItems]);
 
   const filterCategories = useMemo(() => {
     return ['All', ...allCategories];
   }, [allCategories]);
 
-  const handleAddNewCategory = () => {
+  const handleAddNewCategory = async () => {
     const trimmed = newCategoryInput.trim();
     if (!trimmed) return;
-    if (!allCategories.includes(trimmed)) {
-      const updated = [...customCategories, trimmed];
-      setCustomCategories(updated);
-      try {
-        localStorage.setItem('fat_buddha_custom_categories', JSON.stringify(updated));
-      } catch (e) {
-        console.warn('Could not save category to localStorage', e);
-      }
-    }
+    await addCategory(trimmed);
     const isRec = trimmed.toLowerCase().includes('cafe') || trimmed.toLowerCase().includes('drink') || trimmed.toLowerCase().includes('dessert') || trimmed.toLowerCase().includes('beverage');
     setNewItemData(prev => ({
       ...prev,
       category: trimmed,
-      kotDestination: isRec ? 'reception' : 'kitchen'
+      kotDestination: isRec ? 'reception' : prev.kotDestination
     }));
     setIsAddingNewCategory(false);
     setNewCategoryInput('');
   };
 
-  const handleAddEditCategory = () => {
+  const handleAddEditCategory = async () => {
     const trimmed = editNewCategoryInput.trim();
     if (!trimmed || !editingItem) return;
-    if (!allCategories.includes(trimmed)) {
-      const updated = [...customCategories, trimmed];
-      setCustomCategories(updated);
-      try {
-        localStorage.setItem('fat_buddha_custom_categories', JSON.stringify(updated));
-      } catch (e) {
-        console.warn('Could not save category to localStorage', e);
-      }
-    }
+    await addCategory(trimmed);
     const isRec = trimmed.toLowerCase().includes('cafe') || trimmed.toLowerCase().includes('drink') || trimmed.toLowerCase().includes('dessert') || trimmed.toLowerCase().includes('beverage');
     setEditingItem(prev => prev ? ({
       ...prev,
@@ -231,6 +220,16 @@ export const MenuView: React.FC = () => {
           >
             <RotateCcw className={`w-3.5 h-3.5 text-emerald-600 ${isSyncing ? 'animate-spin' : ''}`} />
             <span>{isSyncing ? 'Restoring Catalog...' : 'Restore Official Menu'}</span>
+          </button>
+
+          <button
+            id="btn-manage-categories"
+            onClick={() => setIsCategoryModalOpen(true)}
+            className="px-3.5 py-2 bg-indigo-50 hover:bg-indigo-100 text-indigo-800 border border-indigo-200 font-bold rounded-xl text-xs transition flex items-center gap-1.5 shadow-xs cursor-pointer"
+            title="Add, edit, or delete menu categories"
+          >
+            <Layers className="w-3.5 h-3.5 text-indigo-600" />
+            <span>Manage Categories ({allCategories.length})</span>
           </button>
 
           <button
@@ -360,17 +359,32 @@ export const MenuView: React.FC = () => {
                       </td>
 
                       <td className="p-3.5">
-                        {kotDest === 'kitchen' ? (
-                          <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] font-bold bg-amber-50 text-amber-800 border border-amber-200">
-                            <ChefHat className="w-3 h-3 text-amber-600" />
-                            <span>KITCHEN</span>
-                          </span>
-                        ) : (
-                          <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] font-bold bg-purple-50 text-purple-800 border border-purple-200">
-                            <Coffee className="w-3 h-3 text-purple-600" />
-                            <span>RECEPTION</span>
-                          </span>
-                        )}
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const nextDest: KOTDestination = kotDest === 'kitchen' ? 'reception' : 'kitchen';
+                            updateMenuItemKOT(item.id, nextDest);
+                          }}
+                          title={`Click to switch destination to ${kotDest === 'kitchen' ? 'Reception (Cafe/Bar)' : 'Kitchen'}`}
+                          className={`group inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[10px] font-bold border transition cursor-pointer shadow-2xs hover:shadow-xs ${
+                            kotDest === 'kitchen'
+                              ? 'bg-amber-50 text-amber-900 border-amber-300 hover:bg-amber-100 hover:border-amber-400'
+                              : 'bg-purple-50 text-purple-900 border-purple-300 hover:bg-purple-100 hover:border-purple-400'
+                          }`}
+                        >
+                          {kotDest === 'kitchen' ? (
+                            <>
+                              <ChefHat className="w-3.5 h-3.5 text-amber-600" />
+                              <span>KITCHEN</span>
+                            </>
+                          ) : (
+                            <>
+                              <Coffee className="w-3.5 h-3.5 text-purple-600" />
+                              <span>RECEPTION</span>
+                            </>
+                          )}
+                          <ArrowRightLeft className="w-2.5 h-2.5 opacity-50 group-hover:opacity-100 ml-0.5" />
+                        </button>
                       </td>
 
                       <td className="p-3.5">
@@ -533,7 +547,7 @@ export const MenuView: React.FC = () => {
                 </div>
               </div>
 
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                 <div>
                   <label className="font-bold text-gray-900 block mb-1">Dietary Tag</label>
                   <select
@@ -547,16 +561,47 @@ export const MenuView: React.FC = () => {
                   </select>
                 </div>
 
-                <div>
-                  <label className="font-bold text-gray-900 block mb-1">KOT Destination</label>
-                  <select
-                    value={newItemData.kotDestination ?? 'kitchen'}
-                    onChange={e => setNewItemData({ ...newItemData, kotDestination: e.target.value as any })}
-                    className="w-full px-3 py-2 bg-white text-gray-900 font-bold border border-gray-300 rounded-lg focus:outline-none focus:border-amber-500 focus:ring-1 focus:ring-amber-500 shadow-2xs"
-                  >
-                    <option value="kitchen">👨‍🍳 KITCHEN (Main Kitchen / Wok)</option>
-                    <option value="reception">☕ RECEPTION (Cafe / Barista)</option>
-                  </select>
+                <div className="sm:col-span-2">
+                  <label className="font-bold text-gray-900 block mb-1">
+                    KOT Destination Routing *
+                  </label>
+                  <div className="grid grid-cols-2 gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setNewItemData({ ...newItemData, kotDestination: 'kitchen' })}
+                      className={`p-2.5 rounded-xl border text-left flex items-center gap-2 transition cursor-pointer ${
+                        (newItemData.kotDestination || 'kitchen') === 'kitchen'
+                          ? 'bg-amber-50/90 border-amber-500 ring-2 ring-amber-500/20 text-amber-950 font-bold'
+                          : 'bg-white border-gray-300 hover:bg-gray-50 text-gray-700 font-medium'
+                      }`}
+                    >
+                      <ChefHat className={`w-4 h-4 flex-shrink-0 ${
+                        (newItemData.kotDestination || 'kitchen') === 'kitchen' ? 'text-amber-600' : 'text-gray-400'
+                      }`} />
+                      <div className="min-w-0 leading-tight">
+                        <div className="text-xs font-bold">👨‍🍳 Kitchen</div>
+                        <div className="text-[10px] text-gray-500 font-normal">Hot food, Wok, Sekuwa</div>
+                      </div>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => setNewItemData({ ...newItemData, kotDestination: 'reception' })}
+                      className={`p-2.5 rounded-xl border text-left flex items-center gap-2 transition cursor-pointer ${
+                        newItemData.kotDestination === 'reception'
+                          ? 'bg-purple-50/90 border-purple-500 ring-2 ring-purple-500/20 text-purple-950 font-bold'
+                          : 'bg-white border-gray-300 hover:bg-gray-50 text-gray-700 font-medium'
+                      }`}
+                    >
+                      <Coffee className={`w-4 h-4 flex-shrink-0 ${
+                        newItemData.kotDestination === 'reception' ? 'text-purple-600' : 'text-gray-400'
+                      }`} />
+                      <div className="min-w-0 leading-tight">
+                        <div className="text-xs font-bold">☕ Reception</div>
+                        <div className="text-[10px] text-gray-500 font-normal">Cafe, Drinks, Barista</div>
+                      </div>
+                    </button>
+                  </div>
                 </div>
               </div>
 
@@ -733,11 +778,9 @@ export const MenuView: React.FC = () => {
                           return;
                         }
                         const cat = e.target.value;
-                        const isRec = cat.toLowerCase().includes('cafe') || cat.toLowerCase().includes('drink') || cat.toLowerCase().includes('dessert') || cat.toLowerCase().includes('beverage');
                         setEditingItem({
                           ...editingItem,
-                          category: cat,
-                          kotDestination: isRec ? 'reception' : editingItem.kotDestination
+                          category: cat
                         });
                       }}
                       className="w-full px-3 py-2 bg-white text-gray-900 font-semibold border border-gray-300 rounded-lg focus:outline-none focus:border-amber-500 focus:ring-1 focus:ring-amber-500 shadow-2xs"
@@ -761,7 +804,7 @@ export const MenuView: React.FC = () => {
                 </div>
               </div>
 
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                 <div>
                   <label className="font-bold text-gray-900 block mb-1">Dietary Tag</label>
                   <select
@@ -775,16 +818,51 @@ export const MenuView: React.FC = () => {
                   </select>
                 </div>
 
-                <div>
-                  <label className="font-bold text-gray-900 block mb-1">KOT Destination</label>
-                  <select
-                    value={editingItem.kotDestination || (editingItem.category?.includes('Cafe') || editingItem.category?.includes('Desserts') ? 'reception' : 'kitchen')}
-                    onChange={e => setEditingItem({ ...editingItem, kotDestination: e.target.value as any })}
-                    className="w-full px-3 py-2 bg-white text-gray-900 font-bold border border-gray-300 rounded-lg focus:outline-none focus:border-amber-500 focus:ring-1 focus:ring-amber-500 shadow-2xs"
-                  >
-                    <option value="kitchen">👨‍🍳 KITCHEN (Main Kitchen / Wok)</option>
-                    <option value="reception">☕ RECEPTION (Cafe / Barista)</option>
-                  </select>
+                <div className="sm:col-span-2">
+                  <label className="font-bold text-gray-900 block mb-1">
+                    KOT Destination Routing *
+                  </label>
+                  <div className="grid grid-cols-2 gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setEditingItem({ ...editingItem, kotDestination: 'kitchen' })}
+                      className={`p-2.5 rounded-xl border text-left flex items-center gap-2 transition cursor-pointer ${
+                        (editingItem.kotDestination || (editingItem.category?.includes('Cafe') || editingItem.category?.includes('Desserts') ? 'reception' : 'kitchen')) === 'kitchen'
+                          ? 'bg-amber-50/90 border-amber-500 ring-2 ring-amber-500/20 text-amber-950 font-bold'
+                          : 'bg-white border-gray-300 hover:bg-gray-50 text-gray-700 font-medium'
+                      }`}
+                    >
+                      <ChefHat className={`w-4 h-4 flex-shrink-0 ${
+                        (editingItem.kotDestination || (editingItem.category?.includes('Cafe') || editingItem.category?.includes('Desserts') ? 'reception' : 'kitchen')) === 'kitchen'
+                          ? 'text-amber-600'
+                          : 'text-gray-400'
+                      }`} />
+                      <div className="min-w-0 leading-tight">
+                        <div className="text-xs font-bold">👨‍🍳 Kitchen</div>
+                        <div className="text-[10px] text-gray-500 font-normal">Hot food, Wok, Sekuwa</div>
+                      </div>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => setEditingItem({ ...editingItem, kotDestination: 'reception' })}
+                      className={`p-2.5 rounded-xl border text-left flex items-center gap-2 transition cursor-pointer ${
+                        (editingItem.kotDestination || (editingItem.category?.includes('Cafe') || editingItem.category?.includes('Desserts') ? 'reception' : 'kitchen')) === 'reception'
+                          ? 'bg-purple-50/90 border-purple-500 ring-2 ring-purple-500/20 text-purple-950 font-bold'
+                          : 'bg-white border-gray-300 hover:bg-gray-50 text-gray-700 font-medium'
+                      }`}
+                    >
+                      <Coffee className={`w-4 h-4 flex-shrink-0 ${
+                        (editingItem.kotDestination || (editingItem.category?.includes('Cafe') || editingItem.category?.includes('Desserts') ? 'reception' : 'kitchen')) === 'reception'
+                          ? 'text-purple-600'
+                          : 'text-gray-400'
+                      }`} />
+                      <div className="min-w-0 leading-tight">
+                        <div className="text-xs font-bold">☕ Reception</div>
+                        <div className="text-[10px] text-gray-500 font-normal">Cafe, Drinks, Barista</div>
+                      </div>
+                    </button>
+                  </div>
                 </div>
               </div>
 
@@ -950,6 +1028,18 @@ export const MenuView: React.FC = () => {
           </div>
         </div>
       )}
+
+      {/* Category Manager Modal */}
+      <CategoryManagerModal
+        isOpen={isCategoryModalOpen}
+        onClose={() => setIsCategoryModalOpen(false)}
+        categories={firestoreCategories}
+        allCategoryNames={allCategories}
+        menuItems={menuItems}
+        onAddCategory={addCategory}
+        onUpdateCategory={updateCategory}
+        onDeleteCategory={deleteCategory}
+      />
     </div>
   );
 };

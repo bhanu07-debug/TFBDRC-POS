@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { usePOS } from '../../context/POSContext';
 import { MenuItem } from '../../types';
 import { normalizeImageUrl, DEFAULT_DISH_IMAGE } from '../../utils/imageUtils';
@@ -24,7 +24,8 @@ import {
   Check,
   BellRing,
   AlertTriangle,
-  X
+  X,
+  Lock
 } from 'lucide-react';
 import {
   playReadySound,
@@ -39,6 +40,7 @@ import { TableQRModal } from './TableQRModal';
 export const GuestQRView: React.FC = () => {
   const {
     menuItems,
+    categories: firestoreCategories,
     currentGuestTableNumber,
     setCurrentGuestTableNumber,
     cart,
@@ -48,6 +50,7 @@ export const GuestQRView: React.FC = () => {
     getTableOrders,
     getCurrentTable,
     settings,
+    setActiveInterface,
     tableNotifications,
     markTableNotificationRead
   } = usePOS();
@@ -88,15 +91,32 @@ export const GuestQRView: React.FC = () => {
     prevAlertCount.current = unreadTableAlerts.length;
   }, [unreadTableAlerts]);
 
-  // Categories list derived dynamically from menuItems & official list
+  // Categories list derived dynamically from Firestore categories, menuItems, & official list
   const categories = useMemo(() => {
     const set = new Set<string>();
-    CATEGORY_NAMES.forEach(c => set.add(c));
-    menuItems.forEach(item => {
-      if (item.category && item.category.trim()) set.add(item.category.trim());
+    // 1. Live Firestore categories collection
+    (firestoreCategories || []).forEach(c => {
+      if (c.name && c.name.trim() && c.isActive !== false) {
+        set.add(c.name.trim());
+      }
+    });
+    // 2. Official fallback categories
+    (CATEGORY_NAMES || []).forEach(c => set.add(c));
+    // 3. Menu items category tags
+    (menuItems || []).forEach(item => {
+      if (item && item.category && item.category.trim()) {
+        set.add(item.category.trim());
+      }
     });
     return ['All', ...Array.from(set)];
-  }, [menuItems]);
+  }, [firestoreCategories, menuItems]);
+
+  // If active category was deleted or renamed, gracefully fallback to 'All'
+  useEffect(() => {
+    if (selectedCategory !== 'All' && !categories.includes(selectedCategory)) {
+      setSelectedCategory('All');
+    }
+  }, [categories, selectedCategory]);
 
   // Filtered Menu Items
   const filteredItems = menuItems.filter(item => {
@@ -137,7 +157,7 @@ export const GuestQRView: React.FC = () => {
   };
 
   return (
-    <div className={`min-h-[calc(100vh-4rem)] bg-[#FDFCF0] text-gray-900 flex flex-col ${
+    <div className={`min-h-[calc(100vh-4rem)] bg-[#FDFCF0] text-gray-900 flex flex-col overflow-x-clip ${
       mobileFrameMode ? 'items-center py-6 px-2 bg-gray-200' : ''
     }`}>
       {/* Mobile Frame Container Wrapper (toggleable) */}
@@ -164,6 +184,16 @@ export const GuestQRView: React.FC = () => {
             >
               {mobileFrameMode ? <Maximize2 className="w-3 h-3" /> : <Smartphone className="w-3 h-3 text-amber-600" />}
               <span>{mobileFrameMode ? 'Full View' : 'Mobile Frame'}</span>
+            </button>
+
+            <button
+              id="btn-guest-to-admin-login"
+              onClick={() => setActiveInterface('admin')}
+              className="flex items-center gap-1 px-2.5 py-1 rounded-lg bg-slate-900 hover:bg-slate-800 border border-slate-700 text-amber-400 hover:text-amber-300 text-[11px] shadow-sm transition font-semibold"
+              title="Staff & Admin Portal Sign In"
+            >
+              <Lock className="w-3 h-3" />
+              <span>Admin Login</span>
             </button>
           </div>
         </div>
@@ -326,7 +356,10 @@ export const GuestQRView: React.FC = () => {
         )}
 
         {/* Search Bar & Dietary Filter Toggles - Fixed cleanly on top during menu scroll */}
-        <div className="space-y-2.5 mb-4 sticky top-0 z-30 bg-[#FDFCF0]/98 backdrop-blur-md pt-2.5 pb-2.5 -mx-3 px-3 sm:-mx-6 sm:px-6 border-b border-amber-900/10 shadow-xs translate-z-0">
+        <div
+          id="guest-menu-sticky-nav"
+          className="space-y-2.5 mb-4 sticky top-0 z-30 bg-[#FDFCF0] pt-2.5 pb-2.5 -mx-3 px-3 sm:-mx-6 sm:px-6 border-b border-amber-900/10 shadow-xs will-change-transform"
+        >
           <div className="relative">
             <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
             <input
@@ -535,6 +568,20 @@ export const GuestQRView: React.FC = () => {
               </div>
             ))
           )}
+        </div>
+
+        {/* Footer info & Staff Portal link */}
+        <div className="mt-8 mb-20 text-center text-xs text-gray-500 space-y-2">
+          <p>{settings.restaurantName || RESTAURANT_PROFILE.name} • {settings.tagline || RESTAURANT_PROFILE.tagline}</p>
+          <div className="flex items-center justify-center gap-3">
+            <button
+              onClick={() => setActiveInterface('admin')}
+              className="inline-flex items-center gap-1.5 text-xs text-slate-600 hover:text-amber-600 font-semibold transition py-1 px-3 rounded-lg border border-gray-200 bg-white shadow-xs"
+            >
+              <Lock className="w-3.5 h-3.5 text-amber-600" />
+              <span>Admin & Staff Portal</span>
+            </button>
+          </div>
         </div>
 
         {/* Sticky Floating Bottom Bar for Cart / Active Orders */}

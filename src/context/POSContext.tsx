@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect, useMemo, ReactNode } from 'react';
+import React, { createContext, useContext, useState, useEffect, useMemo, useCallback, ReactNode } from 'react';
 import {
   collection,
   doc,
@@ -32,7 +32,9 @@ import {
   AdminTab,
   Category,
   TableSession,
-  TableNotification
+  TableNotification,
+  KOTDestination,
+  AdminSession
 } from '../types';
 import {
   INITIAL_10_TABLES,
@@ -59,7 +61,12 @@ import {
   logoutAdmin as authLogoutAdmin,
   subscribeAdminAuth,
   cleanFirestoreData,
-  syncOfficialRestaurantMenu
+  syncOfficialRestaurantMenu,
+  addCategoryToDb,
+  updateCategoryInDb,
+  deleteCategoryFromDb,
+  updateMenuItemKOTDestination,
+  updateAdminPassword as updateAdminPasswordService
 } from '../services/firebaseService';
 import { OFFICIAL_CATEGORIES, OFFICIAL_MENU_ITEMS } from '../data/restaurantMenu';
 import {
@@ -100,6 +107,16 @@ interface POSContextType {
   // Authentication
   loginAdminUser: (email: string, pass: string) => Promise<User>;
   logoutAdminUser: () => Promise<void>;
+
+  // Admin Portal Authentication & 1-Hour Timeout
+  isAdminAuthenticated: boolean;
+  adminSession: AdminSession | null;
+  adminSessionRemainingSeconds: number;
+  sessionTimeoutNotice: string | null;
+  loginAdminPortal: (username: string, pass: string) => { success: boolean; error?: string };
+  logoutAdminPortal: (reason?: 'manual' | 'timeout') => void;
+  updateAdminPassword: (newPassword: string) => Promise<void>;
+  clearSessionTimeoutNotice: () => void;
 
   // Cart operations
   addToCart: (
@@ -164,6 +181,13 @@ interface POSContextType {
   updateMenuItem: (item: MenuItem) => Promise<void>;
   addMenuItem: (item: Omit<MenuItem, 'id'>) => Promise<void>;
   deleteMenuItem: (itemId: string) => Promise<void>;
+  updateMenuItemKOT: (itemId: string, kotDestination: KOTDestination) => Promise<void>;
+
+  // Category management
+  addCategory: (name: string, description?: string) => Promise<Category>;
+  updateCategory: (id: string, newName: string, description?: string, oldName?: string) => Promise<void>;
+  deleteCategory: (id: string, categoryName: string, fallbackCategory?: string) => Promise<void>;
+
   addInventoryItem: (item: Omit<InventoryItem, 'id' | 'createdAt' | 'updatedAt'>) => Promise<void>;
   updateInventoryItem: (item: InventoryItem) => Promise<void>;
   deleteInventoryItem: (id: string) => Promise<void>;
@@ -205,6 +229,132 @@ export const POSProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   const [selectedCategory, setSelectedCategory] = useState<string>('All');
   const [dietaryFilter, setDietaryFilter] = useState<'all' | 'veg' | 'non-veg' | 'vegan'>('all');
   const [isCloudSynced, setIsCloudSynced] = useState<boolean>(true);
+
+  // ----------------------------------------------------
+  // Admin Portal Authentication & 1-Hour Session Timeout
+  // ----------------------------------------------------
+  const ADMIN_SESSION_KEY = 'thefatbuddha_admin_session';
+  const ONE_HOUR_MS = 60 * 60 * 1000; // 3600000ms = 1 hour
+
+  const [adminSession, setAdminSession] = useState<AdminSession | null>(() => {
+    if (typeof window === 'undefined') return null;
+    try {
+      const saved = localStorage.getItem(ADMIN_SESSION_KEY);
+      if (saved) {
+        const parsed: AdminSession = JSON.parse(saved);
+        if (parsed.expiresAt && parsed.expiresAt > Date.now()) {
+          return parsed;
+        } else {
+          localStorage.removeItem(ADMIN_SESSION_KEY);
+        }
+      }
+    } catch (_) {}
+    return null;
+  });
+
+  const isAdminAuthenticated = Boolean(adminSession && adminSession.expiresAt > Date.now());
+
+  const [adminSessionRemainingSeconds, setAdminSessionRemainingSeconds] = useState<number>(() => {
+    if (adminSession && adminSession.expiresAt > Date.now()) {
+      return Math.max(0, Math.floor((adminSession.expiresAt - Date.now()) / 1000));
+    }
+    return 0;
+  });
+
+  const [sessionTimeoutNotice, setSessionTimeoutNotice] = useState<string | null>(null);
+
+  const logoutAdminPortal = useCallback((reason: 'manual' | 'timeout' = 'manual') => {
+    setAdminSession(null);
+    setAdminSessionRemainingSeconds(0);
+    setActiveInterface('admin');
+    try {
+      localStorage.removeItem(ADMIN_SESSION_KEY);
+    } catch (_) {}
+
+    if (reason === 'timeout') {
+      setSessionTimeoutNotice('Your admin session has automatically timed out after 1 hour. Please log in again.');
+    } else {
+      setSessionTimeoutNotice(null);
+    }
+  }, []);
+
+  // 1-Hour Timer ticker and auto-logout watchdog
+  useEffect(() => {
+    if (!adminSession) {
+      setAdminSessionRemainingSeconds(0);
+      return;
+    }
+
+    const intervalId = setInterval(() => {
+      const now = Date.now();
+      const remainingMs = adminSession.expiresAt - now;
+
+      if (remainingMs <= 0) {
+        // Automatically logout after 1 hour timeout!
+        logoutAdminPortal('timeout');
+      } else {
+        setAdminSessionRemainingSeconds(Math.floor(remainingMs / 1000));
+      }
+    }, 1000);
+
+    return () => clearInterval(intervalId);
+  }, [adminSession, logoutAdminPortal]);
+
+  const loginAdminPortal = useCallback((username: string, pass: string): { success: boolean; error?: string } => {
+    const trimmedUser = (username || '').trim().toLowerCase();
+    const expectedUser = (settings.adminUsername || 'admin').toLowerCase();
+
+    // Stored password in settings, or local storage fallback, or default buddhaadmin@123
+    let expectedPass = settings.adminPassword;
+    if (!expectedPass) {
+      try {
+        expectedPass = localStorage.getItem('fb_admin_custom_password') || 'buddhaadmin@123';
+      } catch (_) {
+        expectedPass = 'buddhaadmin@123';
+      }
+    }
+
+    if (trimmedUser !== expectedUser) {
+      return { success: false, error: 'Incorrect username. Please check and try again.' };
+    }
+
+    if (pass !== expectedPass) {
+      return { success: false, error: 'Incorrect password. Please try again or use "Forgot password?".' };
+    }
+
+    const now = Date.now();
+    const newSession: AdminSession = {
+      username: 'admin',
+      loginTimestamp: now,
+      expiresAt: now + ONE_HOUR_MS // 1 hour timeout
+    };
+
+    setAdminSession(newSession);
+    setAdminSessionRemainingSeconds(3600);
+    setSessionTimeoutNotice(null);
+
+    try {
+      localStorage.setItem(ADMIN_SESSION_KEY, JSON.stringify(newSession));
+    } catch (_) {}
+
+    return { success: true };
+  }, [settings.adminUsername, settings.adminPassword]);
+
+  const updateAdminPasswordHandler = useCallback(async (newPassword: string): Promise<void> => {
+    await updateAdminPasswordService(newPassword);
+    setSettings(prev => ({
+      ...prev,
+      adminPassword: newPassword,
+      adminLastPasswordChangedAt: new Date().toISOString()
+    }));
+    try {
+      localStorage.setItem('fb_admin_custom_password', newPassword);
+    } catch (_) {}
+  }, []);
+
+  const clearSessionTimeoutNotice = useCallback(() => {
+    setSessionTimeoutNotice(null);
+  }, []);
 
   // Check URL query parameters for ?table=N
   useEffect(() => {
@@ -1153,6 +1303,47 @@ export const POSProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     }
   };
 
+  const updateMenuItemKOT = async (itemId: string, kotDestination: KOTDestination) => {
+    setMenuItems(prev => prev.map(m => m.id === itemId ? { ...m, kotDestination } : m));
+    await updateMenuItemKOTDestination(itemId, kotDestination);
+  };
+
+  const addCategory = async (name: string, description?: string): Promise<Category> => {
+    const newCat = await addCategoryToDb(name, description);
+    setCategories(prev => {
+      if (prev.some(c => c.id === newCat.id || c.name.toLowerCase() === newCat.name.toLowerCase())) {
+        return prev;
+      }
+      return [...prev, newCat];
+    });
+    return newCat;
+  };
+
+  const updateCategory = async (id: string, newName: string, description?: string, oldName?: string) => {
+    const existingCat = categories.find(c => c.id === id);
+    const prevName = oldName || existingCat?.name || '';
+    const trimmedNew = newName.trim();
+
+    setCategories(prev => prev.map(c => c.id === id ? {
+      ...c,
+      name: trimmedNew,
+      ...(description !== undefined ? { description: description.trim() } : {}),
+      updatedAt: new Date().toISOString()
+    } : c));
+
+    if (prevName && prevName !== trimmedNew) {
+      setMenuItems(prev => prev.map(m => m.category === prevName ? { ...m, category: trimmedNew } : m));
+    }
+
+    await updateCategoryInDb(id, trimmedNew, prevName, description);
+  };
+
+  const deleteCategory = async (id: string, categoryName: string, fallbackCategory: string = 'Special') => {
+    setCategories(prev => prev.filter(c => c.id !== id));
+    setMenuItems(prev => prev.map(m => m.category === categoryName ? { ...m, category: fallbackCategory } : m));
+    await deleteCategoryFromDb(id, categoryName, fallbackCategory);
+  };
+
   // Inventory operations
   const addInventoryItem = async (item: Omit<InventoryItem, 'id' | 'createdAt' | 'updatedAt'>) => {
     const id = `INV-${Date.now().toString(36).toUpperCase()}`;
@@ -1342,6 +1533,16 @@ export const POSProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         loginAdminUser,
         logoutAdminUser,
 
+        // Admin Portal Auth & 1-Hour Timeout
+        isAdminAuthenticated,
+        adminSession,
+        adminSessionRemainingSeconds,
+        sessionTimeoutNotice,
+        loginAdminPortal,
+        logoutAdminPortal,
+        updateAdminPassword: updateAdminPasswordHandler,
+        clearSessionTimeoutNotice,
+
         addToCart,
         updateCartQuantity,
         removeFromCart,
@@ -1373,6 +1574,10 @@ export const POSProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         updateMenuItem,
         addMenuItem,
         deleteMenuItem,
+        updateMenuItemKOT,
+        addCategory,
+        updateCategory,
+        deleteCategory,
         addInventoryItem,
         updateInventoryItem,
         deleteInventoryItem,

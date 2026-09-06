@@ -436,6 +436,18 @@ export interface RestaurantSettings {
   autoPrintKOT?: boolean;
   soundAlerts?: boolean;
   tableCount?: number;
+
+  // Admin Portal Authentication & Recovery
+  adminUsername?: string; // default: 'admin'
+  adminPassword?: string; // default: 'buddhaadmin@123'
+  adminRecoveryEmail?: string; // default: 'vanuchdry05@gmail.com'
+  adminLastPasswordChangedAt?: string;
+}
+
+export interface AdminSession {
+  username: string;
+  loginTimestamp: number;
+  expiresAt: number; // exactly 1 hour after loginTimestamp
 }
 
 // Service request for guest call button

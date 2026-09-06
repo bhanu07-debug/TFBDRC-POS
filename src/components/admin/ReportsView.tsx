@@ -69,14 +69,14 @@ export const ReportsView: React.FC = () => {
 
   // Filter orders by range and non-cancelled status
   const filteredOrders = useMemo(() => {
-    return orders.filter(
+    return (orders || []).filter(
       o => o.status !== 'cancelled' && (o.status as any) !== 'CANCELLED' && isDateInRange(o.createdAt)
     );
   }, [orders, reportRange, selectedDate]);
 
   // Filter payments by range and paid status
   const filteredPayments = useMemo(() => {
-    return payments.filter(
+    return (payments || []).filter(
       p => (p.status === 'completed' || p.status === 'PAID') && isDateInRange(p.createdAt || p.timestamp)
     );
   }, [payments, reportRange, selectedDate]);

@@ -2,10 +2,33 @@
 
 @layer base {
   input, textarea, select {
-    color: #111827 !important;
+    color: #111827;
   }
   input::placeholder, textarea::placeholder {
-    color: #9ca3af !important;
+    color: #9ca3af;
+  }
+
+  /* Ensure inputs on dark containers display crisp white text */
+  input.text-white,
+  input[class*="text-white"],
+  textarea.text-white,
+  textarea[class*="text-white"],
+  .dark-input,
+  .dark-input input {
+    color: #ffffff !important;
+    -webkit-text-fill-color: #ffffff !important;
+  }
+
+  /* Fix browser autofill styling on dark inputs */
+  input.text-white:-webkit-autofill,
+  input.text-white:-webkit-autofill:hover,
+  input.text-white:-webkit-autofill:focus,
+  input[class*="text-white"]:-webkit-autofill,
+  input[class*="text-white"]:-webkit-autofill:hover,
+  input[class*="text-white"]:-webkit-autofill:focus {
+    -webkit-text-fill-color: #ffffff !important;
+    -webkit-box-shadow: 0 0 0px 1000px #0f172a inset !important;
+    transition: background-color 5000s ease-in-out 0s;
   }
 }
 

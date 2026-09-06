@@ -25,7 +25,8 @@ import {
   UserCheck,
   Wifi,
   ChevronRight,
-  Volume2
+  Volume2,
+  Clock
 } from 'lucide-react';
 import { DashboardView } from './DashboardView';
 import { TablesView } from './TablesView';
@@ -52,14 +53,23 @@ export const AdminLayout: React.FC = () => {
     orders,
     kots,
     tables,
-    settings
+    settings,
+    logoutAdminPortal,
+    adminSessionRemainingSeconds
   } = usePOS();
+
+  const formatRemainingTime = (seconds: number) => {
+    const mins = Math.floor(seconds / 60);
+    const secs = seconds % 60;
+    return `${mins}m ${secs < 10 ? '0' : ''}${secs}s`;
+  };
 
   const [receiptOrder, setReceiptOrder] = useState<Order | null>(null);
   const [selectedPunchTable, setSelectedPunchTable] = useState<number | undefined>(undefined);
   const [isServiceDrawerOpen, setIsServiceDrawerOpen] = useState(false);
   const [isBatchQrModalOpen, setIsBatchQrModalOpen] = useState(false);
   const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState(false);
+  const [isLogoutModalOpen, setIsLogoutModalOpen] = useState(false);
   const [globalSearch, setGlobalSearch] = useState('');
   const [toastNotification, setToastNotification] = useState<{ id: string; tableNumber: number; text: string; type: string } | null>(null);
 
@@ -274,18 +284,17 @@ export const AdminLayout: React.FC = () => {
               </div>
               <div className="leading-tight">
                 <p className="text-xs font-bold text-white">Admin</p>
-                <p className="text-[10px] text-slate-400">Administrator</p>
+                <p className="text-[10px] text-amber-400 font-mono font-medium flex items-center gap-1">
+                  <Clock className="w-2.5 h-2.5" />
+                  <span>{formatRemainingTime(adminSessionRemainingSeconds)}</span>
+                </p>
               </div>
             </div>
             <button
               id="btn-logout"
-              onClick={() => {
-                if (confirm('Are you sure you want to log out of the POS session?')) {
-                  setActiveInterface('guest');
-                }
-              }}
-              title="Log out"
-              className="p-1.5 rounded-lg text-slate-400 hover:text-rose-400 hover:bg-slate-800 transition"
+              onClick={() => setIsLogoutModalOpen(true)}
+              title="Log out of admin session"
+              className="p-1.5 rounded-lg text-slate-400 hover:text-rose-400 hover:bg-slate-800 transition cursor-pointer"
             >
               <LogOut className="w-4 h-4" />
             </button>
@@ -360,6 +369,15 @@ export const AdminLayout: React.FC = () => {
               )}
             </button>
 
+            {/* Admin Session 1-Hour Watchdog Badge */}
+            <div
+              className="hidden md:flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl bg-slate-900 border border-slate-800 text-[11px] text-slate-300 font-mono"
+              title="Admin session expires automatically 1 hour after login"
+            >
+              <Clock className="w-3.5 h-3.5 text-amber-400" />
+              <span>{formatRemainingTime(adminSessionRemainingSeconds)}</span>
+            </div>
+
             {/* Guest View Quick Action */}
             <button
               onClick={() => setActiveInterface('guest')}
@@ -367,6 +385,16 @@ export const AdminLayout: React.FC = () => {
             >
               <Smartphone className="w-3.5 h-3.5" />
               <span>Guest QR</span>
+            </button>
+
+            {/* Topbar Logout Button */}
+            <button
+              id="topbar-btn-logout"
+              onClick={() => setIsLogoutModalOpen(true)}
+              className="p-2 rounded-xl text-slate-400 hover:text-rose-400 hover:bg-slate-800 border border-slate-800 transition cursor-pointer"
+              title="Log Out of Admin Session"
+            >
+              <LogOut className="w-4 h-4" />
             </button>
           </div>
         </header>
@@ -564,6 +592,54 @@ export const AdminLayout: React.FC = () => {
           isOpen={isBatchQrModalOpen}
           onClose={() => setIsBatchQrModalOpen(false)}
         />
+      )}
+
+      {/* In-App Logout Confirmation Modal (works 100% reliably in sandboxed iframes) */}
+      {isLogoutModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/75 backdrop-blur-xs animate-in fade-in duration-150">
+          <div
+            className="fixed inset-0"
+            onClick={() => setIsLogoutModalOpen(false)}
+          />
+          <div className="relative w-full max-w-sm rounded-2xl bg-slate-900 border border-slate-700 p-5 shadow-2xl space-y-4 animate-in zoom-in-95 duration-150">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-xl bg-rose-500/15 border border-rose-500/30 text-rose-400 flex items-center justify-center flex-shrink-0">
+                <LogOut className="w-5 h-5" />
+              </div>
+              <div>
+                <h3 className="text-base font-bold text-white">Log Out of Admin?</h3>
+                <p className="text-xs text-slate-400">End your current administrator session</p>
+              </div>
+            </div>
+
+            <p className="text-xs text-slate-300 leading-relaxed bg-slate-800/60 p-3 rounded-xl border border-slate-800">
+              You will be returned to the admin sign-in screen. You will need your username and password to log in again.
+            </p>
+
+            <div className="flex items-center justify-end gap-2.5 pt-1">
+              <button
+                type="button"
+                id="btn-cancel-logout"
+                onClick={() => setIsLogoutModalOpen(false)}
+                className="px-4 py-2 rounded-xl text-xs font-semibold text-slate-300 hover:text-white bg-slate-800 hover:bg-slate-700 border border-slate-700 transition cursor-pointer"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                id="btn-confirm-logout"
+                onClick={() => {
+                  setIsLogoutModalOpen(false);
+                  logoutAdminPortal('manual');
+                }}
+                className="px-4 py-2 rounded-xl text-xs font-bold text-white bg-rose-600 hover:bg-rose-500 shadow-md shadow-rose-600/30 transition flex items-center gap-1.5 cursor-pointer"
+              >
+                <LogOut className="w-3.5 h-3.5" />
+                <span>Log Out</span>
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );

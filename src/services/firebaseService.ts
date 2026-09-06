@@ -5,6 +5,7 @@ import {
   getDocs,
   setDoc,
   updateDoc,
+  deleteDoc,
   writeBatch,
   onSnapshot,
   query,
@@ -131,7 +132,10 @@ export const DEFAULT_SETTINGS: RestaurantSettings = {
   wifiPassword: "delightnature",
   autoPrintKOT: true,
   soundAlerts: true,
-  tableCount: 10
+  tableCount: 10,
+  adminUsername: "admin",
+  adminPassword: "buddhaadmin@123",
+  adminRecoveryEmail: "vanuchdry05@gmail.com"
 };
 
 // ====================================================
@@ -508,6 +512,122 @@ export const syncOfficialRestaurantMenu = async (forceReplace: boolean = false):
   } catch (error) {
     console.error("Error syncing official restaurant menu:", error);
     return false;
+  }
+};
+
+export const addCategoryToDb = async (name: string, description?: string): Promise<Category> => {
+  const path = 'categories';
+  const trimmed = name.trim();
+  const slug = trimmed.toLowerCase().replace(/[^a-z0-9]+/g, '-');
+  const id = `cat-${slug}-${Date.now().toString(36)}`;
+  const now = new Date().toISOString();
+
+  const newCat: Category = {
+    id,
+    name: trimmed,
+    description: description?.trim() || `${trimmed} specialties and selections`,
+    sortOrder: Date.now(),
+    isActive: true,
+    createdAt: now,
+    updatedAt: now
+  };
+
+  try {
+    await setDoc(doc(db, path, id), cleanFirestoreData(newCat));
+    return newCat;
+  } catch (error) {
+    handleFirestoreError(error, OperationType.CREATE, path);
+    return newCat;
+  }
+};
+
+export const updateCategoryInDb = async (
+  id: string,
+  newName: string,
+  oldName?: string,
+  description?: string
+): Promise<void> => {
+  const path = `categories/${id}`;
+  const now = new Date().toISOString();
+  const trimmedNew = newName.trim();
+
+  try {
+    await updateDoc(doc(db, 'categories', id), cleanFirestoreData({
+      name: trimmedNew,
+      ...(description !== undefined ? { description: description.trim() } : {}),
+      updatedAt: now
+    }));
+
+    // If name changed and oldName was provided, update all menu items that used the old category name
+    if (oldName && oldName !== trimmedNew) {
+      const menuSnap = await getDocs(collection(db, 'menu_items'));
+      const batch = writeBatch(db);
+      let count = 0;
+      menuSnap.forEach(d => {
+        const itemData = d.data();
+        if (itemData.category === oldName) {
+          batch.update(d.ref, {
+            category: trimmedNew,
+            updatedAt: now
+          });
+          count++;
+        }
+      });
+      if (count > 0) {
+        await batch.commit();
+      }
+    }
+  } catch (error) {
+    handleFirestoreError(error, OperationType.UPDATE, path);
+  }
+};
+
+export const deleteCategoryFromDb = async (
+  id: string,
+  categoryName: string,
+  fallbackCategory: string = 'Special'
+): Promise<void> => {
+  const path = `categories/${id}`;
+  const now = new Date().toISOString();
+
+  try {
+    await deleteDoc(doc(db, 'categories', id));
+
+    // Reassign any existing menu items with this category to fallbackCategory
+    const menuSnap = await getDocs(collection(db, 'menu_items'));
+    const batch = writeBatch(db);
+    let count = 0;
+    menuSnap.forEach(d => {
+      const itemData = d.data();
+      if (itemData.category === categoryName) {
+        batch.update(d.ref, {
+          category: fallbackCategory,
+          updatedAt: now
+        });
+        count++;
+      }
+    });
+    if (count > 0) {
+      await batch.commit();
+    }
+  } catch (error) {
+    handleFirestoreError(error, OperationType.DELETE, path);
+  }
+};
+
+export const updateMenuItemKOTDestination = async (
+  itemId: string,
+  kotDestination: KOTDestination
+): Promise<void> => {
+  const path = `menu_items/${itemId}`;
+  const now = new Date().toISOString();
+  try {
+    await updateDoc(doc(db, 'menu_items', itemId), {
+      kotDestination,
+      updatedAt: now
+    });
+  } catch (error) {
+    handleFirestoreError(error, OperationType.UPDATE, path);
   }
 };
 
@@ -1123,7 +1243,11 @@ export const listenSettings = (
           restaurantName: raw?.restaurantName || raw?.name || DEFAULT_SETTINGS.restaurantName,
           name: raw?.name || raw?.restaurantName || DEFAULT_SETTINGS.name,
           panNumber: raw?.panNumber || raw?.panNo || DEFAULT_SETTINGS.panNumber,
-          panNo: raw?.panNo || raw?.panNumber || DEFAULT_SETTINGS.panNo
+          panNo: raw?.panNo || raw?.panNumber || DEFAULT_SETTINGS.panNo,
+          adminUsername: raw?.adminUsername || DEFAULT_SETTINGS.adminUsername,
+          adminPassword: raw?.adminPassword || DEFAULT_SETTINGS.adminPassword,
+          adminRecoveryEmail: raw?.adminRecoveryEmail || DEFAULT_SETTINGS.adminRecoveryEmail,
+          adminLastPasswordChangedAt: raw?.adminLastPasswordChangedAt
         });
       } else {
         onSuccess(DEFAULT_SETTINGS);
@@ -1134,6 +1258,23 @@ export const listenSettings = (
       if (onError) onError(error);
     }
   );
+};
+
+export const updateAdminPassword = async (newPassword: string): Promise<void> => {
+  const path = 'settings/restaurant_config';
+  // Persist locally immediately for offline protection
+  try {
+    localStorage.setItem('fb_admin_custom_password', newPassword);
+  } catch (_) {}
+
+  try {
+    await updateDoc(doc(db, 'settings', 'restaurant_config'), {
+      adminPassword: newPassword,
+      adminLastPasswordChangedAt: new Date().toISOString()
+    });
+  } catch (error) {
+    handleFirestoreError(error, OperationType.UPDATE, path);
+  }
 };
 
 // ====================================================

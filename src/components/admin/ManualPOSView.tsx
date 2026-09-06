@@ -34,6 +34,7 @@ export const ManualPOSView: React.FC<ManualPOSViewProps> = ({
   const {
     tables,
     menuItems,
+    categories: firestoreCategories,
     createManualOrder,
     settings
   } = usePOS();
@@ -67,12 +68,17 @@ export const ManualPOSView: React.FC<ManualPOSViewProps> = ({
 
   const categories = useMemo(() => {
     const set = new Set<string>();
-    CATEGORY_NAMES.forEach(c => set.add(c));
-    menuItems.forEach(item => {
-      if (item.category && item.category.trim()) set.add(item.category.trim());
+    (firestoreCategories || []).forEach(c => {
+      if (c.name && c.name.trim() && c.isActive !== false) {
+        set.add(c.name.trim());
+      }
+    });
+    (CATEGORY_NAMES || []).forEach(c => set.add(c));
+    (menuItems || []).forEach(item => {
+      if (item && item.category && item.category.trim()) set.add(item.category.trim());
     });
     return ['All', ...Array.from(set)];
-  }, [menuItems]);
+  }, [firestoreCategories, menuItems]);
 
   const filteredMenuItems = menuItems.filter(item => {
     if (selectedCategory !== 'All' && item.category !== selectedCategory) return false;

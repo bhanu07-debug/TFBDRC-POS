@@ -44,13 +44,13 @@ export const PaymentsView: React.FC<PaymentsViewProps> = ({ onOpenReceipt }) => 
 
   // 1. Merge & synthesize payment records so no settled order (like Table 01) is ever omitted
   const mergedPayments = useMemo<PaymentRecord[]>(() => {
-    const list: PaymentRecord[] = [...payments];
+    const list: PaymentRecord[] = [...(payments || [])];
     const existingOrderRefs = new Set(
-      payments.map(p => (p.orderNumber || '').trim()).filter(Boolean)
+      (payments || []).map(p => (p.orderNumber || '').trim()).filter(Boolean)
     );
-    const existingIds = new Set(payments.map(p => p.id));
+    const existingIds = new Set((payments || []).map(p => p.id));
 
-    orders.forEach(ord => {
+    (orders || []).forEach(ord => {
       const isPaid =
         (ord.paymentStatus || '').toLowerCase() === 'paid' ||
         ((ord.status as any) === 'completed' && Boolean(ord.paidAt || ord.paymentMethod));
