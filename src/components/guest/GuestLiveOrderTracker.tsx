@@ -11,7 +11,9 @@ import {
   Bell,
   Sparkles,
   UtensilsCrossed,
-  ArrowRight
+  ArrowRight,
+  XCircle,
+  AlertTriangle
 } from 'lucide-react';
 
 interface GuestLiveOrderTrackerProps {
@@ -34,10 +36,19 @@ export const GuestLiveOrderTracker: React.FC<GuestLiveOrderTrackerProps> = ({
     addServiceRequest,
     settings,
     tableNotifications,
-    markTableNotificationRead
+    markTableNotificationRead,
+    cancelOrderItem,
+    kots
   } = usePOS();
 
   const [billRequested, setBillRequested] = useState(false);
+  const [itemToCancel, setItemToCancel] = useState<{
+    orderId: string;
+    item: { id: string; name: string; quantity: number; price: number };
+  } | null>(null);
+  const [cancelReason, setCancelReason] = useState('Changed mind / No longer needed');
+  const [cancelNotice, setCancelNotice] = useState<string | null>(null);
+  const [isCancelling, setIsCancelling] = useState(false);
 
   if (!isOpen) return null;
 
@@ -47,14 +58,77 @@ export const GuestLiveOrderTracker: React.FC<GuestLiveOrderTrackerProps> = ({
     n => n.tableNumber === currentGuestTableNumber && !n.read
   );
 
+  // Recalculate session running total considering only non-cancelled items
   const totalSessionAmount = tableOrders
     .filter(o => o.status !== 'cancelled')
-    .reduce((sum, o) => sum + o.finalAmount, 0);
+    .reduce((sum, o) => {
+      const activeItems = (o.items || []).filter(it => !it.cancelled && it.status !== 'CANCELLED');
+      const activeSubtotal = activeItems.reduce(
+        (acc, it) => acc + ((it.priceSnapshot ?? it.price ?? 0) * (it.quantity || 1)),
+        0
+      );
+      const orderDiscount = Math.min(o.discount || 0, activeSubtotal);
+      const discountedSub = Math.max(0, activeSubtotal - orderDiscount);
+      const sc = (o.serviceChargeEnabled ?? settings.serviceChargeEnabled)
+        ? Math.round((discountedSub * (o.serviceChargePercent ?? settings.serviceChargePercent ?? 10)) / 100)
+        : 0;
+      const vat = (o.vatEnabled ?? settings.vatEnabled)
+        ? Math.round(((discountedSub + sc) * (o.vatRate ?? settings.vatRate ?? 13)) / 100)
+        : 0;
+      return sum + (discountedSub + sc + vat);
+    }, 0);
 
   const handleRequestBill = () => {
     addServiceRequest(currentGuestTableNumber, 'request_bill', 'Guest requested total bill');
     setBillRequested(true);
     setTimeout(() => setBillRequested(false), 8000);
+  };
+
+  const handleConfirmCancelItem = async () => {
+    if (!itemToCancel) return;
+
+    // Check if order or linked KOTs have been marked ready by the kitchen/admin
+    const targetOrder = tableOrders.find(o => o.id === itemToCancel.orderId);
+    const linkedKots = (kots || []).filter(
+      k =>
+        k.orderId === itemToCancel.orderId ||
+        (k.tableNumber === currentGuestTableNumber &&
+          targetOrder &&
+          ((targetOrder.orderNumber && k.orderNumber === targetOrder.orderNumber) ||
+            (targetOrder.kotNumber && k.kotNumber === targetOrder.kotNumber)))
+    );
+    const isReadyNow =
+      (targetOrder?.status || '').toLowerCase() === 'ready' ||
+      (targetOrder?.status || '').toLowerCase() === 'served' ||
+      linkedKots.some(
+        k =>
+          (k.status || '').toLowerCase() === 'ready' ||
+          (k.status || '').toLowerCase() === 'completed' ||
+          (k.status || '').toLowerCase() === 'bumped'
+      );
+
+    if (isReadyNow) {
+      setCancelNotice(
+        `Cannot cancel: Kitchen has already marked "${itemToCancel.item.name}" as Ready!`
+      );
+      setItemToCancel(null);
+      setTimeout(() => setCancelNotice(null), 8000);
+      return;
+    }
+
+    setIsCancelling(true);
+    try {
+      await cancelOrderItem(itemToCancel.orderId, itemToCancel.item.id, cancelReason);
+      setCancelNotice(
+        `"${itemToCancel.item.quantity}x ${itemToCancel.item.name}" has been cancelled from the kitchen KOT. Table ${currentGuestTableNumber < 10 ? '0' + currentGuestTableNumber : currentGuestTableNumber} remains occupied for your other items.`
+      );
+      setItemToCancel(null);
+      setTimeout(() => setCancelNotice(null), 8000);
+    } catch (err) {
+      console.error('Failed to cancel item:', err);
+    } finally {
+      setIsCancelling(false);
+    }
   };
 
   const getStatusStep = (status: string) => {
@@ -113,6 +187,23 @@ export const GuestLiveOrderTracker: React.FC<GuestLiveOrderTrackerProps> = ({
 
         {/* Content */}
         <div className="flex-1 overflow-y-auto p-4 space-y-4">
+          {/* Item Cancellation Success Toast */}
+          {cancelNotice && (
+            <div className="p-3 bg-emerald-50 border border-emerald-300 rounded-xl text-xs text-emerald-950 flex items-start justify-between gap-2 animate-in fade-in shadow-xs">
+              <div className="flex items-start gap-2">
+                <CheckCircle2 className="w-4 h-4 text-emerald-600 mt-0.5 flex-shrink-0" />
+                <p className="font-medium leading-relaxed">{cancelNotice}</p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setCancelNotice(null)}
+                className="p-0.5 text-gray-400 hover:text-gray-700"
+              >
+                <X className="w-3.5 h-3.5" />
+              </button>
+            </div>
+          )}
+
           {/* Real-time Notifications for this Table */}
           {unreadTableAlerts.length > 0 && (
             <div className="space-y-2">
@@ -164,7 +255,27 @@ export const GuestLiveOrderTracker: React.FC<GuestLiveOrderTrackerProps> = ({
           ) : (
             <div className="space-y-4">
               {tableOrders.map(order => {
-                const step = getStatusStep(order.status);
+                const linkedKots = (kots || []).filter(
+                  k =>
+                    k.orderId === order.id ||
+                    (k.tableNumber === currentGuestTableNumber &&
+                      ((order.orderNumber && k.orderNumber === order.orderNumber) ||
+                        (order.kotNumber && k.kotNumber === order.kotNumber)))
+                );
+                const isKotReady = linkedKots.some(
+                  k =>
+                    (k.status || '').toLowerCase() === 'ready' ||
+                    (k.status || '').toLowerCase() === 'completed' ||
+                    (k.status || '').toLowerCase() === 'bumped'
+                );
+                const orderStatusLower = (order.status || '').toLowerCase();
+                const isOrderReady = orderStatusLower === 'ready' || isKotReady;
+                const effectiveStatus =
+                  isOrderReady && orderStatusLower !== 'served' && orderStatusLower !== 'completed'
+                    ? 'ready'
+                    : order.status;
+
+                const step = getStatusStep(effectiveStatus);
                 return (
                   <div
                     key={order.id}
@@ -184,7 +295,7 @@ export const GuestLiveOrderTracker: React.FC<GuestLiveOrderTrackerProps> = ({
                         <span className="text-[11px] text-gray-400">{order.createdAt}</span>
                         <span
                           className={`text-[10px] uppercase tracking-wider font-bold px-2.5 py-0.5 rounded-full ${
-                            order.status === 'cancelled'
+                            effectiveStatus === 'cancelled'
                               ? 'bg-rose-50 text-rose-700 border border-rose-200'
                               : step === 4
                               ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
@@ -195,7 +306,7 @@ export const GuestLiveOrderTracker: React.FC<GuestLiveOrderTrackerProps> = ({
                               : 'bg-amber-50 text-amber-800 border border-amber-200'
                           }`}
                         >
-                          {order.status === 'cancelled'
+                          {effectiveStatus === 'cancelled'
                             ? 'Cancelled'
                             : step === 4
                             ? 'Served'
@@ -300,18 +411,132 @@ export const GuestLiveOrderTracker: React.FC<GuestLiveOrderTrackerProps> = ({
 
                     {/* Item list in this order */}
                     <div className="divide-y divide-gray-100 pt-1">
-                      {order.items.map(item => (
-                        <div key={item.id} className="py-1.5 flex items-center justify-between text-xs">
-                          <div className="flex items-center gap-2">
-                            <span className="font-mono font-bold text-amber-700 text-[11px]">{item.quantity}x</span>
-                            <span className="text-gray-800">{item.name || item.nameSnapshot}</span>
-                            {item.variantName && (
-                              <span className="text-[10px] text-gray-500">({item.variantName})</span>
-                            )}
+                      {order.items.map(item => {
+                        const isCancelled = item.cancelled === true || item.status === 'CANCELLED';
+                        const itemStatusLower = (item.status || '').toLowerCase();
+
+                        // Check if this item is in a KOT ticket that the admin marked as ready
+                        const isItemInReadyKot = linkedKots.some(k => {
+                          const kotStatus = (k.status || '').toLowerCase();
+                          const kotIsReady =
+                            kotStatus === 'ready' || kotStatus === 'completed' || kotStatus === 'bumped';
+                          if (!kotIsReady) return false;
+                          const hasItem = (k.items || []).some(
+                            ki =>
+                              ki.orderItemId === item.id ||
+                              ki.id === item.id ||
+                              (ki.nameSnapshot && ki.nameSnapshot === (item.nameSnapshot || item.name)) ||
+                              ((ki as any).name && (ki as any).name === (item.nameSnapshot || item.name))
+                          );
+                          return hasItem || (k.items || []).length === 0;
+                        });
+
+                        const isItemReady =
+                          isOrderReady ||
+                          itemStatusLower === 'ready' ||
+                          itemStatusLower === 'served' ||
+                          isItemInReadyKot;
+
+                        const canCancel =
+                          !isCancelled &&
+                          !isItemReady &&
+                          effectiveStatus !== 'cancelled' &&
+                          effectiveStatus !== 'ready' &&
+                          effectiveStatus !== 'served' &&
+                          effectiveStatus !== 'completed';
+
+                        if (isCancelled) {
+                          return (
+                            <div
+                              key={item.id}
+                              className="py-2 px-2.5 my-1 rounded-lg bg-rose-50/60 border border-rose-200/60 flex items-center justify-between text-xs"
+                            >
+                              <div className="flex items-center gap-2">
+                                <span className="font-mono font-bold text-rose-700 text-[11px] line-through">
+                                  {item.quantity}x
+                                </span>
+                                <div>
+                                  <span className="text-gray-400 line-through font-medium">
+                                    {item.name || item.nameSnapshot}
+                                  </span>
+                                  <div className="flex items-center gap-2 mt-0.5">
+                                    <span className="text-[10px] font-bold px-1.5 py-0.2 rounded bg-rose-100 text-rose-800 border border-rose-300">
+                                      CANCELLED FROM KOT
+                                    </span>
+                                    <span className="text-[10px] text-emerald-700 font-semibold">
+                                      Table remains occupied
+                                    </span>
+                                  </div>
+                                </div>
+                              </div>
+                              <div className="text-right">
+                                <span className="font-mono text-gray-400 line-through text-[11px] block">
+                                  {settings.currencySymbol || 'Rs.'} {(item.price ?? item.priceSnapshot ?? 0) * item.quantity}
+                                </span>
+                                <span className="text-[10px] font-bold text-rose-600">Not Charged (Rs. 0)</span>
+                              </div>
+                            </div>
+                          );
+                        }
+
+                        return (
+                          <div key={item.id} className="py-2 flex items-center justify-between text-xs">
+                            <div className="flex items-center gap-2">
+                              <span className="font-mono font-bold text-amber-700 text-[11px]">
+                                {item.quantity}x
+                              </span>
+                              <div>
+                                <span className="text-gray-900 font-medium">
+                                  {item.name || item.nameSnapshot}
+                                </span>
+                                {item.variantName && (
+                                  <span className="text-[10px] text-gray-500 ml-1.5">
+                                    ({item.variantName})
+                                  </span>
+                                )}
+                              </div>
+                            </div>
+
+                            <div className="flex items-center gap-3">
+                              <span className="font-mono text-gray-800 font-semibold">
+                                {settings.currencySymbol || 'Rs.'}{' '}
+                                {(item.price ?? item.priceSnapshot ?? 0) * item.quantity}
+                              </span>
+
+                              {isItemReady ? (
+                                <span
+                                  className="px-2 py-1 rounded-lg text-[11px] font-semibold text-emerald-700 bg-emerald-50 border border-emerald-200 flex items-center gap-1 shadow-2xs select-none"
+                                  title="Item is ready and being served — cancellation is disabled"
+                                >
+                                  <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
+                                  <span>Ready</span>
+                                </span>
+                              ) : canCancel ? (
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setItemToCancel({
+                                      orderId: order.id,
+                                      item: {
+                                        id: item.id,
+                                        name: item.name || item.nameSnapshot || 'Dish Item',
+                                        quantity: item.quantity || 1,
+                                        price: item.price ?? item.priceSnapshot ?? 0
+                                      }
+                                    });
+                                    setCancelReason('Changed mind / No longer needed');
+                                  }}
+                                  className="px-2 py-1 rounded-lg text-[11px] font-bold text-rose-600 hover:text-white bg-rose-50 hover:bg-rose-600 border border-rose-200 hover:border-rose-600 transition flex items-center gap-1 shadow-2xs cursor-pointer"
+                                  title="Cancel this item from kitchen KOT"
+                                >
+                                  <XCircle className="w-3.5 h-3.5" />
+                                  <span>Cancel</span>
+                                </button>
+                              ) : null}
+                            </div>
                           </div>
-                          <span className="font-mono text-gray-700 font-semibold">{settings.currencySymbol || 'Rs.'} {(item.price ?? item.priceSnapshot ?? 0) * item.quantity}</span>
-                        </div>
-                      ))}
+                        );
+                      })}
                     </div>
 
                     <div className="pt-2 border-t border-gray-100 flex justify-between text-xs font-bold text-gray-700">
@@ -378,6 +603,88 @@ export const GuestLiveOrderTracker: React.FC<GuestLiveOrderTrackerProps> = ({
           </button>
         </div>
       </div>
+
+      {/* Confirmation Modal to Cancel Item */}
+      {itemToCancel && (
+        <div className="fixed inset-0 z-60 bg-black/75 backdrop-blur-xs flex items-center justify-center p-4 animate-in fade-in duration-150">
+          <div className="bg-white rounded-2xl max-w-md w-full p-5 shadow-2xl border border-gray-200 space-y-4">
+            <div className="flex items-center justify-between pb-3 border-b border-gray-100">
+              <div className="flex items-center gap-2 text-rose-600 font-bold text-sm">
+                <AlertTriangle className="w-5 h-5 text-rose-600 flex-shrink-0" />
+                <span>Cancel Item from Order?</span>
+              </div>
+              <button
+                type="button"
+                onClick={() => setItemToCancel(null)}
+                className="text-gray-400 hover:text-gray-600 p-1 rounded-lg"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <div className="p-3 bg-amber-50/80 border border-amber-200 rounded-xl">
+              <p className="text-amber-950 font-bold text-sm">
+                {itemToCancel.item.quantity}x {itemToCancel.item.name}
+              </p>
+              <p className="text-[11px] text-amber-800 mt-0.5">
+                Item subtotal: {settings.currencySymbol || 'Rs.'} {itemToCancel.item.price * itemToCancel.item.quantity}
+              </p>
+            </div>
+
+            {/* Crucial status guarantee notice */}
+            <div className="p-3 bg-blue-50 border border-blue-200 rounded-xl space-y-1.5 text-blue-900 text-xs">
+              <p className="font-bold flex items-center gap-1.5 text-blue-950">
+                <CheckCircle2 className="w-4 h-4 text-blue-600 flex-shrink-0" />
+                Kitchen Sync & Table Status:
+              </p>
+              <ul className="list-disc list-inside space-y-1 text-[11px] text-blue-800 pl-1">
+                <li>This item is automatically removed from the admin kitchen KOT.</li>
+                <li>
+                  <strong className="text-blue-950">Table {currentGuestTableNumber < 10 ? '0' + currentGuestTableNumber : currentGuestTableNumber} will remain Occupied</strong> because your other items are still being served.
+                </li>
+                <li>Your total bill will be automatically deducted.</li>
+              </ul>
+            </div>
+
+            <div>
+              <label className="block font-bold text-gray-700 mb-1 text-[11px]">
+                Reason for cancellation:
+              </label>
+              <select
+                value={cancelReason}
+                onChange={e => setCancelReason(e.target.value)}
+                className="w-full p-2 border border-gray-300 rounded-lg text-xs bg-gray-50 focus:bg-white focus:outline-none focus:ring-1 focus:ring-amber-500"
+              >
+                <option value="Changed mind / No longer needed">Changed mind / No longer needed</option>
+                <option value="Ordered by mistake">Ordered by mistake</option>
+                <option value="Taking too long">Taking too long</option>
+                <option value="Order modified">Order modified</option>
+                <option value="Other">Other reason</option>
+              </select>
+            </div>
+
+            <div className="flex items-center justify-end gap-2 pt-3 border-t border-gray-100">
+              <button
+                type="button"
+                disabled={isCancelling}
+                onClick={() => setItemToCancel(null)}
+                className="px-3.5 py-2 rounded-xl text-xs font-semibold text-gray-700 bg-gray-100 hover:bg-gray-200 transition"
+              >
+                Keep Item
+              </button>
+              <button
+                type="button"
+                disabled={isCancelling}
+                onClick={handleConfirmCancelItem}
+                className="px-4 py-2 rounded-xl text-xs font-bold text-white bg-rose-600 hover:bg-rose-700 transition flex items-center gap-1.5 shadow-sm disabled:opacity-50 cursor-pointer"
+              >
+                <XCircle className="w-4 h-4" />
+                <span>{isCancelling ? 'Cancelling...' : 'Confirm Cancel Item'}</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

@@ -5,20 +5,24 @@ import firebaseConfig from '../firebase-applet-config.json';
 
 const app = getApps().length > 0 ? getApp() : initializeApp(firebaseConfig);
 
-// Silence benign connection handshake warnings in iframe / sandboxed network
+// Silence benign SDK transport handshake warnings in iframe / sandboxed preview
 try {
-  setLogLevel('error');
+  setLogLevel('silent');
 } catch {
   // Ignore if already set
 }
 
 let firestoreDb;
 try {
-  firestoreDb = initializeFirestore(app, {
-    experimentalForceLongPolling: true,
-  }, firebaseConfig.firestoreDatabaseId);
-} catch (e) {
   firestoreDb = getFirestore(app, firebaseConfig.firestoreDatabaseId);
+} catch {
+  try {
+    firestoreDb = initializeFirestore(app, {
+      experimentalAutoDetectLongPolling: true,
+    }, firebaseConfig.firestoreDatabaseId);
+  } catch {
+    firestoreDb = getFirestore(app);
+  }
 }
 
 export const db = firestoreDb;

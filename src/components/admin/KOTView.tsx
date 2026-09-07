@@ -31,11 +31,15 @@ interface StationTicket extends KOTTicket {
   station: 'kitchen' | 'reception';
   filteredItems: Array<{
     id?: string;
+    orderItemId?: string;
     quantity: number;
     name: string;
     variant?: string;
     instructions?: string;
     category?: string;
+    status?: string;
+    cancelled?: boolean;
+    cancellationReason?: string;
   }>;
 }
 
@@ -121,11 +125,15 @@ export const KOTView: React.FC = () => {
       })
       .map(item => ({
         id: item.id || item.orderItemId,
+        orderItemId: item.orderItemId,
         quantity: item.quantity || 1,
         name: (item as any).name || item.nameSnapshot || 'Dish Item',
         variant: item.variant,
         instructions: item.instructions,
-        category: (item as any).category
+        category: (item as any).category,
+        status: (item as any).status,
+        cancelled: (item as any).cancelled === true || (item as any).status === 'CANCELLED',
+        cancellationReason: (item as any).cancellationReason
       }));
   };
 
@@ -534,28 +542,67 @@ export const KOTView: React.FC = () => {
                       </div>
                     </div>
 
+                    {/* Cancellation alert banner if any items were cancelled */}
+                    {kot.filteredItems.some(i => i.cancelled) && (
+                      <div className="px-4 py-2 bg-rose-50 border-b border-rose-200/60 flex items-center gap-2 text-xs font-bold text-rose-800">
+                        <AlertTriangle className="w-4 h-4 flex-shrink-0 text-rose-600" />
+                        <span>Item Cancelled by Guest from Table {kot.tableNumber} - Do not prepare marked items</span>
+                      </div>
+                    )}
+
                     {/* Filtered Kitchen Items */}
                     <div className="p-4 space-y-2.5 divide-y divide-gray-100 text-xs">
                       {kot.filteredItems.map((item, idx) => (
-                        <div key={idx} className="pt-2.5 first:pt-0 flex items-start justify-between">
+                        <div
+                          key={idx}
+                          className={`pt-2.5 first:pt-0 flex items-start justify-between ${
+                            item.cancelled ? 'opacity-65 bg-rose-50/60 -mx-2 px-2 py-1.5 rounded-lg border border-rose-200/50' : ''
+                          }`}
+                        >
                           <div className="flex items-start gap-3">
-                            <span className="w-7 h-7 rounded-lg bg-amber-100 text-amber-900 font-bold flex items-center justify-center font-mono text-xs flex-shrink-0 shadow-2xs">
+                            <span
+                              className={`w-7 h-7 rounded-lg font-bold flex items-center justify-center font-mono text-xs flex-shrink-0 shadow-2xs ${
+                                item.cancelled
+                                  ? 'bg-rose-100 text-rose-700 line-through'
+                                  : 'bg-amber-100 text-amber-900'
+                              }`}
+                            >
                               {item.quantity}
                             </span>
                             <div>
-                              <p className="font-bold text-gray-900 text-sm">{item.name}</p>
-                              {item.variant && (
+                              <div className="flex items-center gap-2">
+                                <p className={`font-bold text-sm ${item.cancelled ? 'text-gray-400 line-through' : 'text-gray-900'}`}>
+                                  {item.name}
+                                </p>
+                                {item.cancelled && (
+                                  <span className="text-[10px] font-black px-1.5 py-0.5 rounded bg-rose-100 text-rose-800 border border-rose-300">
+                                    CANCELLED BY GUEST
+                                  </span>
+                                )}
+                              </div>
+                              {item.cancelled && item.cancellationReason && (
+                                <p className="text-[11px] text-rose-600 italic mt-0.5 font-medium">
+                                  Reason: {item.cancellationReason}
+                                </p>
+                              )}
+                              {!item.cancelled && item.variant && (
                                 <p className="text-[11px] text-gray-500 font-medium">Variant: {item.variant}</p>
                               )}
-                              {item.instructions && (
+                              {!item.cancelled && item.instructions && (
                                 <p className="text-[11px] text-rose-700 font-semibold bg-rose-50 border border-rose-200 px-2 py-0.5 rounded-md inline-block mt-1">
                                   Note: {item.instructions}
                                 </p>
                               )}
                             </div>
                           </div>
-                          <span className="text-[10px] font-semibold text-amber-800 bg-amber-50 px-2 py-0.5 rounded-md border border-amber-200 flex-shrink-0">
-                            Kitchen
+                          <span
+                            className={`text-[10px] font-semibold px-2 py-0.5 rounded-md border flex-shrink-0 ${
+                              item.cancelled
+                                ? 'text-rose-700 bg-rose-100 border-rose-200'
+                                : 'text-amber-800 bg-amber-50 border-amber-200'
+                            }`}
+                          >
+                            {item.cancelled ? 'CANCELLED' : 'Kitchen'}
                           </span>
                         </div>
                       ))}
@@ -692,28 +739,67 @@ export const KOTView: React.FC = () => {
                       </div>
                     </div>
 
+                    {/* Cancellation alert banner if any items were cancelled */}
+                    {kot.filteredItems.some(i => i.cancelled) && (
+                      <div className="px-4 py-2 bg-rose-50 border-b border-rose-200/60 flex items-center gap-2 text-xs font-bold text-rose-800">
+                        <AlertTriangle className="w-4 h-4 flex-shrink-0 text-rose-600" />
+                        <span>Item Cancelled by Guest from Table {kot.tableNumber} - Do not prepare marked items</span>
+                      </div>
+                    )}
+
                     {/* Filtered Reception Items */}
                     <div className="p-4 space-y-2.5 divide-y divide-gray-100 text-xs">
                       {kot.filteredItems.map((item, idx) => (
-                        <div key={idx} className="pt-2.5 first:pt-0 flex items-start justify-between">
+                        <div
+                          key={idx}
+                          className={`pt-2.5 first:pt-0 flex items-start justify-between ${
+                            item.cancelled ? 'opacity-65 bg-rose-50/60 -mx-2 px-2 py-1.5 rounded-lg border border-rose-200/50' : ''
+                          }`}
+                        >
                           <div className="flex items-start gap-3">
-                            <span className="w-7 h-7 rounded-lg bg-purple-100 text-purple-900 font-bold flex items-center justify-center font-mono text-xs flex-shrink-0 shadow-2xs">
+                            <span
+                              className={`w-7 h-7 rounded-lg font-bold flex items-center justify-center font-mono text-xs flex-shrink-0 shadow-2xs ${
+                                item.cancelled
+                                  ? 'bg-rose-100 text-rose-700 line-through'
+                                  : 'bg-purple-100 text-purple-900'
+                              }`}
+                            >
                               {item.quantity}
                             </span>
                             <div>
-                              <p className="font-bold text-gray-900 text-sm">{item.name}</p>
-                              {item.variant && (
+                              <div className="flex items-center gap-2">
+                                <p className={`font-bold text-sm ${item.cancelled ? 'text-gray-400 line-through' : 'text-gray-900'}`}>
+                                  {item.name}
+                                </p>
+                                {item.cancelled && (
+                                  <span className="text-[10px] font-black px-1.5 py-0.5 rounded bg-rose-100 text-rose-800 border border-rose-300">
+                                    CANCELLED BY GUEST
+                                  </span>
+                                )}
+                              </div>
+                              {item.cancelled && item.cancellationReason && (
+                                <p className="text-[11px] text-rose-600 italic mt-0.5 font-medium">
+                                  Reason: {item.cancellationReason}
+                                </p>
+                              )}
+                              {!item.cancelled && item.variant && (
                                 <p className="text-[11px] text-gray-500 font-medium">Size: {item.variant}</p>
                               )}
-                              {item.instructions && (
+                              {!item.cancelled && item.instructions && (
                                 <p className="text-[11px] text-rose-700 font-semibold bg-rose-50 border border-rose-200 px-2 py-0.5 rounded-md inline-block mt-1">
                                   Note: {item.instructions}
                                 </p>
                               )}
                             </div>
                           </div>
-                          <span className="text-[10px] font-semibold text-purple-800 bg-purple-50 px-2 py-0.5 rounded-md border border-purple-200 flex-shrink-0">
-                            Reception
+                          <span
+                            className={`text-[10px] font-semibold px-2 py-0.5 rounded-md border flex-shrink-0 ${
+                              item.cancelled
+                                ? 'text-rose-700 bg-rose-100 border-rose-200'
+                                : 'text-purple-800 bg-purple-50 border-purple-200'
+                            }`}
+                          >
+                            {item.cancelled ? 'CANCELLED' : 'Reception'}
                           </span>
                         </div>
                       ))}
@@ -931,12 +1017,19 @@ export const KOTView: React.FC = () => {
             <div className="divide-y divide-dashed divide-black/40 pt-1">
               {activePrintTicket.filteredItems.map((item, idx) => (
                 <div key={idx} className="py-1.5 avoid-break">
-                  <div className="flex items-start justify-between text-xs font-bold">
+                  <div className={`flex items-start justify-between text-xs font-bold ${item.cancelled ? 'line-through opacity-60' : ''}`}>
                     <span className="w-10 text-sm font-black">[{item.quantity}]</span>
-                    <span className="flex-1">{item.name}</span>
+                    <span className="flex-1">
+                      {item.name} {item.cancelled && <span className="font-mono text-[9px] uppercase tracking-wider">[CANCELLED]</span>}
+                    </span>
                     <span className="w-16 text-right text-[10px] font-normal">{item.variant || '-'}</span>
                   </div>
-                  {item.instructions && (
+                  {item.cancelled && item.cancellationReason && (
+                    <div className="pl-10 text-[10px] font-bold text-red-600">
+                      *** CANCELLED: {item.cancellationReason} ***
+                    </div>
+                  )}
+                  {!item.cancelled && item.instructions && (
                     <div className="pl-10 text-[10px] italic font-semibold">
                       *** Note: {item.instructions} ***
                     </div>

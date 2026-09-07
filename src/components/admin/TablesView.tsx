@@ -97,18 +97,18 @@ export const TablesView: React.FC<TablesViewProps> = ({
     return true;
   });
 
-  const occupiedCount = tables.filter(t => (t.status || '').toUpperCase() === 'OCCUPIED' && Boolean((t.activeOrdersCount && t.activeOrdersCount > 0) || (t.totalBill && t.totalBill > 0))).length;
-  const billingCount = tables.filter(t => (t.status || '').toUpperCase() === 'BILLING' && Boolean((t.activeOrdersCount && t.activeOrdersCount > 0) || (t.totalBill && t.totalBill > 0))).length;
+  const occupiedCount = tables.filter(t => (t.status || '').toUpperCase() === 'OCCUPIED' || Boolean((t.activeOrdersCount && t.activeOrdersCount > 0) || (t.totalBill && t.totalBill > 0))).length;
+  const billingCount = tables.filter(t => (t.status || '').toUpperCase() === 'BILLING').length;
   const availableCount = tables.filter(t => {
     const s = (t.status || '').toUpperCase();
-    return s === 'AVAILABLE' || !s || (!t.activeOrdersCount && !t.totalBill);
+    return (s === 'AVAILABLE' || !s) && (!t.activeOrdersCount && !t.totalBill && s !== 'OCCUPIED' && s !== 'BILLING');
   }).length;
   const reservedCount = tables.filter(t => (t.status || '').toUpperCase() === 'RESERVED').length;
   const cleaningCount = tables.filter(t => (t.status || '').toUpperCase() === 'CLEANING').length;
 
   const getTableStatusMeta = (status: TableStatus, isOccupied: boolean = false) => {
     const s = (status || '').toUpperCase();
-    if (s === 'OCCUPIED' && isOccupied) {
+    if (s === 'OCCUPIED' || isOccupied) {
       return {
         label: 'Occupied',
         dot: 'bg-rose-500',
@@ -116,7 +116,7 @@ export const TablesView: React.FC<TablesViewProps> = ({
         border: 'border-rose-300 bg-rose-50/40'
       };
     }
-    if (s === 'BILLING' && isOccupied) {
+    if (s === 'BILLING') {
       return {
         label: 'Billing',
         dot: 'bg-purple-500 animate-pulse',
@@ -249,7 +249,7 @@ export const TablesView: React.FC<TablesViewProps> = ({
       {/* 10 Tables Grid */}
       <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
         {filteredTables.map(table => {
-          const isOccupied = ((table.status || '').toUpperCase() === 'OCCUPIED' || (table.status || '').toUpperCase() === 'BILLING') &&
+          const isOccupied = (table.status || '').toUpperCase() === 'OCCUPIED' || (table.status || '').toUpperCase() === 'BILLING' ||
             Boolean((table.activeOrdersCount && table.activeOrdersCount > 0) || (table.totalBill && table.totalBill > 0));
           const meta = getTableStatusMeta(table.status, isOccupied);
           const tableOrders = getTableOrders(table.number);

@@ -24,8 +24,7 @@ import {
   Check,
   BellRing,
   AlertTriangle,
-  X,
-  Lock
+  X
 } from 'lucide-react';
 import {
   playReadySound,
@@ -184,16 +183,6 @@ export const GuestQRView: React.FC = () => {
             >
               {mobileFrameMode ? <Maximize2 className="w-3 h-3" /> : <Smartphone className="w-3 h-3 text-amber-600" />}
               <span>{mobileFrameMode ? 'Full View' : 'Mobile Frame'}</span>
-            </button>
-
-            <button
-              id="btn-guest-to-admin-login"
-              onClick={() => setActiveInterface('admin')}
-              className="flex items-center gap-1 px-2.5 py-1 rounded-lg bg-slate-900 hover:bg-slate-800 border border-slate-700 text-amber-400 hover:text-amber-300 text-[11px] shadow-sm transition font-semibold"
-              title="Staff & Admin Portal Sign In"
-            >
-              <Lock className="w-3 h-3" />
-              <span>Admin Login</span>
             </button>
           </div>
         </div>
@@ -570,18 +559,9 @@ export const GuestQRView: React.FC = () => {
           )}
         </div>
 
-        {/* Footer info & Staff Portal link */}
+        {/* Footer info */}
         <div className="mt-8 mb-20 text-center text-xs text-gray-500 space-y-2">
           <p>{settings.restaurantName || RESTAURANT_PROFILE.name} • {settings.tagline || RESTAURANT_PROFILE.tagline}</p>
-          <div className="flex items-center justify-center gap-3">
-            <button
-              onClick={() => setActiveInterface('admin')}
-              className="inline-flex items-center gap-1.5 text-xs text-slate-600 hover:text-amber-600 font-semibold transition py-1 px-3 rounded-lg border border-gray-200 bg-white shadow-xs"
-            >
-              <Lock className="w-3.5 h-3.5 text-amber-600" />
-              <span>Admin & Staff Portal</span>
-            </button>
-          </div>
         </div>
 
         {/* Sticky Floating Bottom Bar for Cart / Active Orders */}

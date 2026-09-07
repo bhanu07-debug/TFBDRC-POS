@@ -148,6 +148,7 @@ interface POSContextType {
   updateOrderStatus: (orderId: string, status: OrderStatus) => Promise<void>;
   updateTableOrdersStatus: (tableNumber: number, status: 'placed' | 'confirmed' | 'served') => Promise<void>;
   updateOrderItemStatus: (orderId: string, itemId: string, status: OrderItemStatus) => Promise<void>;
+  cancelOrderItem: (orderId: string, itemId: string, cancellationReason?: string) => Promise<void>;
   updateKOTStatus: (
     kotId: string,
     status: 'pending' | 'in_progress' | 'ready' | 'completed' | 'cancelled' | 'bumped',
@@ -520,7 +521,7 @@ export const POSProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       let dynamicStatus: TableStatus = 'AVAILABLE';
       const rawStatus = (rawTable?.status || '').toUpperCase();
 
-      if (activeOrdersCount > 0) {
+      if (activeOrdersCount > 0 || rawStatus === 'OCCUPIED' || rawTable?.activeSessionId) {
         if (rawStatus === 'BILLING') {
           dynamicStatus = 'BILLING';
         } else {
@@ -862,6 +863,178 @@ export const POSProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       });
     } catch (error) {
       handleFirestoreError(error, OperationType.UPDATE, path);
+    }
+  };
+
+  const cancelOrderItem = async (
+    orderId: string,
+    itemId: string,
+    cancellationReason: string = 'Cancelled by Guest'
+  ) => {
+    const nowIso = new Date().toISOString();
+    const order = orders.find(o => o.id === orderId);
+    if (!order) return;
+
+    const targetItem = order.items.find(it => it.id === itemId);
+    if (!targetItem || targetItem.cancelled) return;
+
+    const itemName = targetItem.name || targetItem.nameSnapshot || 'Dish';
+
+    // 1. Updated items list for order
+    const updatedItems = order.items.map(it => {
+      if (it.id === itemId) {
+        return {
+          ...it,
+          cancelled: true,
+          status: 'CANCELLED' as const,
+          cancelledBy: 'Guest',
+          cancelledAt: nowIso,
+          cancellationReason
+        };
+      }
+      return it;
+    });
+
+    // 2. Recalculate financial totals for non-cancelled items
+    const activeItems = updatedItems.filter(it => !it.cancelled && it.status !== 'CANCELLED');
+    const newSubtotal = activeItems.reduce(
+      (sum, it) => sum + ((it.priceSnapshot ?? it.price ?? 0) * (it.quantity || 1)),
+      0
+    );
+    const discount = Math.min(order.discount || 0, newSubtotal);
+    const discountedSubtotal = Math.max(0, newSubtotal - discount);
+    const serviceCharge = (order.serviceChargeEnabled ?? settings.serviceChargeEnabled)
+      ? Math.round((discountedSubtotal * (order.serviceChargePercent ?? settings.serviceChargePercent ?? 10)) / 100)
+      : 0;
+    const vat = (order.vatEnabled ?? settings.vatEnabled)
+      ? Math.round(((discountedSubtotal + serviceCharge) * (order.vatRate ?? settings.vatRate ?? 13)) / 100)
+      : 0;
+    const newTotal = discountedSubtotal + serviceCharge + vat;
+
+    const allItemsCancelled = activeItems.length === 0;
+    const newOrderStatus = allItemsCancelled ? ('cancelled' as const) : order.status;
+
+    const updatedOrder: Order = {
+      ...order,
+      items: updatedItems,
+      subtotal: newSubtotal,
+      discount,
+      serviceCharge,
+      vat,
+      total: newTotal,
+      finalAmount: newTotal,
+      status: newOrderStatus,
+      updatedAt: nowIso,
+      cancellationReason: allItemsCancelled ? cancellationReason : order.cancellationReason
+    };
+
+    // Optimistically update orders state
+    setOrders(prev => prev.map(o => (o.id === orderId ? updatedOrder : o)));
+
+    // 3. Update associated KOT tickets: mark the cancelled item in KOT
+    const linkedKots = kots.filter(k => k.orderId === orderId);
+    const updatedKotsList = linkedKots.map(kot => {
+      const updatedKotItems = (kot.items || []).map(ki => {
+        if (
+          ki.orderItemId === itemId ||
+          ki.id === itemId ||
+          ki.id === `kot-it-${itemId}` ||
+          (ki.nameSnapshot && ki.nameSnapshot === (targetItem.nameSnapshot || targetItem.name))
+        ) {
+          return {
+            ...ki,
+            status: 'CANCELLED' as const,
+            cancelled: true,
+            cancellationReason
+          };
+        }
+        return ki;
+      });
+
+      const activeKotItems = updatedKotItems.filter(
+        ki => (ki as any).status !== 'CANCELLED' && (ki as any).cancelled !== true
+      );
+      const isKotFullyCancelled = activeKotItems.length === 0;
+
+      return {
+        ...kot,
+        items: updatedKotItems,
+        status: isKotFullyCancelled ? ('CANCELLED' as const) : kot.status,
+        cancellationReason: isKotFullyCancelled ? cancellationReason : kot.cancellationReason,
+        updatedAt: nowIso
+      };
+    });
+
+    if (updatedKotsList.length > 0) {
+      setKots(prev =>
+        prev.map(k => {
+          const match = updatedKotsList.find(uk => uk.id === k.id);
+          return match ? match : k;
+        })
+      );
+    }
+
+    // 4. Update Table state: ensure Table MUST show OCCUPIED because remaining items are still active
+    const tableNumber = order.tableNumber;
+    const numStr = tableNumber < 10 ? `0${tableNumber}` : `${tableNumber}`;
+    const tableId = `T${numStr}`;
+
+    setTables(prev =>
+      prev.map(t => {
+        if (t.id === tableId || t.tableNumber === tableNumber) {
+          return {
+            ...t,
+            status: 'OCCUPIED' as const, // Must show occupied!
+            activeOrdersCount: Math.max(1, t.activeOrdersCount || 1),
+            totalBill: Math.max(0, (t.totalBill || order.total) - ((targetItem.priceSnapshot ?? targetItem.price ?? 0) * (targetItem.quantity || 1)))
+          };
+        }
+        return t;
+      })
+    );
+
+    // 5. Fire audio chime & instant notification for Kitchen / Reception KOT screen
+    try {
+      playCancelSound();
+    } catch (_) {}
+
+    sendTableNotification({
+      tableNumber,
+      type: 'order_cancelled',
+      title: `Table ${tableNumber < 10 ? '0' + tableNumber : tableNumber}: Item Cancelled`,
+      message: `Guest cancelled ${targetItem.quantity}x ${itemName}. KOT item cancelled. Table remains occupied for remaining items.`
+    }).catch(console.error);
+
+    // 6. Persist to Firestore
+    try {
+      const batch = writeBatch(db);
+      batch.set(doc(db, 'orders', orderId), cleanFirestoreData(updatedOrder), { merge: true });
+
+      for (const uk of updatedKotsList) {
+        batch.set(doc(db, 'kots', uk.id), cleanFirestoreData(uk), { merge: true });
+      }
+
+      // Ensure table status in database is OCCUPIED
+      batch.update(doc(db, 'tables', tableId), {
+        status: 'OCCUPIED',
+        updatedAt: nowIso
+      });
+
+      await batch.commit();
+    } catch (error) {
+      console.warn('Batch write fallback:', error);
+      try {
+        await setDoc(doc(db, 'orders', orderId), cleanFirestoreData(updatedOrder), { merge: true });
+        for (const uk of updatedKotsList) {
+          await setDoc(doc(db, 'kots', uk.id), cleanFirestoreData(uk), { merge: true });
+        }
+        await updateDoc(doc(db, 'tables', tableId), {
+          status: 'OCCUPIED',
+          updatedAt: nowIso
+        });
+      } catch (err) {
+        handleFirestoreError(err, OperationType.UPDATE, `orders/${orderId}`);
+      }
     }
   };
 
@@ -1555,6 +1728,7 @@ export const POSProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         updateOrderStatus,
         updateTableOrdersStatus,
         updateOrderItemStatus,
+        cancelOrderItem,
         updateKOTStatus,
         markOrderPaid,
 
