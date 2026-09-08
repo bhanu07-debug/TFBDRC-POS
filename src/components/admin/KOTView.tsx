@@ -26,6 +26,9 @@ import {
   playPrintSound,
   playNewOrderSound
 } from '../../utils/sound';
+import { ThermalKOTDocument } from '../common/ThermalKOTDocument';
+import { ThermalPrintPortal } from '../common/ThermalPrintPortal';
+import { triggerThermalPrint } from '../../utils/printUtils';
 
 interface StationTicket extends KOTTicket {
   station: 'kitchen' | 'reception';
@@ -50,7 +53,8 @@ export const KOTView: React.FC = () => {
     updateKOTStatus,
     settings,
     updateSettings,
-    sendTableNotification
+    sendTableNotification,
+    orders
   } = usePOS();
 
   // Local filter states
@@ -198,10 +202,10 @@ export const KOTView: React.FC = () => {
       }...`
     );
 
-    // Give browser small render tick to populate `#printable-kot` DOM before window.print()
+    // Give browser small render tick to populate thermal print DOM before window.print()
     setTimeout(() => {
-      window.print();
-    }, 150);
+      triggerThermalPrint('80mm');
+    }, 100);
   };
 
   // 2. ACTION: Mark Ready & notify table number
@@ -964,92 +968,18 @@ export const KOTView: React.FC = () => {
       )}
 
       {/* ====================================================
-          PRINTABLE THERMAL KOT DOCUMENT (Visible ONLY during window.print())
+          PRINTABLE THERMAL KOT DOCUMENT (Rendered at Root Portal for 80mm Print)
          ==================================================== */}
       {activePrintTicket && (
-        <div id="printable-kot" className="hidden print:block text-black">
-          <div className="text-center pb-2 border-b-2 border-dashed border-black">
-            <h1 className="text-base font-bold uppercase tracking-wider">
-              {settings.restaurantName || 'The Fat Buddha Deli'}
-            </h1>
-            <p className="text-[10px]">
-              {settings.tagline || 'Artisanal Himalayan Deli & Cafe'}
-            </p>
-            <div className="mt-2 py-1 px-2 border-2 border-black font-bold text-xs uppercase tracking-widest inline-block">
-              {activePrintTicket.station === 'kitchen' ? '★ KITCHEN KOT ★' : '★ RECEPTION / BARISTA KOT ★'}
-            </div>
-          </div>
-
-          {/* Ticket Metadata */}
-          <div className="py-2 text-[11px] border-b border-dashed border-black space-y-1">
-            <div className="flex justify-between items-center text-sm font-black">
-              <span>TABLE:</span>
-              <span className="text-base">
-                TABLE {activePrintTicket.tableNumber < 10 ? `0${activePrintTicket.tableNumber}` : activePrintTicket.tableNumber}
-              </span>
-            </div>
-            <div className="flex justify-between items-center">
-              <span>KOT #:</span>
-              <span className="font-bold">{activePrintTicket.kotNumber}</span>
-            </div>
-            <div className="flex justify-between items-center">
-              <span>ORDER #:</span>
-              <span>#{activePrintTicket.orderNumber}</span>
-            </div>
-            <div className="flex justify-between items-center">
-              <span>DATE & TIME:</span>
-              <span>{new Date().toLocaleDateString()} {new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
-            </div>
-            <div className="flex justify-between items-center">
-              <span>SOURCE:</span>
-              <span>{activePrintTicket.orderSource === 'GUEST_QR' ? 'Guest Self-Order (QR)' : 'POS Counter'}</span>
-            </div>
-          </div>
-
-          {/* Line Items Table */}
-          <div className="py-2 border-b-2 border-dashed border-black">
-            <div className="flex justify-between font-bold text-[11px] pb-1 border-b border-black">
-              <span className="w-10">QTY</span>
-              <span className="flex-1">ITEM</span>
-              <span className="w-16 text-right">SIZE</span>
-            </div>
-
-            <div className="divide-y divide-dashed divide-black/40 pt-1">
-              {activePrintTicket.filteredItems.map((item, idx) => (
-                <div key={idx} className="py-1.5 avoid-break">
-                  <div className={`flex items-start justify-between text-xs font-bold ${item.cancelled ? 'line-through opacity-60' : ''}`}>
-                    <span className="w-10 text-sm font-black">[{item.quantity}]</span>
-                    <span className="flex-1">
-                      {item.name} {item.cancelled && <span className="font-mono text-[9px] uppercase tracking-wider">[CANCELLED]</span>}
-                    </span>
-                    <span className="w-16 text-right text-[10px] font-normal">{item.variant || '-'}</span>
-                  </div>
-                  {item.cancelled && item.cancellationReason && (
-                    <div className="pl-10 text-[10px] font-bold text-red-600">
-                      *** CANCELLED: {item.cancellationReason} ***
-                    </div>
-                  )}
-                  {!item.cancelled && item.instructions && (
-                    <div className="pl-10 text-[10px] italic font-semibold">
-                      *** Note: {item.instructions} ***
-                    </div>
-                  )}
-                </div>
-              ))}
-            </div>
-          </div>
-
-          {/* Summary */}
-          <div className="pt-2 text-[11px] flex justify-between font-bold">
-            <span>TOTAL ITEMS:</span>
-            <span>{activePrintTicket.filteredItems.reduce((acc, i) => acc + i.quantity, 0)} Items</span>
-          </div>
-
-          <div className="pt-4 text-center text-[10px] border-t border-dashed border-black mt-2">
-            <div>*** TICKET DISPATCHED ***</div>
-            <div className="text-[9px] mt-0.5">Printed at {new Date().toLocaleTimeString()}</div>
-          </div>
-        </div>
+        <ThermalPrintPortal active={!!activePrintTicket}>
+          <ThermalKOTDocument
+            ticket={activePrintTicket}
+            settings={settings}
+            linkedOrder={orders.find(o => o.id === activePrintTicket.orderId)}
+            paperWidth="80mm"
+            id="printable-kot"
+          />
+        </ThermalPrintPortal>
       )}
     </div>
   );
