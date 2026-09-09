@@ -57,7 +57,7 @@ class PrinterService {
     const tagline = options.tagline || 'Taste the joy, Feel the Delight.';
     const paperWidth = options.paperWidth || '80mm';
     const is58mm = paperWidth === '58mm';
-    const widthStyle = is58mm ? 'width: 48mm; max-width: 48mm;' : 'width: 72mm; max-width: 72mm;';
+    const widthStyle = is58mm ? 'width: 44mm; max-width: 44mm;' : 'width: 66mm; max-width: 66mm;';
 
     const kotNumber = kotData.kotNumber || kotData.id || 'KOT-000';
     const tableNum = kotData.tableNumber !== undefined ? (kotData.tableNumber < 10 ? `TABLE 0${kotData.tableNumber}` : `TABLE ${kotData.tableNumber}`) : 'TABLE --';
@@ -109,8 +109,8 @@ class PrinterService {
           @page { margin: 0; size: auto; }
           * { box-sizing: border-box; -webkit-print-color-adjust: exact; }
           body {
-            margin: 0 auto;
-            padding: 4px 6px 18mm 6px;
+            margin: 0;
+            padding: 4px 10px 18mm 4px;
             font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Arial, monospace;
             color: #000;
             background: #fff;
@@ -267,7 +267,7 @@ class PrinterService {
     const currency = options.currencySymbol || 'Rs.';
     const paperWidth = options.paperWidth || '80mm';
     const is58mm = paperWidth === '58mm';
-    const widthStyle = is58mm ? 'width: 48mm; max-width: 48mm;' : 'width: 72mm; max-width: 72mm;';
+    const widthStyle = is58mm ? 'width: 44mm; max-width: 44mm;' : 'width: 66mm; max-width: 66mm;';
 
     const orderNumber = orderData.orderNumber || orderData.id || 'ORD-000';
     const tableNum = orderData.tableNumber !== undefined ? (orderData.tableNumber < 10 ? `T0${orderData.tableNumber}` : `T${orderData.tableNumber}`) : 'T--';
@@ -293,16 +293,16 @@ class PrinterService {
       const name = it.name || it.nameSnapshot || 'Item';
       const rate = (it.price || it.priceSnapshot || 0).toFixed(0);
       const amt = ((it.price || it.priceSnapshot || 0) * qty).toFixed(0);
-      const variant = it.variantName ? `<div style="font-size: 8.5px; color: #444; padding-left: 22px;">* Size: ${it.variantName}</div>` : '';
-      const note = it.instructions ? `<div style="font-size: 8.5px; font-style: italic; color: #333; padding-left: 22px;">↳ Note: ${it.instructions}</div>` : '';
+      const variant = it.variantName ? `<div style="font-size: 8.5px; color: #444; padding-left: 20px;">* Size: ${it.variantName}</div>` : '';
+      const note = it.instructions ? `<div style="font-size: 8.5px; font-style: italic; color: #333; padding-left: 20px;">↳ Note: ${it.instructions}</div>` : '';
 
       return `
         <div style="padding: 3px 0; border-bottom: 1px dashed #ccc; page-break-inside: avoid;">
           <div style="display: flex; justify-content: space-between; align-items: flex-start; font-size: 10px;">
-            <span style="width: 22px; font-weight: 900; text-align: center;">${qty}</span>
+            <span style="width: 20px; font-weight: 900; text-align: center;">${qty}</span>
             <span style="flex: 1; font-weight: bold; padding: 0 4px; word-break: break-word;">${name}</span>
-            <span style="width: 44px; text-align: right; color: #333;">${rate}</span>
-            <span style="width: 48px; text-align: right; font-weight: 900;">${amt}</span>
+            <span style="width: 38px; text-align: right; color: #333;">${rate}</span>
+            <span style="width: 42px; text-align: right; font-weight: 900; padding-right: 2px;">${amt}</span>
           </div>
           ${variant}
           ${note}
@@ -320,8 +320,8 @@ class PrinterService {
           @page { margin: 0; size: auto; }
           * { box-sizing: border-box; -webkit-print-color-adjust: exact; }
           body {
-            margin: 0 auto;
-            padding: 4px 6px 18mm 6px;
+            margin: 0;
+            padding: 4px 10px 18mm 4px;
             font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Arial, monospace;
             color: #000;
             background: #fff;
@@ -394,27 +394,27 @@ class PrinterService {
         <div class="meta-box">
           <div class="meta-row">
             <span>INVOICE: <strong class="black">${orderNumber}</strong></span>
-            <span class="black" style="font-size: 11px;">TABLE: ${tableNum}</span>
+            <span class="black" style="font-size: 11px; padding-right: 4px;">TABLE: ${tableNum}</span>
           </div>
           <div class="meta-row">
             <span>DATE: ${orderDate}</span>
-            <span>TIME: ${orderTime}</span>
+            <span style="padding-right: 4px;">TIME: ${orderTime}</span>
           </div>
           <div class="meta-row">
             <span>TYPE: <strong class="bold">${orderType}</strong></span>
-            <span>SRC: <strong class="bold">${source}</strong></span>
+            <span style="padding-right: 4px;">SRC: <strong class="bold">${source}</strong></span>
           </div>
           <div class="meta-row">
             <span>CAPTAIN: <strong class="bold">${waiterName}</strong></span>
-            ${orderData.kotNumber ? `<span>KOT: ${orderData.kotNumber}</span>` : ''}
+            ${orderData.kotNumber ? `<span style="padding-right: 4px;">KOT: ${orderData.kotNumber}</span>` : ''}
           </div>
         </div>
 
         <div class="table-header">
-          <span style="width: 22px; text-align: center;">QTY</span>
+          <span style="width: 20px; text-align: center;">QTY</span>
           <span style="flex: 1; padding: 0 4px;">ITEM</span>
-          <span style="width: 44px; text-align: right;">RATE</span>
-          <span style="width: 48px; text-align: right;">AMT</span>
+          <span style="width: 38px; text-align: right;">RATE</span>
+          <span style="width: 42px; text-align: right; padding-right: 2px;">AMT</span>
         </div>
 
         <div>
@@ -424,33 +424,33 @@ class PrinterService {
         <div class="totals-box">
           <div class="total-row">
             <span>Subtotal (${totalQty} items):</span>
-            <span class="bold">${currency} ${subtotal.toFixed(2)}</span>
+            <span class="bold" style="padding-right: 4px;">${currency} ${subtotal.toFixed(2)}</span>
           </div>
           ${discount > 0 ? `
             <div class="total-row">
               <span>Discount:</span>
-              <span>-${currency} ${discount.toFixed(2)}</span>
+              <span style="padding-right: 4px;">-${currency} ${discount.toFixed(2)}</span>
             </div>
             <div class="total-row" style="font-size: 9px; color: #444;">
               <span>Taxable Subtotal:</span>
-              <span>${currency} ${discountedSubtotal.toFixed(2)}</span>
+              <span style="padding-right: 4px;">${currency} ${discountedSubtotal.toFixed(2)}</span>
             </div>
           ` : ''}
           ${serviceCharge > 0 ? `
             <div class="total-row">
               <span>Service Charge:</span>
-              <span>${currency} ${serviceCharge.toFixed(2)}</span>
+              <span style="padding-right: 4px;">${currency} ${serviceCharge.toFixed(2)}</span>
             </div>
           ` : ''}
           ${vat > 0 ? `
             <div class="total-row">
               <span>VAT:</span>
-              <span>${currency} ${vat.toFixed(2)}</span>
+              <span style="padding-right: 4px;">${currency} ${vat.toFixed(2)}</span>
             </div>
           ` : ''}
           <div class="grand-total">
             <span>GRAND TOTAL:</span>
-            <span>${currency} ${grandTotal.toFixed(2)}</span>
+            <span style="padding-right: 4px;">${currency} ${grandTotal.toFixed(2)}</span>
           </div>
         </div>
 

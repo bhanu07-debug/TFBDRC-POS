@@ -222,8 +222,27 @@ export const POSProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   const [currentUser, setCurrentUser] = useState<User | null>(null);
 
   // App UI state
-  const [currentGuestTableNumber, setCurrentGuestTableNumber] = useState<number>(1);
-  const [activeInterface, setActiveInterface] = useState<'guest' | 'admin' | 'kds'>('admin');
+  const [currentGuestTableNumber, setCurrentGuestTableNumber] = useState<number>(() => {
+    if (typeof window !== 'undefined') {
+      const params = new URLSearchParams(window.location.search);
+      const tbl = params.get('table');
+      if (tbl) {
+        const p = parseInt(tbl, 10);
+        if (!isNaN(p) && p >= 1 && p <= 10) return p;
+      }
+    }
+    return 1;
+  });
+
+  const [activeInterface, setActiveInterface] = useState<'guest' | 'admin' | 'kds'>(() => {
+    if (typeof window !== 'undefined') {
+      const params = new URLSearchParams(window.location.search);
+      if (params.get('table')) {
+        return 'guest';
+      }
+    }
+    return 'admin';
+  });
   const [adminActiveTab, setAdminActiveTab] = useState<AdminTab>('dashboard');
   const [cart, setCart] = useState<CartItem[]>([]);
   const [searchQuery, setSearchQuery] = useState('');

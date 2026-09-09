@@ -79,13 +79,15 @@ export const ThermalKOTDocument: React.FC<ThermalKOTDocumentProps> = ({
   return (
     <div
       id={id}
-      className={`thermal-kot-container font-mono text-black bg-white mx-auto ${
-        is58mm ? 'w-[48mm] max-w-[48mm] text-[10px]' : 'w-[72mm] max-w-[72mm] text-[12px]'
+      className={`thermal-kot-container font-mono text-black bg-white ${
+        is58mm ? 'w-[44mm] max-w-[44mm] text-[9.5px]' : 'w-[66mm] max-w-[66mm] text-[11px]'
       } leading-snug`}
       style={{
-        width: is58mm ? '48mm' : '72mm',
-        maxWidth: is58mm ? '48mm' : '72mm',
-        margin: '0 auto',
+        width: is58mm ? '44mm' : '66mm',
+        maxWidth: is58mm ? '44mm' : '66mm',
+        margin: '0',
+        paddingLeft: '1mm',
+        paddingRight: '3.5mm',
         boxSizing: 'border-box'
       }}
     >
@@ -93,7 +95,7 @@ export const ThermalKOTDocument: React.FC<ThermalKOTDocumentProps> = ({
           1. HEADER & STATION BANNER
          ==================================================== */}
       <div className="text-center pb-2 border-b-2 border-dashed border-black">
-        <div className={`font-black uppercase tracking-tight ${is58mm ? 'text-xs' : 'text-sm'}`}>
+        <div className={`font-black uppercase tracking-tight leading-tight ${is58mm ? 'text-xs' : 'text-sm'}`}>
           {settings.restaurantName || settings.name || 'The Fat Buddha Delight Restro & Cafe'}
         </div>
         {settings.tagline && (
@@ -113,36 +115,36 @@ export const ThermalKOTDocument: React.FC<ThermalKOTDocumentProps> = ({
         {/* Prominent Table Number */}
         <div className="flex justify-between items-baseline py-0.5">
           <span className="font-bold text-xs uppercase">TABLE:</span>
-          <span className="font-black text-lg tracking-tight">
+          <span className="font-black text-lg tracking-tight pr-0.5">
             TABLE {ticket.tableNumber < 10 ? `0${ticket.tableNumber}` : ticket.tableNumber}
           </span>
         </div>
 
         <div className="flex justify-between items-center text-[10.5px]">
           <span>KOT #: <strong className="font-black">{ticket.kotNumber}</strong></span>
-          {orderNum && <span>ORDER #: <strong className="font-bold">#{orderNum}</strong></span>}
+          {orderNum && <span className="pr-0.5">ORDER #: <strong className="font-bold">#{orderNum}</strong></span>}
         </div>
 
         <div className="flex justify-between items-center text-[10px]">
           <span>DATE: {dateStr}</span>
-          <span>TIME: {timeStr}</span>
+          <span className="pr-0.5">TIME: {timeStr}</span>
         </div>
 
         <div className="flex justify-between items-center text-[10px]">
           <span>ORDER TYPE: <strong className="font-black uppercase">{orderType}</strong></span>
-          <span>SRC: <strong className="font-bold">{orderSourceLabel}</strong></span>
+          <span className="pr-0.5">SRC: <strong className="font-bold">{orderSourceLabel}</strong></span>
         </div>
 
         {/* Server / Captain Name (Crucial detail for Kitchen) */}
         <div className="flex justify-between items-center text-[10px] text-neutral-900 border-t border-dotted border-black/50 pt-1 mt-1">
           <span>CAPTAIN / WAITER:</span>
-          <span className="font-black">{captainName}</span>
+          <span className="font-black pr-0.5">{captainName}</span>
         </div>
 
         {linkedOrder?.guestName && (
           <div className="flex justify-between items-center text-[9.5px]">
             <span>GUEST:</span>
-            <span className="font-bold truncate max-w-[140px]">{linkedOrder.guestName}</span>
+            <span className="font-bold truncate max-w-[130px] pr-0.5">{linkedOrder.guestName}</span>
           </div>
         )}
 
@@ -158,8 +160,8 @@ export const ThermalKOTDocument: React.FC<ThermalKOTDocumentProps> = ({
          ==================================================== */}
       <div className="py-2 border-b-2 border-dashed border-black">
         <div className="flex justify-between font-black text-[10.5px] pb-1 border-b border-black uppercase tracking-wider">
-          <span className="w-10 text-left">QTY</span>
-          <span className="flex-1 text-left">ITEM & SPECIFICATIONS</span>
+          <span className="w-8 text-left">QTY</span>
+          <span className="flex-1 text-left px-1">ITEM & SPECIFICATIONS</span>
         </div>
 
         <div className="divide-y divide-dashed divide-black/40 pt-1.5 space-y-1.5">
@@ -167,13 +169,13 @@ export const ThermalKOTDocument: React.FC<ThermalKOTDocumentProps> = ({
             <div key={item.id || idx} className="pt-1.5 pb-1 avoid-break">
               <div className={`flex items-start ${item.cancelled ? 'line-through opacity-60' : ''}`}>
                 {/* Large quantity indicator */}
-                <span className="w-10 font-black text-sm tracking-tight pt-0.5 text-black">
+                <span className="w-8 font-black text-sm tracking-tight pt-0.5 text-black">
                   [{item.quantity}]
                 </span>
 
                 {/* Full item description spanning ticket width */}
-                <div className="flex-1 text-left">
-                  <div className="font-black text-[12px] leading-tight text-black break-words">
+                <div className="flex-1 text-left px-1">
+                  <div className="font-black text-[11.5px] leading-tight text-black break-words">
                     {item.name}
                     {item.cancelled && (
                       <span className="ml-1 font-mono text-[9.5px] uppercase font-bold text-red-600">
@@ -191,7 +193,7 @@ export const ThermalKOTDocument: React.FC<ThermalKOTDocumentProps> = ({
 
                   {/* Special preparation note / allergen warning */}
                   {!item.cancelled && item.instructions && (
-                    <div className="text-[10.5px] font-black italic text-black bg-neutral-100 p-1 border border-black/40 rounded mt-1">
+                    <div className="text-[10px] font-black italic text-black bg-neutral-100 p-1 border border-black/40 rounded mt-1">
                       *** NOTE: {item.instructions} ***
                     </div>
                   )}
@@ -214,7 +216,7 @@ export const ThermalKOTDocument: React.FC<ThermalKOTDocumentProps> = ({
          ==================================================== */}
       <div className="pt-2 text-[11px] flex justify-between font-black">
         <span className="uppercase tracking-wider">TOTAL ITEMS:</span>
-        <span className="text-sm">{totalQuantity} Items</span>
+        <span className="text-sm pr-0.5">{totalQuantity} Items</span>
       </div>
 
       <div className="pt-3 text-center text-[10px] border-t-2 border-dashed border-black mt-2 space-y-0.5">

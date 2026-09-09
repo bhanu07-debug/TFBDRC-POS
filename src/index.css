@@ -81,15 +81,16 @@
     visibility: visible !important;
   }
 
-  /* 80mm Dedicated Thermal Print Portal (Printable width: 72mm) */
+  /* 80mm Dedicated Thermal Print Portal (Safe printable width: 66mm with right padding buffer) */
   #thermal-print-container,
   body.printing-thermal #thermal-print-container {
     display: block !important;
     position: static !important;
-    width: 72mm !important;
-    max-width: 72mm !important;
-    margin: 0 auto !important;
-    padding: 1.5mm 2mm 18mm 2mm !important;
+    width: 66mm !important;
+    max-width: 66mm !important;
+    margin: 0 !important;
+    margin-left: 0 !important;
+    padding: 1.5mm 3.5mm 18mm 1mm !important;
     box-sizing: border-box !important;
     background: #ffffff !important;
     color: #000000 !important;
@@ -97,14 +98,15 @@
     font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, monospace !important;
   }
 
-  /* 58mm Thermal Print Portal (Printable width: 48mm) */
+  /* 58mm Thermal Print Portal (Safe printable width: 44mm) */
   body.printing-thermal-58mm #thermal-print-container {
     display: block !important;
     position: static !important;
-    width: 48mm !important;
-    max-width: 48mm !important;
-    margin: 0 auto !important;
-    padding: 1mm 1.5mm 16mm 1.5mm !important;
+    width: 44mm !important;
+    max-width: 44mm !important;
+    margin: 0 !important;
+    margin-left: 0 !important;
+    padding: 1mm 2.5mm 16mm 1mm !important;
     box-sizing: border-box !important;
     background: #ffffff !important;
     color: #000000 !important;
@@ -117,10 +119,11 @@
     position: absolute !important;
     left: 0 !important;
     top: 0 !important;
-    width: 72mm !important;
-    max-width: 72mm !important;
-    margin: 0 auto !important;
-    padding: 2mm 2.5mm 18mm 2.5mm !important;
+    width: 66mm !important;
+    max-width: 66mm !important;
+    margin: 0 !important;
+    padding: 2mm 3.5mm 18mm 1mm !important;
+    box-sizing: border-box !important;
     box-shadow: none !important;
     border: none !important;
     background: #ffffff !important;
@@ -137,10 +140,11 @@
     position: absolute !important;
     left: 0 !important;
     top: 0 !important;
-    width: 72mm !important;
-    max-width: 72mm !important;
-    margin: 0 auto !important;
-    padding: 2mm 2.5mm 18mm 2.5mm !important;
+    width: 66mm !important;
+    max-width: 66mm !important;
+    margin: 0 !important;
+    padding: 2mm 3.5mm 18mm 1mm !important;
+    box-sizing: border-box !important;
     box-shadow: none !important;
     border: none !important;
     background: #ffffff !important;
