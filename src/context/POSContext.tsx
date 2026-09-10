@@ -34,7 +34,8 @@ import {
   TableSession,
   TableNotification,
   KOTDestination,
-  AdminSession
+  AdminSession,
+  Department
 } from '../types';
 import {
   INITIAL_10_TABLES,
@@ -66,6 +67,9 @@ import {
   updateCategoryInDb,
   deleteCategoryFromDb,
   updateMenuItemKOTDestination,
+  addShopProductToDb,
+  updateShopProductInDb,
+  deleteShopProductFromDb,
   updateAdminPassword as updateAdminPasswordService
 } from '../services/firebaseService';
 import { OFFICIAL_CATEGORIES, OFFICIAL_MENU_ITEMS } from '../data/restaurantMenu';
@@ -184,9 +188,22 @@ interface POSContextType {
   deleteMenuItem: (itemId: string) => Promise<void>;
   updateMenuItemKOT: (itemId: string, kotDestination: KOTDestination) => Promise<void>;
 
+  // Shop Products & Categories
+  addShopProduct: (item: Omit<MenuItem, 'id' | 'createdAt' | 'updatedAt'>) => Promise<MenuItem>;
+  updateShopProduct: (id: string, updates: Partial<MenuItem>) => Promise<void>;
+  deleteShopProduct: (id: string) => Promise<void>;
+  createShopWalkInOrder: (
+    items: { menuItem: MenuItem; quantity: number; selectedVariant?: MenuItemVariant; instructions?: string }[],
+    paymentMethod: PaymentMethod,
+    customerName?: string,
+    customerPhone?: string,
+    discountAmount?: number,
+    cashierName?: string
+  ) => Promise<Order>;
+
   // Category management
-  addCategory: (name: string, description?: string) => Promise<Category>;
-  updateCategory: (id: string, newName: string, description?: string, oldName?: string) => Promise<void>;
+  addCategory: (name: string, description?: string, department?: Department) => Promise<Category>;
+  updateCategory: (id: string, newName: string, description?: string, oldName?: string, department?: Department) => Promise<void>;
   deleteCategory: (id: string, categoryName: string, fallbackCategory?: string) => Promise<void>;
 
   addInventoryItem: (item: Omit<InventoryItem, 'id' | 'createdAt' | 'updatedAt'>) => Promise<void>;
@@ -534,7 +551,13 @@ export const POSProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
              (o.paymentStatus || '').toLowerCase() !== 'paid'
       );
 
-      const tableBill = activeTableOrders.reduce((sum, o) => sum + (o.total || 0), 0);
+      const tableBill = activeTableOrders.reduce((ordSum, o) => {
+        const itemsSum = (o.items || []).reduce((itSum, it) => {
+          const unit = it.price ?? it.priceSnapshot ?? 0;
+          return itSum + (unit * (it.quantity || 1));
+        }, 0);
+        return ordSum + (itemsSum > 0 ? itemsSum : (o.total || 0));
+      }, 0);
       const activeOrdersCount = activeTableOrders.length;
 
       let dynamicStatus: TableStatus = 'AVAILABLE';
@@ -697,19 +720,34 @@ export const POSProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       tableNumber: tblNum,
       sessionId,
       source: 'GUEST_QR',
-      items: cart.map(ci => ({
-        menuItemId: ci.menuItem.id,
-        name: ci.menuItem.name,
-        price: ci.totalPrice > 0 ? ci.totalPrice / ci.quantity : ci.menuItem.price,
-        kotDestination: ci.menuItem.kotDestination || 'KITCHEN',
-        quantity: ci.quantity,
-        notes: [
-          ci.selectedVariant ? `Var: ${ci.selectedVariant.name}` : '',
-          ci.selectedAddOns && ci.selectedAddOns.length > 0 ? `Add: ${ci.selectedAddOns.map(a => a.name).join(', ')}` : '',
-          ci.specialInstructions || '',
-          notes || ''
-        ].filter(Boolean).join(' | ')
-      })),
+      items: cart.map(ci => {
+        const variantPrice = ci.selectedVariant?.price;
+        const addOnsPrice = ci.selectedAddOns?.reduce((s, a) => s + a.price, 0) || 0;
+        const unitPrice = variantPrice !== undefined ? (variantPrice + addOnsPrice) : ci.unitPrice;
+        const finalPrice = unitPrice > 0 ? unitPrice : (ci.totalPrice > 0 ? ci.totalPrice / ci.quantity : ci.menuItem.price);
+        const cleanName = ci.menuItem.name.replace(/\s*\([^)]*60ml[^)]*\)/gi, '').trim();
+        const itemName = ci.selectedVariant ? `${cleanName} (${ci.selectedVariant.name})` : cleanName;
+
+        return {
+          menuItemId: ci.menuItem.id,
+          name: itemName,
+          price: finalPrice,
+          kotDestination: ci.menuItem.kotDestination || (ci.menuItem.department === 'SHOP' ? 'RECEPTION' : 'KITCHEN'),
+          department: ci.menuItem.department,
+          sku: ci.menuItem.sku,
+          size: ci.selectedVariant?.size || ci.menuItem.size,
+          color: ci.selectedVariant?.color || ci.menuItem.color,
+          variantId: ci.selectedVariant?.id,
+          variantName: ci.selectedVariant?.name,
+          quantity: ci.quantity,
+          notes: [
+            ci.selectedVariant ? `Portion: ${ci.selectedVariant.name}` : '',
+            ci.selectedAddOns && ci.selectedAddOns.length > 0 ? `Add: ${ci.selectedAddOns.map(a => a.name).join(', ')}` : '',
+            ci.specialInstructions || '',
+            notes || ''
+          ].filter(Boolean).join(' | ')
+        };
+      }),
       createdBy: guestName ? `${guestName} (${guestPhone || 'Guest'})` : 'Guest QR',
       guestName: guestName || undefined,
       guestPhone: guestPhone || undefined,
@@ -751,7 +789,7 @@ export const POSProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     notes?: string
   ): Promise<Order> => {
     const numStr = tableNumber < 10 ? `0${tableNumber}` : `${tableNumber}`;
-    const tableId = `T${numStr}`;
+    const tableId = tableNumber === 0 ? 'T00' : `T${numStr}`;
 
     const currentTable = tables.find(t => t.tableNumber === tableNumber || t.id === tableId);
     let sessionId = currentTable?.activeSessionId;
@@ -766,19 +804,33 @@ export const POSProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       tableNumber,
       sessionId,
       source: 'ADMIN_MANUAL',
-      items: items.map(ci => ({
-        menuItemId: ci.menuItem.id,
-        name: ci.menuItem.name,
-        price: ci.selectedVariant ? ci.selectedVariant.price : ci.menuItem.price,
-        kotDestination: ci.menuItem.kotDestination || 'KITCHEN',
-        quantity: ci.quantity,
-        notes: [
-          ci.selectedVariant ? `Var: ${ci.selectedVariant.name}` : '',
-          ci.selectedAddOns && ci.selectedAddOns.length > 0 ? `Add: ${ci.selectedAddOns.map(a => a.name).join(', ')}` : '',
-          ci.instructions || '',
-          notes || ''
-        ].filter(Boolean).join(' | ')
-      })),
+      items: items.map(ci => {
+        const variantPrice = ci.selectedVariant?.price;
+        const addOnsPrice = ci.selectedAddOns?.reduce((s, a) => s + a.price, 0) || 0;
+        const unitPrice = variantPrice !== undefined ? (variantPrice + addOnsPrice) : (ci.selectedVariant ? ci.selectedVariant.price : ci.menuItem.price);
+        const cleanName = ci.menuItem.name.replace(/\s*\([^)]*60ml[^)]*\)/gi, '').trim();
+        const itemName = ci.selectedVariant ? `${cleanName} (${ci.selectedVariant.name})` : cleanName;
+
+        return {
+          menuItemId: ci.menuItem.id,
+          name: itemName,
+          price: unitPrice,
+          kotDestination: ci.menuItem.kotDestination || (ci.menuItem.department === 'SHOP' ? 'RECEPTION' : 'KITCHEN'),
+          department: ci.menuItem.department,
+          sku: ci.menuItem.sku,
+          size: ci.selectedVariant?.size || ci.menuItem.size,
+          color: ci.selectedVariant?.color || ci.menuItem.color,
+          variantId: ci.selectedVariant?.id,
+          variantName: ci.selectedVariant?.name,
+          quantity: ci.quantity,
+          notes: [
+            ci.selectedVariant ? `Portion: ${ci.selectedVariant.name}` : '',
+            ci.selectedAddOns && ci.selectedAddOns.length > 0 ? `Add: ${ci.selectedAddOns.map(a => a.name).join(', ')}` : '',
+            ci.instructions || '',
+            notes || ''
+          ].filter(Boolean).join(' | ')
+        };
+      }),
       createdBy: waiterName || currentUser?.email || 'POS Cashier',
       guestName: guestName || undefined,
       guestPhone: guestPhone || undefined,
@@ -787,7 +839,8 @@ export const POSProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       vatEnabled: settings.vatEnabled,
       vatRate: settings.vatRate,
       serviceChargeEnabled: settings.serviceChargeEnabled,
-      serviceChargePercent: settings.serviceChargePercent
+      serviceChargePercent: settings.serviceChargePercent,
+      orderType
     });
 
     // Optimistically update React state immediately
@@ -795,13 +848,15 @@ export const POSProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     if (newKots && newKots.length > 0) {
       setKots(prev => [...newKots, ...prev.filter(k => !newKots.some(nk => nk.id === k.id))]);
     }
-    setTables(prev => prev.map(t => (t.id === tableId || t.tableNumber === tableNumber) ? {
-      ...t,
-      status: 'OCCUPIED',
-      activeSessionId: sessionId,
-      activeOrdersCount: (t.activeOrdersCount || 0) + 1,
-      totalBill: (t.totalBill || 0) + order.total
-    } : t));
+    if (tableNumber > 0) {
+      setTables(prev => prev.map(t => (t.id === tableId || t.tableNumber === tableNumber) ? {
+        ...t,
+        status: 'OCCUPIED',
+        activeSessionId: sessionId,
+        activeOrdersCount: (t.activeOrdersCount || 0) + 1,
+        totalBill: (t.totalBill || 0) + order.total
+      } : t));
+    }
 
     return order;
   };
@@ -1106,6 +1161,16 @@ export const POSProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
             { status: 'ready', updatedAt: nowIso },
             { merge: true }
           );
+        } else if (status === 'in_progress') {
+          // Update linked order state to 'preparing'
+          setOrders(prev =>
+            prev.map(o => (o.id === targetKot.orderId && o.status !== 'ready' && o.status !== 'served' && o.status !== 'completed' ? { ...o, status: 'preparing', updatedAt: nowIso } : o))
+          );
+          await setDoc(
+            doc(db, 'orders', targetKot.orderId),
+            { status: 'preparing', updatedAt: nowIso },
+            { merge: true }
+          );
         } else if (status === 'cancelled') {
           // Check if other active KOTs exist for this order
           const otherKots = kots.filter(
@@ -1168,7 +1233,13 @@ export const POSProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
            (o.status || '').toLowerCase() !== 'cancelled' &&
            (o.paymentStatus || '').toLowerCase() !== 'paid'
     );
-    const rawSubtotal = tableOrders.reduce((sum, o) => sum + (o.subtotal ?? o.total ?? 0), 0);
+    const rawSubtotal = tableOrders.reduce((ordSum, o) => {
+      const itemsSum = (o.items || []).reduce((itSum, it) => {
+        const unit = it.price ?? it.priceSnapshot ?? 0;
+        return itSum + (unit * (it.quantity || 1));
+      }, 0);
+      return ordSum + (itemsSum > 0 ? itemsSum : (o.subtotal ?? o.total ?? 0));
+    }, 0);
     const discountedSubtotal = Math.max(0, rawSubtotal - discountAmount);
     const serviceCharge = settings.serviceChargeEnabled
       ? Math.round((discountedSubtotal * (settings.serviceChargePercent || 0)) / 100)
@@ -1208,6 +1279,7 @@ export const POSProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     }
 
     // 2. Mark all orders for this table as PAID and COMPLETED in Firestore
+    const effectiveCashier = (cashierName || 'Cashier').trim();
     const batch = writeBatch(db);
     tableOrders.forEach(ord => {
       batch.update(doc(db, 'orders', ord.id), {
@@ -1215,6 +1287,8 @@ export const POSProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         paymentStatus: 'paid',
         paymentMethod: paymentMethod,
         paidAt: nowIso,
+        cashierName: effectiveCashier,
+        settledBy: effectiveCashier,
         updatedAt: nowIso
       });
     });
@@ -1249,6 +1323,8 @@ export const POSProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
           paymentStatus: 'paid',
           paymentMethod,
           paidAt: nowIso,
+          cashierName: effectiveCashier,
+          settledBy: effectiveCashier,
           updatedAt: nowIso
         }).catch(console.error);
       }
@@ -1265,6 +1341,8 @@ export const POSProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
             paymentStatus: 'paid',
             paymentMethod,
             paidAt: nowIso,
+            cashierName: effectiveCashier,
+            settledBy: effectiveCashier,
             updatedAt: nowIso
           };
         }
@@ -1297,6 +1375,7 @@ export const POSProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     const order = orders.find(o => o.id === orderId);
     if (!order) return;
     const nowIso = new Date().toISOString();
+    const effectiveCashier = (cashierName || 'Cashier').trim();
 
     const path = `orders/${orderId}`;
     try {
@@ -1305,6 +1384,8 @@ export const POSProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         paymentStatus: 'paid',
         paymentMethod,
         paidAt: nowIso,
+        cashierName: effectiveCashier,
+        settledBy: effectiveCashier,
         updatedAt: nowIso
       });
 
@@ -1317,21 +1398,30 @@ export const POSProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         status: 'PAID',
         transactionReference: txRef,
         transactionRef: txRef,
-        createdBy: cashierName || currentUser?.email || 'POS Staff',
+        createdBy: effectiveCashier || currentUser?.email || 'POS Staff',
         tableNumber: order.tableNumber,
         orderNumber: order.orderNumber,
         orderId: order.id,
         createdAt: nowIso,
         timestamp: nowIso,
         paidAt: nowIso,
-        cashierName: cashierName || 'Cashier'
+        cashierName: effectiveCashier
       });
       setPayments(prev => [rec, ...prev.filter(p => p.id !== rec.id)]);
 
       setOrders(prev =>
         prev.map(o =>
           o.id === orderId
-            ? { ...o, status: 'completed', paymentStatus: 'paid', paymentMethod, paidAt: nowIso, updatedAt: nowIso }
+            ? {
+                ...o,
+                status: 'completed',
+                paymentStatus: 'paid',
+                paymentMethod,
+                paidAt: nowIso,
+                cashierName: effectiveCashier,
+                settledBy: effectiveCashier,
+                updatedAt: nowIso
+              }
             : o
         )
       );
@@ -1500,8 +1590,101 @@ export const POSProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     await updateMenuItemKOTDestination(itemId, kotDestination);
   };
 
-  const addCategory = async (name: string, description?: string): Promise<Category> => {
-    const newCat = await addCategoryToDb(name, description);
+  // Shop Product CRUD Operations
+  const addShopProduct = async (
+    item: Omit<MenuItem, 'id' | 'createdAt' | 'updatedAt'>
+  ): Promise<MenuItem> => {
+    const newProduct = await addShopProductToDb(item);
+    setMenuItems(prev => [newProduct, ...prev.filter(m => m.id !== newProduct.id)]);
+    return newProduct;
+  };
+
+  const updateShopProduct = async (id: string, updates: Partial<MenuItem>): Promise<void> => {
+    setMenuItems(prev => prev.map(m => m.id === id ? {
+      ...m,
+      ...updates,
+      department: 'SHOP',
+      kotDestination: 'RECEPTION',
+      updatedAt: new Date().toISOString()
+    } : m));
+    await updateShopProductInDb(id, updates);
+  };
+
+  const deleteShopProduct = async (id: string): Promise<void> => {
+    setMenuItems(prev => prev.filter(m => m.id !== id));
+    await deleteShopProductFromDb(id);
+  };
+
+  // Walk-in retail checkout reusing the existing order and billing engine
+  const createShopWalkInOrder = async (
+    items: { menuItem: MenuItem; quantity: number; selectedVariant?: MenuItemVariant; instructions?: string }[],
+    paymentMethod: PaymentMethod,
+    customerName?: string,
+    customerPhone?: string,
+    discountAmount: number = 0,
+    cashierName?: string
+  ): Promise<Order> => {
+    // 1. Create order with tableNumber 0 and orderType 'walk_in'
+    const order = await createManualOrder(
+      0,
+      items,
+      'walk_in',
+      customerName,
+      customerPhone,
+      discountAmount,
+      undefined,
+      cashierName || currentUser?.email || 'Shop Cashier',
+      'Walk-In Shop Sale'
+    );
+
+    // 2. Immediately record payment and mark order paid
+    const paymentId = `PAY-${Date.now().toString(36)}-${Math.floor(100 + Math.random() * 900)}`;
+    const now = new Date().toISOString();
+    const paymentRec: PaymentRecord = {
+      id: paymentId,
+      sessionId: `SESSION-SHOP-${order.id}`,
+      billId: order.orderNumber,
+      amount: order.total,
+      method: paymentMethod,
+      status: 'PAID',
+      transactionReference: `TXN-${Date.now()}`,
+      createdAt: now,
+      createdBy: cashierName || currentUser?.email || 'Shop Cashier',
+      orderId: order.id,
+      tableNumber: 0,
+      subtotal: order.subtotal,
+      discount: order.discount,
+      vat: order.vat,
+      serviceCharge: order.serviceCharge,
+      totalAmount: order.total,
+      paymentMethod,
+      cashierName: cashierName || currentUser?.email || 'Shop Cashier',
+      paidAt: now,
+      orderType: 'walk_in',
+      customerName: customerName || undefined,
+      notes: 'Direct Shop Walk-in Settle'
+    };
+
+    try {
+      await recordPayment(paymentRec);
+      setPayments(prev => [paymentRec, ...prev]);
+    } catch (e) {
+      console.warn("Could not record walk-in payment in DB:", e);
+    }
+
+    await markOrderPaid(order.id, paymentMethod, cashierName);
+
+    return {
+      ...order,
+      paymentStatus: 'paid',
+      paidAt: now,
+      paymentMethod,
+      status: 'completed'
+    };
+  };
+
+  const addCategory = async (name: string, description?: string, department: Department = 'RESTAURANT'): Promise<Category> => {
+    const newCat = await addCategoryToDb(name, description, department);
     setCategories(prev => {
       if (prev.some(c => c.id === newCat.id || c.name.toLowerCase() === newCat.name.toLowerCase())) {
         return prev;
@@ -1511,7 +1694,7 @@ export const POSProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     return newCat;
   };
 
-  const updateCategory = async (id: string, newName: string, description?: string, oldName?: string) => {
+  const updateCategory = async (id: string, newName: string, description?: string, oldName?: string, department?: Department) => {
     const existingCat = categories.find(c => c.id === id);
     const prevName = oldName || existingCat?.name || '';
     const trimmedNew = newName.trim();
@@ -1520,6 +1703,7 @@ export const POSProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       ...c,
       name: trimmedNew,
       ...(description !== undefined ? { description: description.trim() } : {}),
+      ...(department !== undefined ? { department } : {}),
       updatedAt: new Date().toISOString()
     } : c));
 
@@ -1527,7 +1711,7 @@ export const POSProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       setMenuItems(prev => prev.map(m => m.category === prevName ? { ...m, category: trimmedNew } : m));
     }
 
-    await updateCategoryInDb(id, trimmedNew, prevName, description);
+    await updateCategoryInDb(id, trimmedNew, prevName, description, department);
   };
 
   const deleteCategory = async (id: string, categoryName: string, fallbackCategory: string = 'Special') => {
@@ -1768,6 +1952,13 @@ export const POSProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         addMenuItem,
         deleteMenuItem,
         updateMenuItemKOT,
+
+        // Shop management
+        addShopProduct,
+        updateShopProduct,
+        deleteShopProduct,
+        createShopWalkInOrder,
+
         addCategory,
         updateCategory,
         deleteCategory,

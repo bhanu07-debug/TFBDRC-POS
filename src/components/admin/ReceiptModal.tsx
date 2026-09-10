@@ -20,13 +20,16 @@ export const ReceiptModal: React.FC<ReceiptModalProps> = ({
   isOpen,
   onClose
 }) => {
-  const { settings: contextSettings } = usePOS();
+  const { settings: contextSettings, updateOrderStatus } = usePOS();
   const settings = propSettings || contextSettings || DEFAULT_SETTINGS;
   const [paperWidth, setPaperWidth] = useState<'80mm' | '58mm'>('80mm');
 
   if (!isOpen || !order) return null;
 
-  const handlePrint = () => {
+  const handlePrint = async () => {
+    if (order && (order.status === 'placed' || (order.status as string) === 'pending')) {
+      await updateOrderStatus(order.id, 'preparing');
+    }
     triggerThermalPrint(paperWidth);
   };
 

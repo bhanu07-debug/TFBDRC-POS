@@ -17,6 +17,8 @@ import {
   ReceiptText
 } from 'lucide-react';
 import { QRCodeSVG } from 'qrcode.react';
+import { FatBuddhaLogo } from '../common/FatBuddhaLogo';
+import { WifiQRModal } from '../guest/WifiQRModal';
 
 export const SettingsView: React.FC = () => {
   const { settings, updateSettings, resetToDemoData, tables, isCloudSynced } = usePOS();
@@ -24,6 +26,8 @@ export const SettingsView: React.FC = () => {
   const [savedSuccess, setSavedSuccess] = useState(false);
   const [isQrSheetVisible, setIsQrSheetVisible] = useState(false);
   const [isResetting, setIsResetting] = useState(false);
+  const [batchMode, setBatchMode] = useState<'order' | 'wifi' | 'dual'>('dual');
+  const [isWifiPreviewOpen, setIsWifiPreviewOpen] = useState(false);
 
   useEffect(() => {
     setFormData({
@@ -126,57 +130,187 @@ export const SettingsView: React.FC = () => {
       {/* Batch Table QR Codes Sheet for Printing */}
       {isQrSheetVisible && (
         <div id="printable-qr-sheet" className="p-6 bg-white text-gray-900 rounded-xl shadow-md border border-gray-200 space-y-6 animate-in fade-in duration-200 print:m-0 print:p-0 print:border-none">
-          <div className="flex flex-col sm:flex-row items-center justify-between gap-4 pb-4 border-b border-gray-200 print:hidden">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-gray-200 print:hidden">
             <div>
               <h3 className="text-sm font-bold uppercase text-gray-900">
                 Ready-to-Print Standee QR Sheet (Table 01 to Table 10)
               </h3>
               <p className="text-xs text-gray-500">
-                Print this page on cardstock paper to place acrylic QR standees on all restaurant tables.
+                Print on cardstock or acrylic. Diners scan to order and connect to Guest Wi-Fi directly from every table.
               </p>
             </div>
-            <button
-              onClick={() => window.print()}
-              className="px-4 py-2 bg-gray-900 hover:bg-black text-white font-bold rounded-lg text-xs flex items-center gap-2 shadow-xs transition"
-            >
-              <Printer className="w-4 h-4" />
-              <span>Print All 10 Standees</span>
-            </button>
+            
+            <div className="flex items-center gap-2">
+              {/* Standee Mode Selector */}
+              <div className="bg-gray-100 rounded-lg p-1 border border-gray-200 flex items-center gap-1 text-xs">
+                <button
+                  type="button"
+                  onClick={() => setBatchMode('order')}
+                  className={`px-2.5 py-1 rounded font-bold transition ${
+                    batchMode === 'order' ? 'bg-amber-500 text-white shadow-xs' : 'text-gray-600 hover:bg-gray-200'
+                  }`}
+                >
+                  Order QRs
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setBatchMode('wifi')}
+                  className={`px-2.5 py-1 rounded font-bold transition ${
+                    batchMode === 'wifi' ? 'bg-amber-500 text-white shadow-xs' : 'text-gray-600 hover:bg-gray-200'
+                  }`}
+                >
+                  WiFi QRs
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setBatchMode('dual')}
+                  className={`px-2.5 py-1 rounded font-bold transition ${
+                    batchMode === 'dual' ? 'bg-amber-500 text-white shadow-xs' : 'text-gray-600 hover:bg-gray-200'
+                  }`}
+                >
+                  Dual (Order + WiFi)
+                </button>
+              </div>
+
+              <button
+                onClick={() => window.print()}
+                className="px-4 py-2 bg-gray-900 hover:bg-black text-white font-bold rounded-lg text-xs flex items-center gap-2 shadow-xs transition"
+              >
+                <Printer className="w-4 h-4" />
+                <span>Print All 10 Standees</span>
+              </button>
+            </div>
           </div>
 
-          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
+          <div className={`grid gap-4 ${batchMode === 'dual' ? 'grid-cols-1 sm:grid-cols-2 md:grid-cols-3' : 'grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5'}`}>
             {tables.map(tbl => {
               const tableUrl = `${originUrl}/?table=${tbl.number}`;
+              const ssid = formData.wifiSsid || settings.wifiSsid || 'Fat_Buddha_Guest_WiFi';
+              const pass = formData.wifiPassword || settings.wifiPassword || 'fatbuddhadelight';
+              const wifiPayload = `WIFI:T:WPA;S:${ssid};P:${pass};;`;
 
+              if (batchMode === 'order') {
+                return (
+                  <div
+                    key={tbl.id}
+                    className="p-4 bg-white border border-gray-300 rounded-xl flex flex-col items-center text-center space-y-2 shadow-xs break-inside-avoid"
+                  >
+                    <FatBuddhaLogo size={28} alt="The Fat Buddha Delight" />
+                    <div className="text-[10px] font-bold tracking-wider uppercase text-amber-600">
+                      The Fat Buddha Delight
+                    </div>
+
+                    <div className="p-2 bg-white border border-gray-200 rounded-lg">
+                      <QRCodeSVG
+                        value={tableUrl}
+                        size={100}
+                        level="H"
+                        includeMargin={false}
+                      />
+                    </div>
+
+                    <div>
+                      <div className="text-base font-bold font-mono text-gray-900 leading-tight">
+                        {tbl.label}
+                      </div>
+                      <div className="text-[10px] text-gray-500 font-semibold">
+                        {tbl.section} • {tbl.capacity} Seats
+                      </div>
+                    </div>
+
+                    <div className="text-[9px] font-bold text-gray-500 pt-1 border-t border-gray-200 w-full">
+                      SCAN TO ORDER
+                    </div>
+                  </div>
+                );
+              }
+
+              if (batchMode === 'wifi') {
+                return (
+                  <div
+                    key={tbl.id}
+                    className="p-4 bg-white border-2 border-amber-400 rounded-xl flex flex-col items-center text-center space-y-2 shadow-xs break-inside-avoid"
+                  >
+                    <FatBuddhaLogo size={28} alt="The Fat Buddha Delight" />
+                    <div className="text-[10px] font-bold tracking-wider uppercase text-amber-600">
+                      Guest Free Wi-Fi
+                    </div>
+
+                    <div className="p-2 bg-white border border-gray-200 rounded-lg">
+                      <QRCodeSVG
+                        value={wifiPayload}
+                        size={100}
+                        level="M"
+                        includeMargin={false}
+                      />
+                    </div>
+
+                    <div>
+                      <div className="text-sm font-bold font-mono text-gray-900 leading-tight">
+                        {tbl.label} Access
+                      </div>
+                      <div className="text-[10px] text-gray-600 font-mono">
+                        {ssid}
+                      </div>
+                    </div>
+
+                    <div className="text-[9px] font-bold text-amber-700 pt-1 border-t border-gray-200 w-full">
+                      SCAN TO CONNECT
+                    </div>
+                  </div>
+                );
+              }
+
+              // Dual mode: both Order and WiFi
               return (
                 <div
                   key={tbl.id}
-                  className="p-4 bg-white border border-gray-300 rounded-xl flex flex-col items-center text-center space-y-2.5 shadow-xs break-inside-avoid"
+                  className="p-3 bg-white border-2 border-amber-500/80 rounded-2xl flex flex-col items-center text-center space-y-2 shadow-xs break-inside-avoid"
                 >
-                  <div className="text-[10px] font-bold tracking-wider uppercase text-amber-600">
-                    The Fat Buddha Delight
-                  </div>
-
-                  <div className="p-2 bg-white border border-gray-200 rounded-lg">
-                    <QRCodeSVG
-                      value={tableUrl}
-                      size={100}
-                      level="H"
-                      includeMargin={false}
-                    />
-                  </div>
-
-                  <div>
-                    <div className="text-base font-bold font-mono text-gray-900 leading-tight">
-                      {tbl.label}
-                    </div>
-                    <div className="text-[10px] text-gray-500 font-semibold">
-                      {tbl.section} • {tbl.capacity} Seats
+                  <div className="flex items-center gap-2">
+                    <FatBuddhaLogo size={24} alt="The Fat Buddha Delight" />
+                    <div className="text-left">
+                      <div className="text-[11px] font-black font-serif text-gray-900 leading-none">
+                        The Fat Buddha Delight
+                      </div>
+                      <div className="text-[9px] font-bold uppercase text-amber-600">
+                        {tbl.label} Standee
+                      </div>
                     </div>
                   </div>
 
-                  <div className="text-[9px] font-bold text-gray-500 pt-1 border-t border-gray-200 w-full">
-                    SCAN TO ORDER
+                  <div className="grid grid-cols-2 gap-2 w-full pt-1">
+                    {/* Order Food */}
+                    <div className="p-2 bg-gray-50 rounded-lg border border-gray-200 flex flex-col items-center">
+                      <span className="text-[8px] font-extrabold uppercase text-gray-700 mb-1">
+                        Order Food
+                      </span>
+                      <QRCodeSVG
+                        value={tableUrl}
+                        size={78}
+                        level="H"
+                        includeMargin={false}
+                      />
+                      <span className="text-[7px] text-gray-500 mt-1 font-bold">Scan Menu</span>
+                    </div>
+
+                    {/* Free WiFi */}
+                    <div className="p-2 bg-amber-50/70 rounded-lg border border-amber-200 flex flex-col items-center">
+                      <span className="text-[8px] font-extrabold uppercase text-amber-800 mb-1">
+                        Free WiFi
+                      </span>
+                      <QRCodeSVG
+                        value={wifiPayload}
+                        size={78}
+                        level="M"
+                        includeMargin={false}
+                      />
+                      <span className="text-[7px] text-amber-700 mt-1 font-bold">Scan to Join</span>
+                    </div>
+                  </div>
+
+                  <div className="text-[8px] text-gray-500 font-mono w-full border-t border-gray-200 pt-1">
+                    WiFi: {ssid} • Pass: {pass}
                   </div>
                 </div>
               );
@@ -189,9 +323,15 @@ export const SettingsView: React.FC = () => {
       <form onSubmit={handleSave} className="grid grid-cols-1 md:grid-cols-2 gap-6">
         {/* Business Profile */}
         <div className="p-5 bg-white rounded-xl border border-gray-200 shadow-xs space-y-4">
-          <div className="flex items-center gap-2 text-gray-900 font-bold text-xs uppercase tracking-wider pb-2 border-b border-gray-200">
-            <Store className="w-4 h-4 text-amber-500" />
-            <span>Restaurant Brand Profile</span>
+          <div className="flex items-center justify-between pb-2 border-b border-gray-200">
+            <div className="flex items-center gap-2 text-gray-900 font-bold text-xs uppercase tracking-wider">
+              <Store className="w-4 h-4 text-amber-500" />
+              <span>Restaurant Brand Profile</span>
+            </div>
+            <div className="flex items-center gap-2 text-[11px] text-amber-700 font-medium">
+              <FatBuddhaLogo size={26} alt="Official Logo" />
+              <span className="hidden sm:inline font-bold">Official Logo Active</span>
+            </div>
           </div>
 
           <div className="space-y-3 text-xs">
@@ -269,6 +409,15 @@ export const SettingsView: React.FC = () => {
                 />
               </div>
             </div>
+
+            <button
+              type="button"
+              onClick={() => setIsWifiPreviewOpen(true)}
+              className="w-full py-2 px-3 bg-amber-50 hover:bg-amber-100 text-amber-900 border border-amber-300 rounded-lg text-xs font-bold transition flex items-center justify-center gap-2 cursor-pointer"
+            >
+              <Wifi className="w-4 h-4 text-amber-600" />
+              <span>Preview & Print Guest WiFi QR Code</span>
+            </button>
           </div>
         </div>
 
@@ -339,6 +488,12 @@ export const SettingsView: React.FC = () => {
           </div>
         </div>
       </form>
+
+      {/* WiFi QR Modal Preview */}
+      <WifiQRModal
+        isOpen={isWifiPreviewOpen}
+        onClose={() => setIsWifiPreviewOpen(false)}
+      />
     </div>
   );
 };

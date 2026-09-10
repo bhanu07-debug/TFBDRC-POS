@@ -17,6 +17,7 @@ import {
   ExternalLink
 } from 'lucide-react';
 import { usePOS } from '../../context/POSContext';
+import { FatBuddhaLogo } from '../common/FatBuddhaLogo';
 
 export const AdminLoginPage: React.FC = () => {
   const {
@@ -226,9 +227,7 @@ export const AdminLoginPage: React.FC = () => {
       {/* Top Header / Quick Navigation */}
       <div className="w-full max-w-md flex items-center justify-between mb-6 z-10">
         <div className="flex items-center gap-2.5">
-          <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-amber-500 to-amber-700 flex items-center justify-center shadow-lg shadow-amber-500/20 text-white font-black text-sm">
-            FB
-          </div>
+          <FatBuddhaLogo size={36} alt="The Fat Buddha Delight Logo" />
           <div>
             <h1 className="text-sm font-bold text-white tracking-tight">
               {settings.restaurantName || 'The Fat Buddha Delight'}
@@ -274,8 +273,8 @@ export const AdminLoginPage: React.FC = () => {
         {viewMode === 'login' && (
           <div>
             <div className="mb-6 text-center">
-              <div className="w-12 h-12 mx-auto rounded-2xl bg-amber-500/15 border border-amber-500/30 flex items-center justify-center text-amber-400 mb-3 shadow-inner">
-                <Lock className="w-6 h-6" />
+              <div className="flex justify-center mb-3">
+                <FatBuddhaLogo size={68} alt="The Fat Buddha Delight Official Logo" />
               </div>
               <h2 className="text-xl font-bold text-white tracking-tight">Admin Sign In</h2>
               <p className="text-xs text-slate-400 mt-1">

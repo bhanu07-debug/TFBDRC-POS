@@ -61,6 +61,13 @@ export const ThermalReceiptDocument: React.FC<ThermalReceiptDocumentProps> = ({
           1. RESTAURANT HEADER (Centered)
          ==================================================== */}
       <div className="text-center pb-2 border-b-2 border-dashed border-black">
+        <div className="flex justify-center mb-1.5">
+          <img
+            src="/logo.svg"
+            alt="The Fat Buddha Delight Logo"
+            className={`${is58mm ? 'w-8 h-8' : 'w-10 h-10'} object-contain rounded-full border border-black/20`}
+          />
+        </div>
         <div className={`font-black uppercase tracking-tight leading-tight ${is58mm ? 'text-xs' : 'text-sm'}`}>
           {settings.restaurantName || settings.name || 'The Fat Buddha Delight Restro & Cafe'}
         </div>
@@ -103,7 +110,11 @@ export const ThermalReceiptDocument: React.FC<ThermalReceiptDocumentProps> = ({
         </div>
         <div className="flex justify-between items-center text-[9px] text-neutral-800">
           <span>CAPTAIN: <strong className="font-bold">{order.waiterName || 'Staff (Captain)'}</strong></span>
-          {order.kotNumber && <span className="pr-1">KOT: {order.kotNumber}</span>}
+          {(order.cashierName || (order as any).settledBy) ? (
+            <span className="pr-1">CASHIER: <strong className="font-bold">{order.cashierName || (order as any).settledBy}</strong></span>
+          ) : order.kotNumber ? (
+            <span className="pr-1">KOT: {order.kotNumber}</span>
+          ) : null}
         </div>
         {order.guestName && (
           <div className="flex justify-between items-center pt-0.5 text-[9px]">
@@ -151,7 +162,22 @@ export const ThermalReceiptDocument: React.FC<ThermalReceiptDocumentProps> = ({
                 {/* Variant / Size */}
                 {item.variantName && (
                   <div className="text-[8.5px] text-neutral-800 pl-6">
-                    * Size: {item.variantName}
+                    * Variant: {item.variantName}
+                  </div>
+                )}
+
+                {/* Shop Clothing attributes: Size & Color */}
+                {(item.size || item.color) && (
+                  <div className="text-[8.5px] text-neutral-800 pl-6">
+                    {item.size && <span>Size: {item.size} </span>}
+                    {item.color && <span>Color: {item.color}</span>}
+                  </div>
+                )}
+
+                {/* SKU */}
+                {item.sku && (
+                  <div className="text-[8px] font-mono text-neutral-600 pl-6">
+                    SKU: {item.sku}
                   </div>
                 )}
 
@@ -231,6 +257,11 @@ export const ThermalReceiptDocument: React.FC<ThermalReceiptDocumentProps> = ({
             <span className="font-bold"> ({order.paymentMethod.toUpperCase()})</span>
           )}
         </div>
+        {(order.cashierName || (order as any).settledBy || order.createdBy) && (
+          <div className="font-bold text-[9px] uppercase tracking-wide">
+            SETTLED BY: <strong>{order.cashierName || (order as any).settledBy || order.createdBy}</strong>
+          </div>
+        )}
         {order.paidAt && (
           <div className="text-[8.5px] text-neutral-700">
             Settled At: {new Date(order.paidAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}

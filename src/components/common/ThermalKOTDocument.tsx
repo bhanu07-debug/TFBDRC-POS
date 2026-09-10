@@ -7,6 +7,9 @@ interface ThermalKOTItem {
   quantity: number;
   name: string;
   variant?: string;
+  size?: string;
+  color?: string;
+  sku?: string;
   instructions?: string;
   category?: string;
   status?: string;
@@ -49,6 +52,9 @@ export const ThermalKOTDocument: React.FC<ThermalKOTDocumentProps> = ({
     quantity: item.quantity || 1,
     name: item.name || item.nameSnapshot || 'Dish Item',
     variant: item.variant || item.variantName,
+    size: item.size,
+    color: item.color,
+    sku: item.sku,
     instructions: item.instructions,
     category: item.category,
     status: item.status,
@@ -188,6 +194,21 @@ export const ThermalKOTDocument: React.FC<ThermalKOTDocumentProps> = ({
                   {item.variant && (
                     <div className="text-[10px] font-bold text-neutral-800 mt-0.5">
                       ↳ Variant: {item.variant}
+                    </div>
+                  )}
+
+                  {/* Shop attributes: Size & Color */}
+                  {(item.size || item.color) && (
+                    <div className="text-[9.5px] font-bold text-neutral-800 mt-0.5">
+                      ↳ {item.size && <span>Size: {item.size} </span>}
+                      {item.color && <span>Color: {item.color}</span>}
+                    </div>
+                  )}
+
+                  {/* SKU */}
+                  {item.sku && (
+                    <div className="text-[8.5px] font-mono text-neutral-600 mt-0.5">
+                      SKU: {item.sku}
                     </div>
                   )}
 

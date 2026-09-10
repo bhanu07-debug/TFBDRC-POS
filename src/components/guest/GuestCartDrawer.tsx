@@ -154,24 +154,39 @@ export const GuestCartDrawer: React.FC<GuestCartDrawerProps> = ({
                   >
                     <div className="flex items-start justify-between gap-2">
                       <div className="flex-1">
-                        <div className="flex items-center gap-1.5">
-                          {item.menuItem.dietary === 'veg' && (
-                            <span className="w-2 h-2 rounded-full bg-emerald-500 flex-shrink-0" />
-                          )}
-                          {item.menuItem.dietary === 'non-veg' && (
-                            <span className="w-2 h-2 rounded-full bg-rose-500 flex-shrink-0" />
-                          )}
-                          {item.menuItem.dietary === 'vegan' && (
-                            <span className="w-2 h-2 rounded-full bg-teal-400 flex-shrink-0" />
+                        <div className="flex items-center gap-1.5 flex-wrap">
+                          {item.menuItem.department === 'SHOP' ? (
+                            <span className="text-[10px] font-bold px-1.5 py-0.2 rounded bg-indigo-100 text-indigo-800 border border-indigo-200">
+                              SHOP
+                            </span>
+                          ) : (
+                            <>
+                              {item.menuItem.dietary === 'veg' && (
+                                <span className="w-2 h-2 rounded-full bg-emerald-500 flex-shrink-0" />
+                              )}
+                              {item.menuItem.dietary === 'non-veg' && (
+                                <span className="w-2 h-2 rounded-full bg-rose-500 flex-shrink-0" />
+                              )}
+                              {item.menuItem.dietary === 'vegan' && (
+                                <span className="w-2 h-2 rounded-full bg-teal-400 flex-shrink-0" />
+                              )}
+                            </>
                           )}
                           <h4 className="text-xs sm:text-sm font-semibold text-gray-900 font-sans">
                             {item.menuItem.name}
                           </h4>
                         </div>
 
+                        {item.menuItem.department === 'SHOP' && (item.menuItem.size || item.menuItem.color) && (
+                          <div className="text-[10px] text-gray-500 mt-0.5 ml-1 space-x-2">
+                            {item.menuItem.size && <span>Size: <strong className="text-gray-700">{item.menuItem.size}</strong></span>}
+                            {item.menuItem.color && <span>Color: <strong className="text-gray-700">{item.menuItem.color}</strong></span>}
+                          </div>
+                        )}
+
                         {item.selectedVariant && (
                           <span className="text-[11px] text-amber-700 font-medium block mt-0.5 ml-3.5">
-                            Portion: {item.selectedVariant.name}
+                            {item.menuItem.department === 'SHOP' ? 'Variant' : 'Portion'}: {item.selectedVariant.name}
                           </span>
                         )}
 

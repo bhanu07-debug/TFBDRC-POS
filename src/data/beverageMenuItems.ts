@@ -481,7 +481,7 @@ export const BEVERAGE_MENU_ITEMS: MenuItem[] = [
   {
     id: 'hard-khukuri-rum',
     code: 'HD01',
-    name: 'Khukuri Rum (60ml / Bottle)',
+    name: 'Khukuri Rum',
     category: 'Hard Drink',
     description: 'Iconic Himalayan dark rum matured in oak vats with rich notes of molasses, caramel, and mountain spices.',
     price: 180,

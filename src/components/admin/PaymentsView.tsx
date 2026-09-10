@@ -16,7 +16,9 @@ import {
   Sparkles,
   CalendarDays,
   FileSpreadsheet,
-  AlertCircle
+  AlertCircle,
+  UserCheck,
+  User
 } from 'lucide-react';
 
 export type PaymentDateFilter = 'today' | 'yesterday' | 'week' | 'month' | 'all' | 'custom';
@@ -29,6 +31,7 @@ export const PaymentsView: React.FC<PaymentsViewProps> = ({ onOpenReceipt }) => 
   const { payments, orders, settings } = usePOS();
   const [searchQuery, setSearchQuery] = useState('');
   const [methodFilter, setMethodFilter] = useState<string>('all');
+  const [cashierFilter, setCashierFilter] = useState<string>('all');
   const [dateFilter, setDateFilter] = useState<PaymentDateFilter>('today');
   const [revenueMode, setRevenueMode] = useState<'shift' | 'all'>('shift');
   const [exportNotice, setExportNotice] = useState<string | null>(null);
@@ -60,6 +63,7 @@ export const PaymentsView: React.FC<PaymentsViewProps> = ({ onOpenReceipt }) => 
         if (!existingOrderRefs.has(ordRef) && !existingIds.has(ord.id)) {
           const effectiveTime =
             ord.paidAt || ord.updatedAt || ord.createdAt || new Date().toISOString();
+          const effectiveCashier = ord.cashierName || (ord as any).settledBy || ord.createdBy || 'Cashier';
           list.push({
             id: `PAY-ORD-${ord.id}`,
             sessionId: ord.sessionId || `SES-${ord.tableNumber}`,
@@ -72,11 +76,11 @@ export const PaymentsView: React.FC<PaymentsViewProps> = ({ onOpenReceipt }) => 
             createdAt: effectiveTime,
             timestamp: effectiveTime,
             paidAt: effectiveTime,
-            createdBy: ord.createdBy || 'Cashier',
+            createdBy: effectiveCashier,
             tableNumber: ord.tableNumber,
             orderNumber: ord.orderNumber || `ORD-${ord.tableNumber}`,
             orderId: ord.id,
-            cashierName: 'Cashier'
+            cashierName: effectiveCashier
           });
         }
       }
@@ -88,6 +92,16 @@ export const PaymentsView: React.FC<PaymentsViewProps> = ({ onOpenReceipt }) => 
       return tB - tA;
     });
   }, [payments, orders]);
+
+  // Unique Cashiers for quick filter dropdown
+  const uniqueCashiers = useMemo(() => {
+    const names = new Set<string>();
+    mergedPayments.forEach(p => {
+      const c = p.cashierName || (p as any).settledBy || p.createdBy;
+      if (c && c.trim()) names.add(c.trim());
+    });
+    return Array.from(names).sort();
+  }, [mergedPayments]);
 
   // 2. Date filtering helper
   const isDateInFilter = (dateStr?: string, filter?: PaymentDateFilter): boolean => {
@@ -159,6 +173,12 @@ export const PaymentsView: React.FC<PaymentsViewProps> = ({ onOpenReceipt }) => 
         } else if (m !== methodFilter.toLowerCase()) {
           return false;
         }
+      }
+
+      // Cashier filter
+      if (cashierFilter !== 'all') {
+        const c = (p.cashierName || (p as any).settledBy || p.createdBy || '').toLowerCase();
+        if (c !== cashierFilter.toLowerCase()) return false;
       }
 
       // Search query
@@ -591,12 +611,13 @@ export const PaymentsView: React.FC<PaymentsViewProps> = ({ onOpenReceipt }) => 
           )}
         </div>
 
-        <div className="flex items-center gap-2 w-full sm:w-auto">
+        <div className="flex items-center gap-2 w-full sm:w-auto flex-wrap">
+          {/* Method Filter */}
           <select
             id="filter-payment-method"
             value={methodFilter}
             onChange={e => setMethodFilter(e.target.value)}
-            className="w-full sm:w-auto px-3 py-2 bg-gray-50 border border-gray-200 rounded-lg text-xs text-gray-700 focus:outline-none focus:border-amber-500 font-semibold"
+            className="px-3 py-2 bg-gray-50 border border-gray-200 rounded-lg text-xs text-gray-700 focus:outline-none focus:border-amber-500 font-semibold"
           >
             <option value="all">All Payment Methods</option>
             <option value="cash">Cash Only</option>
@@ -607,10 +628,30 @@ export const PaymentsView: React.FC<PaymentsViewProps> = ({ onOpenReceipt }) => 
             <option value="fonepay">Fonepay</option>
           </select>
 
-          {(methodFilter !== 'all' || searchQuery || dateFilter !== 'today') && (
+          {/* Dedicated Cashier Name Filter */}
+          <div className="flex items-center gap-1.5 px-2.5 py-1.5 bg-gray-50 border border-gray-200 rounded-lg text-xs font-semibold text-gray-700">
+            <UserCheck className="w-3.5 h-3.5 text-amber-600 flex-shrink-0" />
+            <select
+              id="filter-cashier-name"
+              value={cashierFilter}
+              onChange={e => setCashierFilter(e.target.value)}
+              className="bg-transparent text-xs text-gray-800 font-semibold focus:outline-none cursor-pointer"
+              title="Filter by Cashier / Staff member who settled the payment"
+            >
+              <option value="all">All Cashiers</option>
+              {uniqueCashiers.map(c => (
+                <option key={c} value={c}>
+                  Cashier: {c}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          {(methodFilter !== 'all' || cashierFilter !== 'all' || searchQuery || dateFilter !== 'today') && (
             <button
               onClick={() => {
                 setMethodFilter('all');
+                setCashierFilter('all');
                 setSearchQuery('');
                 setDateFilter('today');
               }}
@@ -740,9 +781,21 @@ export const PaymentsView: React.FC<PaymentsViewProps> = ({ onOpenReceipt }) => 
                         Rs. {(p.amount || 0).toLocaleString()}.00
                       </td>
 
-                      {/* Cashier */}
-                      <td className="p-3.5 text-gray-600">
-                        {p.cashierName || p.createdBy || 'Staff'}
+                      {/* Cashier - Prominently Displayed */}
+                      <td className="p-3.5">
+                        <div className="flex items-center gap-2">
+                          <div className="w-6 h-6 rounded-full bg-amber-100 text-amber-800 font-bold text-[10px] flex items-center justify-center flex-shrink-0 border border-amber-300">
+                            {((p.cashierName || (p as any).settledBy || p.createdBy || 'C').charAt(0)).toUpperCase()}
+                          </div>
+                          <div>
+                            <span className="font-bold text-gray-900 block text-xs">
+                              {p.cashierName || (p as any).settledBy || p.createdBy || 'Cashier'}
+                            </span>
+                            <span className="text-[10px] text-gray-400 block -mt-0.5">
+                              Settled By
+                            </span>
+                          </div>
+                        </div>
                       </td>
 
                       {/* Receipt Action */}
@@ -759,6 +812,7 @@ export const PaymentsView: React.FC<PaymentsViewProps> = ({ onOpenReceipt }) => 
                           <button
                             onClick={() => {
                               // Synthetic order for receipt printing if not found
+                              const effectiveCashier = p.cashierName || (p as any).settledBy || p.createdBy || 'Cashier';
                               const synthOrder: Order = {
                                 id: p.id,
                                 orderNumber: p.orderNumber || p.id,
@@ -774,7 +828,9 @@ export const PaymentsView: React.FC<PaymentsViewProps> = ({ onOpenReceipt }) => 
                                 items: [],
                                 createdAt: p.createdAt || p.timestamp || new Date().toISOString(),
                                 updatedAt: p.createdAt || p.timestamp || new Date().toISOString(),
-                                createdBy: p.createdBy || 'Cashier',
+                                createdBy: effectiveCashier,
+                                cashierName: effectiveCashier,
+                                settledBy: effectiveCashier,
                                 paymentStatus: 'paid',
                                 paymentMethod: p.method as any,
                                 paidAt: p.timestamp || p.createdAt,

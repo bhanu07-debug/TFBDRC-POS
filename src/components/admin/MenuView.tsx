@@ -1,10 +1,11 @@
 import React, { useState, useMemo } from 'react';
 import { usePOS } from '../../context/POSContext';
-import { MenuItem, DietaryType, KOTDestination } from '../../types';
+import { MenuItem, DietaryType, KOTDestination, MenuItemVariant } from '../../types';
 import { DishImageUploader } from '../common/DishImageUploader';
 import { normalizeImageUrl, DEFAULT_DISH_IMAGE } from '../../utils/imageUtils';
 import { CATEGORY_NAMES, RESTAURANT_PROFILE } from '../../data/restaurantMenu';
 import { CategoryManagerModal } from './CategoryManagerModal';
+import { MenuItemPortionsEditor } from './MenuItemPortionsEditor';
 import {
   Search,
   Plus,
@@ -64,7 +65,8 @@ export const MenuView: React.FC = () => {
     prepTimeMinutes: 15,
     inStock: true,
     image: 'https://images.unsplash.com/photo-1541696432-82c6da8ce7bf?auto=format&fit=crop&w=600&q=80',
-    tags: 'Delight, Special'
+    tags: 'Delight, Special',
+    variants: [] as MenuItemVariant[]
   });
 
   const [isAddingNewCategory, setIsAddingNewCategory] = useState(false);
@@ -179,7 +181,8 @@ export const MenuView: React.FC = () => {
       prepTimeMinutes: Number(newItemData.prepTimeMinutes),
       inStock: newItemData.inStock,
       image: normalizeImageUrl(newItemData.image) || DEFAULT_DISH_IMAGE,
-      tags: newItemData.tags.split(',').map(t => t.trim()).filter(Boolean)
+      tags: newItemData.tags.split(',').map(t => t.trim()).filter(Boolean),
+      variants: newItemData.variants && newItemData.variants.length > 0 ? newItemData.variants : undefined
     });
     setIsNewItemModalOpen(false);
   };
@@ -355,7 +358,18 @@ export const MenuView: React.FC = () => {
                       </td>
 
                       <td className="p-3.5 font-mono font-bold text-gray-900 text-xs">
-                        Rs. {item.price.toLocaleString()}.00
+                        {item.variants && item.variants.length > 0 ? (
+                          <div>
+                            <div className="text-gray-900">
+                              Rs. {Math.min(...item.variants.map(v => v.price)).toLocaleString()} – {Math.max(...item.variants.map(v => v.price)).toLocaleString()}
+                            </div>
+                            <span className="inline-block mt-0.5 px-1.5 py-0.2 rounded text-[10px] font-sans font-bold bg-amber-100 text-amber-900 border border-amber-200">
+                              {item.variants.length} portions ({item.variants[0].name.split(' ')[0]} to {item.variants[item.variants.length - 1].name.split(' ')[0]})
+                            </span>
+                          </div>
+                        ) : (
+                          `Rs. ${item.price.toLocaleString()}.00`
+                        )}
                       </td>
 
                       <td className="p-3.5">
@@ -537,7 +551,7 @@ export const MenuView: React.FC = () => {
                 </div>
 
                 <div>
-                  <label className="font-bold text-gray-900 block mb-1">Price (Rs.) *</label>
+                  <label className="font-bold text-gray-900 block mb-1">Base Price (Rs.) *</label>
                   <input
                     type="number"
                     value={newItemData.price ?? 0}
@@ -546,6 +560,20 @@ export const MenuView: React.FC = () => {
                   />
                 </div>
               </div>
+
+              {/* Portions & Portion Pricing Manager */}
+              <MenuItemPortionsEditor
+                variants={newItemData.variants}
+                basePrice={newItemData.price}
+                onChange={variants => {
+                  setNewItemData({
+                    ...newItemData,
+                    variants,
+                    price: variants.length > 0 ? variants[0].price : newItemData.price
+                  });
+                }}
+                onBasePriceChange={price => setNewItemData({ ...newItemData, price })}
+              />
 
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                 <div>
@@ -794,7 +822,7 @@ export const MenuView: React.FC = () => {
                 </div>
 
                 <div>
-                  <label className="font-bold text-gray-900 block mb-1">Price (Rs.) *</label>
+                  <label className="font-bold text-gray-900 block mb-1">Base Price (Rs.) *</label>
                   <input
                     type="number"
                     value={editingItem.price ?? 0}
@@ -803,6 +831,20 @@ export const MenuView: React.FC = () => {
                   />
                 </div>
               </div>
+
+              {/* Portions & Portion Pricing Manager */}
+              <MenuItemPortionsEditor
+                variants={editingItem.variants || []}
+                basePrice={editingItem.price}
+                onChange={variants => {
+                  setEditingItem({
+                    ...editingItem,
+                    variants,
+                    price: variants.length > 0 ? variants[0].price : editingItem.price
+                  });
+                }}
+                onBasePriceChange={price => setEditingItem({ ...editingItem, price })}
+              />
 
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                 <div>

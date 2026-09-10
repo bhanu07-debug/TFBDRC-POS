@@ -1,6 +1,6 @@
 import React, { useState, useMemo } from 'react';
 import { usePOS } from '../../context/POSContext';
-import { MenuItem, MenuItemVariant, MenuItemAddOn, OrderType, Table } from '../../types';
+import { MenuItem, MenuItemVariant, MenuItemAddOn, OrderType, Table, Department } from '../../types';
 import { normalizeImageUrl, DEFAULT_DISH_IMAGE } from '../../utils/imageUtils';
 import { CATEGORY_NAMES } from '../../data/restaurantMenu';
 import {
@@ -19,7 +19,9 @@ import {
   Flame,
   Leaf,
   Coffee,
-  ChefHat
+  ChefHat,
+  ShoppingBag,
+  X
 } from 'lucide-react';
 
 interface ManualPOSViewProps {
@@ -47,6 +49,7 @@ export const ManualPOSView: React.FC<ManualPOSViewProps> = ({
   const [waiterName, setWaiterName] = useState('Rohit S. (Captain)');
   const [discountPercent, setDiscountPercent] = useState<number>(0);
   const [selectedCategory, setSelectedCategory] = useState<string>('All');
+  const [selectedDepartment, setSelectedDepartment] = useState<'ALL' | Department>('ALL');
   const [searchQuery, setSearchQuery] = useState('');
   const [dietaryFilter, setDietaryFilter] = useState<'all' | 'veg' | 'non-veg'>('all');
 
@@ -65,40 +68,52 @@ export const ManualPOSView: React.FC<ManualPOSViewProps> = ({
   const [punchCart, setPunchCart] = useState<PunchItem[]>([]);
   const [editingNoteItemId, setEditingNoteItemId] = useState<string | null>(null);
   const [tempNote, setTempNote] = useState('');
+  const [variantModalItem, setVariantModalItem] = useState<MenuItem | null>(null);
 
   const categories = useMemo(() => {
     const set = new Set<string>();
     (firestoreCategories || []).forEach(c => {
       if (c.name && c.name.trim() && c.isActive !== false) {
-        set.add(c.name.trim());
+        if (selectedDepartment === 'ALL' || (c.department || 'RESTAURANT') === selectedDepartment) {
+          set.add(c.name.trim());
+        }
       }
     });
-    (CATEGORY_NAMES || []).forEach(c => set.add(c));
+    if (selectedDepartment === 'ALL' || selectedDepartment === 'RESTAURANT') {
+      (CATEGORY_NAMES || []).forEach(c => set.add(c));
+    }
     (menuItems || []).forEach(item => {
-      if (item && item.category && item.category.trim()) set.add(item.category.trim());
+      const itemDept = item.department || 'RESTAURANT';
+      if (selectedDepartment === 'ALL' || itemDept === selectedDepartment) {
+        if (item && item.category && item.category.trim()) set.add(item.category.trim());
+      }
     });
     return ['All', ...Array.from(set)];
-  }, [firestoreCategories, menuItems]);
+  }, [firestoreCategories, menuItems, selectedDepartment]);
 
   const filteredMenuItems = menuItems.filter(item => {
+    const itemDept = item.department || 'RESTAURANT';
+    if (selectedDepartment !== 'ALL' && itemDept !== selectedDepartment) return false;
     if (selectedCategory !== 'All' && item.category !== selectedCategory) return false;
-    if (dietaryFilter === 'veg' && item.dietary !== 'veg') return false;
-    if (dietaryFilter === 'non-veg' && item.dietary !== 'non-veg') return false;
+    if (itemDept === 'RESTAURANT') {
+      if (dietaryFilter === 'veg' && item.dietary !== 'veg') return false;
+      if (dietaryFilter === 'non-veg' && item.dietary !== 'non-veg') return false;
+    }
 
     if (searchQuery.trim()) {
       const q = searchQuery.toLowerCase();
       const matchName = item.name.toLowerCase().includes(q);
       const matchCode = (item.code || '').toLowerCase().includes(q);
-      if (!matchName && !matchCode) return false;
+      const matchSku = (item.sku || '').toLowerCase().includes(q);
+      if (!matchName && !matchCode && !matchSku) return false;
     }
     return true;
   });
 
-  const handleAddItem = (item: MenuItem) => {
-    if (!item.inStock) return;
-    const defaultVariant = item.variants && item.variants.length > 0 ? item.variants[0] : undefined;
-    const unitPrice = defaultVariant ? defaultVariant.price : item.price;
-    const cartItemId = `${item.id}-${defaultVariant?.id || 'std'}`;
+  const addVariantItemToCart = (item: MenuItem, variant?: MenuItemVariant) => {
+    const selectedVariant = variant || (item.variants && item.variants.length > 0 ? item.variants[0] : undefined);
+    const unitPrice = selectedVariant ? selectedVariant.price : item.price;
+    const cartItemId = `${item.id}-${selectedVariant?.id || 'std'}`;
 
     setPunchCart(prev => {
       const existing = prev.find(p => p.id === cartItemId);
@@ -115,13 +130,42 @@ export const ManualPOSView: React.FC<ManualPOSViewProps> = ({
           id: cartItemId,
           menuItem: item,
           quantity: 1,
-          selectedVariant: defaultVariant,
+          selectedVariant,
           selectedAddOns: [],
           unitPrice,
           totalPrice: unitPrice
         }
       ];
     });
+    setVariantModalItem(null);
+  };
+
+  const handleAddItem = (item: MenuItem) => {
+    if (!item.inStock) return;
+    if (item.variants && item.variants.length > 1) {
+      setVariantModalItem(item);
+    } else {
+      addVariantItemToCart(item, item.variants?.[0]);
+    }
+  };
+
+  const updateItemVariant = (cartId: string, variantId: string) => {
+    setPunchCart(prev =>
+      prev.map(p => {
+        if (p.id !== cartId) return p;
+        const newVar = p.menuItem.variants?.find(v => v.id === variantId);
+        if (!newVar) return p;
+        const newUnitPrice = newVar.price;
+        const newCartId = `${p.menuItem.id}-${newVar.id}`;
+        return {
+          ...p,
+          id: newCartId,
+          selectedVariant: newVar,
+          unitPrice: newUnitPrice,
+          totalPrice: p.quantity * newUnitPrice
+        };
+      })
+    );
   };
 
   const updateQuantity = (id: string, delta: number) => {
@@ -162,13 +206,13 @@ export const ManualPOSView: React.FC<ManualPOSViewProps> = ({
     : 0;
   const grandTotal = taxableAmount + serviceCharge + taxAmount;
 
-  const handlePlaceOrder = () => {
+  const handlePlaceOrder = async () => {
     if (punchCart.length === 0) {
       alert('Please add at least one item to the cart.');
       return;
     }
 
-    const createdOrder = createManualOrder(
+    const createdOrder = await createManualOrder(
       selectedTableNumber,
       punchCart.map(item => ({
         menuItem: item.menuItem,
@@ -242,35 +286,76 @@ export const ManualPOSView: React.FC<ManualPOSViewProps> = ({
             />
           </div>
 
-          {/* Dietary Filter */}
+          {/* Department Filter Toggle */}
           <div className="flex items-center gap-1 bg-white p-1 rounded-lg border border-gray-200 text-xs">
             <button
-              onClick={() => setDietaryFilter('all')}
+              onClick={() => {
+                setSelectedDepartment('ALL');
+                setSelectedCategory('All');
+              }}
               className={`px-2.5 py-1 rounded-md transition font-semibold ${
-                dietaryFilter === 'all' ? 'bg-gray-900 text-white' : 'text-gray-600 hover:text-gray-900'
+                selectedDepartment === 'ALL' ? 'bg-amber-600 text-white' : 'text-gray-600 hover:text-gray-900'
               }`}
             >
-              All
+              All Depts
             </button>
             <button
-              onClick={() => setDietaryFilter('veg')}
+              onClick={() => {
+                setSelectedDepartment('RESTAURANT');
+                setSelectedCategory('All');
+              }}
               className={`px-2.5 py-1 rounded-md transition font-semibold flex items-center gap-1 ${
-                dietaryFilter === 'veg' ? 'bg-emerald-600 text-white' : 'text-emerald-700 hover:bg-emerald-50'
+                selectedDepartment === 'RESTAURANT' ? 'bg-amber-600 text-white' : 'text-gray-600 hover:text-gray-900'
               }`}
             >
-              <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
-              <span>Veg</span>
+              <UtensilsCrossed className="w-3.5 h-3.5" />
+              Restaurant
             </button>
             <button
-              onClick={() => setDietaryFilter('non-veg')}
+              onClick={() => {
+                setSelectedDepartment('SHOP');
+                setSelectedCategory('All');
+              }}
               className={`px-2.5 py-1 rounded-md transition font-semibold flex items-center gap-1 ${
-                dietaryFilter === 'non-veg' ? 'bg-rose-600 text-white' : 'text-rose-700 hover:bg-rose-50'
+                selectedDepartment === 'SHOP' ? 'bg-indigo-600 text-white' : 'text-gray-600 hover:text-gray-900'
               }`}
             >
-              <span className="w-1.5 h-1.5 rounded-full bg-rose-500" />
-              <span>Non-Veg</span>
+              <ShoppingBag className="w-3.5 h-3.5" />
+              Shop
             </button>
           </div>
+
+          {/* Dietary Filter (Only for Restaurant) */}
+          {selectedDepartment !== 'SHOP' && (
+            <div className="flex items-center gap-1 bg-white p-1 rounded-lg border border-gray-200 text-xs">
+              <button
+                onClick={() => setDietaryFilter('all')}
+                className={`px-2.5 py-1 rounded-md transition font-semibold ${
+                  dietaryFilter === 'all' ? 'bg-gray-900 text-white' : 'text-gray-600 hover:text-gray-900'
+                }`}
+              >
+                All
+              </button>
+              <button
+                onClick={() => setDietaryFilter('veg')}
+                className={`px-2.5 py-1 rounded-md transition font-semibold flex items-center gap-1 ${
+                  dietaryFilter === 'veg' ? 'bg-emerald-600 text-white' : 'text-emerald-700 hover:bg-emerald-50'
+                }`}
+              >
+                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
+                <span>Veg</span>
+              </button>
+              <button
+                onClick={() => setDietaryFilter('non-veg')}
+                className={`px-2.5 py-1 rounded-md transition font-semibold flex items-center gap-1 ${
+                  dietaryFilter === 'non-veg' ? 'bg-rose-600 text-white' : 'text-rose-700 hover:bg-rose-50'
+                }`}
+              >
+                <span className="w-1.5 h-1.5 rounded-full bg-rose-500" />
+                <span>Non-Veg</span>
+              </button>
+            </div>
+          )}
         </div>
 
         {/* Menu Items Scroll Grid */}
@@ -298,18 +383,34 @@ export const ManualPOSView: React.FC<ManualPOSViewProps> = ({
 
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-1.5">
-                    <span
-                      className={`w-2 h-2 rounded-full flex-shrink-0 ${
-                        item.dietary === 'veg' ? 'bg-emerald-500' : 'bg-rose-500'
-                      }`}
-                    />
+                    {item.department === 'SHOP' ? (
+                      <span className="w-2 h-2 rounded-full bg-indigo-500 flex-shrink-0" />
+                    ) : (
+                      <span
+                        className={`w-2 h-2 rounded-full flex-shrink-0 ${
+                          item.dietary === 'veg' ? 'bg-emerald-500' : 'bg-rose-500'
+                        }`}
+                      />
+                    )}
                     <h4 className="text-xs font-bold text-gray-900 truncate">
                       {item.name}
                     </h4>
                   </div>
-                  <p className="text-[11px] text-gray-400 truncate mt-0.5">
-                    {item.category}
-                  </p>
+                  <div className="flex items-center gap-1 mt-0.5">
+                    <p className="text-[11px] text-gray-400 truncate">
+                      {item.category}
+                    </p>
+                    {item.department === 'SHOP' && (
+                      <span className="text-[9px] font-bold px-1 py-0.2 rounded bg-indigo-100 text-indigo-800">
+                        SHOP
+                      </span>
+                    )}
+                    {item.size && (
+                      <span className="text-[9px] font-bold px-1 py-0.2 rounded bg-gray-100 text-gray-700">
+                        {item.size}
+                      </span>
+                    )}
+                  </div>
                   <div className="mt-1 flex items-center justify-between">
                     <span className="text-xs font-bold font-mono text-gray-900">
                       Rs. {item.price.toLocaleString()}
@@ -399,11 +500,30 @@ export const ManualPOSView: React.FC<ManualPOSViewProps> = ({
                     <p className="text-xs font-bold text-gray-900 truncate">
                       {item.menuItem.name}
                     </p>
-                    <p className="text-[11px] text-gray-500 font-mono">
+                    {item.menuItem.variants && item.menuItem.variants.length > 1 ? (
+                      <div className="mt-1">
+                        <select
+                          value={item.selectedVariant?.id || ''}
+                          onChange={(e) => updateItemVariant(item.id, e.target.value)}
+                          className="text-[11px] font-semibold bg-amber-50 text-amber-900 border border-amber-300 rounded px-1.5 py-0.5"
+                        >
+                          {item.menuItem.variants.map(v => (
+                            <option key={v.id} value={v.id}>
+                              {v.name} • Rs. {v.price}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                    ) : item.selectedVariant ? (
+                      <span className="inline-block mt-0.5 px-1.5 py-0.2 rounded text-[10px] font-bold bg-amber-100 text-amber-900 border border-amber-200">
+                        {item.selectedVariant.name}
+                      </span>
+                    ) : null}
+                    <p className="text-[11px] text-gray-500 font-mono mt-0.5">
                       Rs. {item.unitPrice} each
                     </p>
                     {item.instructions && (
-                      <p className="text-[10px] text-amber-700 bg-amber-50 px-1.5 py-0.5 rounded-sm inline-block">
+                      <p className="text-[10px] text-amber-700 bg-amber-50 px-1.5 py-0.5 rounded-sm inline-block mt-0.5">
                         Note: {item.instructions}
                       </p>
                     )}
@@ -510,6 +630,48 @@ export const ManualPOSView: React.FC<ManualPOSViewProps> = ({
           </button>
         </div>
       </div>
+
+      {/* Portion / Variant Picker Modal */}
+      {variantModalItem && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs">
+          <div className="bg-white border border-gray-200 rounded-2xl w-full max-w-sm overflow-hidden shadow-2xl p-5 space-y-4 animate-in fade-in">
+            <div className="flex items-start justify-between">
+              <div>
+                <h3 className="text-sm font-bold text-gray-900">{variantModalItem.name}</h3>
+                <p className="text-xs text-gray-500">Select portion / bottle size:</p>
+              </div>
+              <button
+                onClick={() => setVariantModalItem(null)}
+                className="p-1 text-gray-400 hover:text-gray-700 rounded-lg hover:bg-gray-100"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <div className="space-y-2">
+              {variantModalItem.variants?.map(v => (
+                <button
+                  key={v.id}
+                  onClick={() => addVariantItemToCart(variantModalItem, v)}
+                  className="w-full p-3 rounded-xl border border-gray-200 hover:border-amber-500 hover:bg-amber-50/50 flex items-center justify-between text-left transition group"
+                >
+                  <span className="text-xs font-bold text-gray-800 group-hover:text-amber-800">{v.name}</span>
+                  <span className="text-xs font-mono font-black text-amber-600">
+                    {settings.currencySymbol || 'Rs.'} {v.price.toLocaleString()}
+                  </span>
+                </button>
+              ))}
+            </div>
+
+            <button
+              onClick={() => setVariantModalItem(null)}
+              className="w-full py-2 bg-gray-100 hover:bg-gray-200 text-gray-700 text-xs font-bold rounded-xl transition"
+            >
+              Cancel
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

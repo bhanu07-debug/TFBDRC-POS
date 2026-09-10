@@ -38,6 +38,10 @@ interface StationTicket extends KOTTicket {
     quantity: number;
     name: string;
     variant?: string;
+    size?: string;
+    color?: string;
+    sku?: string;
+    department?: string;
     instructions?: string;
     category?: string;
     status?: string;
@@ -51,6 +55,7 @@ export const KOTView: React.FC = () => {
     kots,
     menuItems,
     updateKOTStatus,
+    updateOrderStatus,
     settings,
     updateSettings,
     sendTableNotification,
@@ -78,6 +83,13 @@ export const KOTView: React.FC = () => {
 
   // Helper to determine if an item belongs to Reception/Cafe or Kitchen
   const isReceptionItem = (item: any) => {
+    // 1. Explicit kotDestination check
+    if (item.kotDestination === 'RECEPTION') return true;
+    if (item.kotDestination === 'KITCHEN') return false;
+
+    // 2. Department check: SHOP items always route to RECEPTION
+    if (item.department === 'SHOP') return true;
+
     const cat = (item.category || '').toLowerCase();
     const name = (item.name || item.nameSnapshot || '').toLowerCase();
     
@@ -85,7 +97,12 @@ export const KOTView: React.FC = () => {
     let catalogCat = '';
     if (item.menuItemId) {
       const found = menuItems.find(m => m.id === item.menuItemId);
-      if (found) catalogCat = (found.category || '').toLowerCase();
+      if (found) {
+        if (found.kotDestination === 'RECEPTION') return true;
+        if (found.kotDestination === 'KITCHEN') return false;
+        if (found.department === 'SHOP') return true;
+        catalogCat = (found.category || '').toLowerCase();
+      }
     }
 
     const fullCategory = `${cat} ${catalogCat}`;
@@ -133,6 +150,10 @@ export const KOTView: React.FC = () => {
         quantity: item.quantity || 1,
         name: (item as any).name || item.nameSnapshot || 'Dish Item',
         variant: item.variant,
+        size: (item as any).size,
+        color: (item as any).color,
+        sku: (item as any).sku,
+        department: (item as any).department,
         instructions: item.instructions,
         category: (item as any).category,
         status: (item as any).status,
@@ -191,15 +212,43 @@ export const KOTView: React.FC = () => {
   };
 
   // 1. ACTION: Print KOT for specific location (Kitchen / Reception)
-  const handlePrintKOT = (ticket: StationTicket) => {
+  const handlePrintKOT = async (ticket: StationTicket) => {
     setActivePrintTicket(ticket);
     playPrintSound();
 
+    // Automatically transition ticket to 'in_progress' (Preparing)
+    await updateKOTStatus(ticket.id, 'in_progress');
+
+    // Automatically transition linked order to 'preparing'
+    let orderToUpdateId = ticket.orderId;
+    if (!orderToUpdateId && ticket.kotNumber) {
+      const matchOrder = orders.find(
+        o => (o.kotNumber && o.kotNumber === ticket.kotNumber) ||
+             (o.tableNumber === ticket.tableNumber && o.status === 'placed')
+      );
+      if (matchOrder) orderToUpdateId = matchOrder.id;
+    }
+    if (orderToUpdateId) {
+      await updateOrderStatus(orderToUpdateId, 'preparing');
+    }
+
+    const tableNumStr = ticket.tableNumber < 10 ? `0${ticket.tableNumber}` : `${ticket.tableNumber}`;
+    const stationLabel = ticket.station === 'kitchen' ? 'Kitchen Food' : 'Cafe & Reception Bar';
+
+    // Send real-time notification to the guest table
+    await sendTableNotification({
+      tableNumber: ticket.tableNumber,
+      type: 'order_preparing',
+      title: `Order In Preparation: ${stationLabel}`,
+      message: `Your ${stationLabel.toLowerCase()} order (${ticket.kotNumber}) is now being prepared fresh in the kitchen for Table ${tableNumStr}!`,
+      kotId: ticket.id,
+      orderId: ticket.orderId,
+      station: ticket.station
+    });
+
     showToast(
       'print',
-      `Printing ${ticket.station === 'kitchen' ? 'Kitchen' : 'Reception'} KOT (${ticket.kotNumber}) for Table ${
-        ticket.tableNumber < 10 ? '0' + ticket.tableNumber : ticket.tableNumber
-      }...`
+      `Printing & Preparing ${ticket.station === 'kitchen' ? 'Kitchen' : 'Reception'} KOT (${ticket.kotNumber}) for Table ${tableNumStr}...`
     );
 
     // Give browser small render tick to populate thermal print DOM before window.print()
@@ -538,7 +587,7 @@ export const KOTView: React.FC = () => {
                               : 'bg-amber-50 text-amber-700 border-amber-200'
                           }`}
                         >
-                          {kot.status}
+                          {kot.status === 'PREPARING' || kot.status === 'in_progress' ? 'Preparing' : kot.status}
                         </span>
                         <span className="text-[10px] font-semibold text-gray-400">
                           {kot.orderSource === 'GUEST_QR' ? 'Guest Self-Order' : 'POS Waiter'}
@@ -732,10 +781,12 @@ export const KOTView: React.FC = () => {
                               ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
                               : isCancelled
                               ? 'bg-rose-50 text-rose-700 border-rose-200'
+                              : kot.status === 'PREPARING' || kot.status === 'in_progress'
+                              ? 'bg-blue-50 text-blue-700 border-blue-200'
                               : 'bg-purple-50 text-purple-700 border-purple-200'
                           }`}
                         >
-                          {kot.status}
+                          {kot.status === 'PREPARING' || kot.status === 'in_progress' ? 'Preparing' : kot.status}
                         </span>
                         <span className="text-[10px] font-semibold text-gray-400">
                           {kot.orderSource === 'GUEST_QR' ? 'Guest Self-Order' : 'POS Waiter'}
@@ -775,6 +826,11 @@ export const KOTView: React.FC = () => {
                                 <p className={`font-bold text-sm ${item.cancelled ? 'text-gray-400 line-through' : 'text-gray-900'}`}>
                                   {item.name}
                                 </p>
+                                {item.department === 'SHOP' && (
+                                  <span className="text-[9px] font-bold px-1.5 py-0.2 rounded bg-indigo-100 text-indigo-800 border border-indigo-200">
+                                    SHOP
+                                  </span>
+                                )}
                                 {item.cancelled && (
                                   <span className="text-[10px] font-black px-1.5 py-0.5 rounded bg-rose-100 text-rose-800 border border-rose-300">
                                     CANCELLED BY GUEST
@@ -787,7 +843,16 @@ export const KOTView: React.FC = () => {
                                 </p>
                               )}
                               {!item.cancelled && item.variant && (
-                                <p className="text-[11px] text-gray-500 font-medium">Size: {item.variant}</p>
+                                <p className="text-[11px] text-gray-500 font-medium">Variant: {item.variant}</p>
+                              )}
+                              {!item.cancelled && (item.size || item.color) && (
+                                <p className="text-[11px] text-gray-500 font-medium space-x-1.5">
+                                  {item.size && <span>Size: <strong>{item.size}</strong></span>}
+                                  {item.color && <span>Color: <strong>{item.color}</strong></span>}
+                                </p>
+                              )}
+                              {!item.cancelled && item.sku && (
+                                <p className="text-[10px] font-mono text-gray-400">SKU: {item.sku}</p>
                               )}
                               {!item.cancelled && item.instructions && (
                                 <p className="text-[11px] text-rose-700 font-semibold bg-rose-50 border border-rose-200 px-2 py-0.5 rounded-md inline-block mt-1">

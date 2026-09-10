@@ -45,6 +45,7 @@ service cloud.firestore {
       return data.id is string && data.id.size() <= 128 &&
         data.name is string && data.name.size() > 0 && data.name.size() <= 128 &&
         data.isActive is bool &&
+        (!('department' in data) || data.department in ['RESTAURANT', 'SHOP', 'restaurant', 'shop']) &&
         (!('description' in data) || (data.description is string && data.description.size() <= 500)) &&
         (!('sortOrder' in data) || (data.sortOrder is number));
     }
@@ -54,6 +55,12 @@ service cloud.firestore {
         data.name is string && data.name.size() > 0 && data.name.size() <= 128 &&
         data.price is number && data.price >= 0 &&
         data.kotDestination in ['KITCHEN', 'RECEPTION', 'kitchen', 'reception'] &&
+        (!('department' in data) || data.department in ['RESTAURANT', 'SHOP', 'restaurant', 'shop']) &&
+        (!('sku' in data) || (data.sku is string && data.sku.size() <= 64)) &&
+        (!('costPrice' in data) || (data.costPrice is number && data.costPrice >= 0)) &&
+        (!('size' in data) || (data.size is string && data.size.size() <= 32)) &&
+        (!('color' in data) || (data.color is string && data.color.size() <= 32)) &&
+        (!('stockQuantity' in data) || (data.stockQuantity is number)) &&
         (!('isAvailable' in data) || data.isAvailable is bool) &&
         (!('inStock' in data) || data.inStock is bool) &&
         (!('description' in data) || (data.description is string && data.description.size() <= 1000));
@@ -62,7 +69,7 @@ service cloud.firestore {
     function isValidSession(data) {
       return data.id is string && data.id.size() <= 128 &&
         data.tableId is string && data.tableId.size() <= 128 &&
-        data.tableNumber is number && data.tableNumber >= 1 && data.tableNumber <= 100 &&
+        data.tableNumber is number && data.tableNumber >= 0 && data.tableNumber <= 100 &&
         data.status in ['OPEN', 'BILLING', 'CLOSED'] &&
         data.openedAt is string && data.openedAt.size() <= 64;
     }
@@ -72,7 +79,7 @@ service cloud.firestore {
         data.orderNumber is string && data.orderNumber.size() <= 64 &&
         data.sessionId is string && data.sessionId.size() <= 128 &&
         data.tableId is string && data.tableId.size() <= 128 &&
-        data.tableNumber is number && data.tableNumber >= 1 && data.tableNumber <= 100 &&
+        data.tableNumber is number && data.tableNumber >= 0 && data.tableNumber <= 100 &&
         data.source in ['GUEST_QR', 'ADMIN_MANUAL', 'guest_qr', 'pos_manual'] &&
         data.status in ['NEW', 'CONFIRMED', 'PREPARING', 'READY', 'SERVED', 'COMPLETED', 'CANCELLED', 'placed', 'confirmed', 'preparing', 'ready', 'served', 'completed', 'cancelled'] &&
         data.subtotal is number && data.subtotal >= 0 &&
@@ -86,7 +93,7 @@ service cloud.firestore {
         data.orderId is string && data.orderId.size() <= 128 &&
         data.sessionId is string && data.sessionId.size() <= 128 &&
         data.tableId is string && data.tableId.size() <= 128 &&
-        data.tableNumber is number && data.tableNumber >= 1 && data.tableNumber <= 100 &&
+        data.tableNumber is number && data.tableNumber >= 0 && data.tableNumber <= 100 &&
         data.destination in ['KITCHEN', 'RECEPTION', 'kitchen', 'reception'] &&
         data.status in ['PENDING', 'PRINTING', 'PRINTED', 'PREPARING', 'READY', 'CANCELLED', 'IN_PROGRESS', 'COMPLETED', 'BUMPED', 'pending', 'printing', 'printed', 'preparing', 'ready', 'cancelled', 'in_progress', 'completed', 'bumped'] &&
         data.items is list && data.items.size() > 0 && data.items.size() <= 100;
@@ -144,11 +151,15 @@ service cloud.firestore {
 
     function isValidTableNotification(data) {
       return data.id is string && data.id.size() <= 128 &&
-        data.tableNumber is number && data.tableNumber >= 1 && data.tableNumber <= 100 &&
-        data.type in ['order_ready', 'order_cancelled', 'order_placed', 'service_call', 'custom'] &&
-        data.title is string && data.title.size() <= 128 &&
-        data.message is string && data.message.size() <= 500 &&
-        data.read is bool;
+        data.tableNumber is number && data.tableNumber >= 0 && data.tableNumber <= 200 &&
+        data.type in ['order_ready', 'order_preparing', 'order_cancelled', 'order_placed', 'service_call', 'custom'] &&
+        data.title is string && data.title.size() <= 256 &&
+        data.message is string && data.message.size() <= 1000 &&
+        data.read is bool &&
+        (!('orderId' in data) || data.orderId == null || (data.orderId is string && data.orderId.size() <= 128)) &&
+        (!('kotId' in data) || data.kotId == null || (data.kotId is string && data.kotId.size() <= 128)) &&
+        (!('station' in data) || data.station == null || (data.station is string && data.station.size() <= 32)) &&
+        (!('createdAt' in data) || (data.createdAt is string && data.createdAt.size() <= 64));
     }
 
     // ==========================================

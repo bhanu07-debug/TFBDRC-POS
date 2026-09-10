@@ -11,11 +11,11 @@ export const OFFICIAL_MENU_ITEMS: MenuItem[] = [
 export { OFFICIAL_CATEGORIES, CATEGORY_NAMES, FOOD_MENU_ITEMS, BEVERAGE_MENU_ITEMS };
 
 export const RESTAURANT_PROFILE = {
-  name: 'The New Delight Restaurant',
-  tagline: 'Best Place to Hangout and Enjoy Nature',
+  name: 'The Fat Buddha Delight',
+  tagline: 'Good Food, Good Mood',
   social: {
-    instagram: '@THE_DELIGHT_RESTURANT',
-    tiktok: '@the_delight_restaurant'
+    instagram: '@FAT_BUDDHA_DELIGHT',
+    tiktok: '@fat_buddha_delight'
   },
   openingHours: '10:00 AM - 10:30 PM',
   currency: 'Rs.'

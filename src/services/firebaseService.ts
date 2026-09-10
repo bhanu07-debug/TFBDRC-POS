@@ -51,6 +51,8 @@ import {
   OrderItemSnapshot,
   KOTTicket,
   KOTDestination,
+  Department,
+  OrderType,
   PrintJob,
   PaymentRecord,
   InventoryItem,
@@ -111,15 +113,15 @@ export const INITIAL_10_TABLES: Table[] = Array.from({ length: 10 }, (_, i) => {
 export const INITIAL_20_TABLES = INITIAL_10_TABLES;
 
 export const DEFAULT_SETTINGS: RestaurantSettings = {
-  restaurantName: "The New Delight Restaurant",
-  name: "The New Delight Restaurant",
+  restaurantName: "The Fat Buddha Delight",
+  name: "The Fat Buddha Delight",
   panNumber: "302194821",
   panNo: "302194821",
   address: "Main Street, Nature View Zone, Nepal",
   phone: "+977 9800000000 / +977 9841000000",
-  email: "info@thedelightrestaurant.com",
-  logoUrl: "https://images.unsplash.com/photo-1555396273-367ea4eb4db5?w=300&auto=format&fit=crop&q=80",
-  tagline: "Best Place to Hangout and Enjoy Nature",
+  email: "info@fatbuddhadelight.com",
+  logoUrl: "/logo.svg",
+  tagline: "Good Food, Good Mood",
   currency: "NPR",
   currencySymbol: "Rs.",
   vatEnabled: false, // OFF by default
@@ -515,7 +517,7 @@ export const syncOfficialRestaurantMenu = async (forceReplace: boolean = false):
   }
 };
 
-export const addCategoryToDb = async (name: string, description?: string): Promise<Category> => {
+export const addCategoryToDb = async (name: string, description?: string, department: Department = 'RESTAURANT'): Promise<Category> => {
   const path = 'categories';
   const trimmed = name.trim();
   const slug = trimmed.toLowerCase().replace(/[^a-z0-9]+/g, '-');
@@ -526,6 +528,7 @@ export const addCategoryToDb = async (name: string, description?: string): Promi
     id,
     name: trimmed,
     description: description?.trim() || `${trimmed} specialties and selections`,
+    department,
     sortOrder: Date.now(),
     isActive: true,
     createdAt: now,
@@ -545,7 +548,8 @@ export const updateCategoryInDb = async (
   id: string,
   newName: string,
   oldName?: string,
-  description?: string
+  description?: string,
+  department?: Department
 ): Promise<void> => {
   const path = `categories/${id}`;
   const now = new Date().toISOString();
@@ -555,6 +559,7 @@ export const updateCategoryInDb = async (
     await updateDoc(doc(db, 'categories', id), cleanFirestoreData({
       name: trimmedNew,
       ...(description !== undefined ? { description: description.trim() } : {}),
+      ...(department !== undefined ? { department } : {}),
       updatedAt: now
     }));
 
@@ -632,6 +637,68 @@ export const updateMenuItemKOTDestination = async (
 };
 
 // ====================================================
+// 4b. SHOP PRODUCTS & CATEGORIES
+// ====================================================
+export const addShopProductToDb = async (
+  product: Omit<MenuItem, 'id' | 'createdAt' | 'updatedAt'>
+): Promise<MenuItem> => {
+  const path = 'menu_items';
+  const id = `shop-prod-${Date.now().toString(36)}-${Math.floor(100 + Math.random() * 900)}`;
+  const now = new Date().toISOString();
+
+  // Strict Rule 2 & 3: New SHOP products must ALWAYS use department = SHOP and kotDestination = RECEPTION
+  const newProduct: MenuItem = {
+    ...product,
+    id,
+    department: 'SHOP',
+    kotDestination: 'RECEPTION',
+    isAvailable: product.isAvailable !== false,
+    inStock: product.inStock !== false,
+    createdAt: now,
+    updatedAt: now
+  };
+
+  try {
+    await setDoc(doc(db, path, id), cleanFirestoreData(newProduct));
+    return newProduct;
+  } catch (error) {
+    handleFirestoreError(error, OperationType.CREATE, path);
+    return newProduct;
+  }
+};
+
+export const updateShopProductInDb = async (
+  id: string,
+  updates: Partial<MenuItem>
+): Promise<void> => {
+  const path = `menu_items/${id}`;
+  const now = new Date().toISOString();
+
+  // Strict Rule 2 & 3: Ensure department is SHOP and kotDestination is RECEPTION
+  const safeUpdates: Partial<MenuItem> = {
+    ...updates,
+    department: 'SHOP',
+    kotDestination: 'RECEPTION',
+    updatedAt: now
+  };
+
+  try {
+    await updateDoc(doc(db, 'menu_items', id), cleanFirestoreData(safeUpdates));
+  } catch (error) {
+    handleFirestoreError(error, OperationType.UPDATE, path);
+  }
+};
+
+export const deleteShopProductFromDb = async (id: string): Promise<void> => {
+  const path = `menu_items/${id}`;
+  try {
+    await deleteDoc(doc(db, 'menu_items', id));
+  } catch (error) {
+    handleFirestoreError(error, OperationType.DELETE, path);
+  }
+};
+
+// ====================================================
 // 5. ORDERS & KOT SPLIT CREATION
 // ====================================================
 export const createOrderWithKOTs = async (
@@ -646,6 +713,12 @@ export const createOrderWithKOTs = async (
       name?: string;
       price?: number;
       kotDestination?: KOTDestination;
+      department?: Department;
+      sku?: string;
+      size?: string;
+      color?: string;
+      variantId?: string;
+      variantName?: string;
       notes?: string;
     }>;
     createdBy: string;
@@ -657,6 +730,7 @@ export const createOrderWithKOTs = async (
     vatRate?: number;
     serviceChargeEnabled?: boolean;
     serviceChargePercent?: number;
+    orderType?: OrderType;
   }
 ): Promise<{ order: Order; kots: KOTTicket[] }> => {
   const path = 'orders';
@@ -679,11 +753,54 @@ export const createOrderWithKOTs = async (
     const kitchenItems: Array<{ orderItemId: string; menuItemId: string; nameSnapshot: string; quantity: number; notes?: string; category?: string }> = [];
     const receptionItems: Array<{ orderItemId: string; menuItemId: string; nameSnapshot: string; quantity: number; notes?: string; category?: string }> = [];
 
+    // Track stock updates for shop items
+    const stockUpdates: Array<{ menuItemId: string; variantId?: string; quantitySold: number }> = [];
+
     params.items.forEach((it, idx) => {
       const trustedMenu = menuMap.get(it.menuItemId);
-      const name = trustedMenu?.name || it.name || `Item ${it.menuItemId}`;
-      const price = (trustedMenu?.price !== undefined) ? trustedMenu.price : (it.price !== undefined ? it.price : 0);
-      const destination: KOTDestination = (trustedMenu?.kotDestination) || it.kotDestination || 'KITCHEN';
+
+      // Match selected variant/portion if present
+      const matchedVariant = trustedMenu?.variants?.find(v =>
+        (it.variantId && v.id === it.variantId) ||
+        (it.variantName && v.name.toLowerCase().trim() === it.variantName.toLowerCase().trim())
+      );
+
+      // Determine accurate price strictly prioritizing the portion / variant
+      let price: number;
+      if (matchedVariant && matchedVariant.price > 0) {
+        price = matchedVariant.price;
+      } else if (it.price !== undefined && it.price > 0) {
+        price = it.price;
+      } else if (trustedMenu?.price !== undefined) {
+        price = trustedMenu.price;
+      } else {
+        price = 0;
+      }
+
+      // Base name with any hardcoded "(60ml / Bottle)" cleanly removed
+      let baseName = trustedMenu?.name || it.name || `Item ${it.menuItemId}`;
+      baseName = baseName.replace(/\s*\([^)]*60ml[^)]*\)/gi, '').trim();
+
+      const variantName = matchedVariant?.name || it.variantName;
+      const variantId = matchedVariant?.id || it.variantId;
+      const displayName = variantName ? `${baseName} (${variantName})` : baseName;
+
+      // Determine department: trust stored item if present, else param, else default RESTAURANT
+      const department: Department = trustedMenu?.department || it.department || 'RESTAURANT';
+
+      // Rule: New SHOP products must ALWAYS use kotDestination = RECEPTION.
+      // Rule: DO NOT change or guess kotDestination for existing products (preserve trustedMenu.kotDestination).
+      let destination: KOTDestination;
+      if (department === 'SHOP') {
+        destination = 'RECEPTION';
+      } else {
+        destination = (trustedMenu?.kotDestination) || it.kotDestination || 'KITCHEN';
+      }
+
+      // Rule: kotDestination can ONLY be KITCHEN or RECEPTION. Never SHOP or STORE.
+      const normalizedDest: KOTDestination =
+        (destination.toUpperCase() === 'RECEPTION') ? 'RECEPTION' : 'KITCHEN';
+
       const category = trustedMenu?.category || '';
       const itemSubtotal = price * it.quantity;
       subtotal += itemSubtotal;
@@ -693,11 +810,17 @@ export const createOrderWithKOTs = async (
         id: orderItemId,
         orderId,
         menuItemId: it.menuItemId,
-        nameSnapshot: name,
+        nameSnapshot: displayName,
         priceSnapshot: price,
         quantity: it.quantity,
         notes: it.notes || '',
-        kotDestination: destination,
+        kotDestination: normalizedDest,
+        department,
+        sku: it.sku || trustedMenu?.sku,
+        size: it.size || trustedMenu?.size,
+        color: it.color || trustedMenu?.color,
+        variantId,
+        variantName,
         status: 'PENDING',
         cancelled: false,
         cancelledBy: null,
@@ -705,7 +828,7 @@ export const createOrderWithKOTs = async (
         cancellationReason: null,
         createdAt: new Date().toISOString(),
         // Compatibility
-        name,
+        name: displayName,
         price,
         instructions: it.notes,
         category
@@ -713,11 +836,19 @@ export const createOrderWithKOTs = async (
 
       orderItemSnapshots.push(snapshot);
 
-      if (destination === 'RECEPTION') {
+      if (department === 'SHOP') {
+        stockUpdates.push({
+          menuItemId: it.menuItemId,
+          variantId: it.variantId,
+          quantitySold: it.quantity
+        });
+      }
+
+      if (normalizedDest === 'RECEPTION') {
         receptionItems.push({
           orderItemId,
           menuItemId: it.menuItemId,
-          nameSnapshot: name,
+          nameSnapshot: displayName,
           quantity: it.quantity,
           notes: it.notes,
           category
@@ -726,7 +857,7 @@ export const createOrderWithKOTs = async (
         kitchenItems.push({
           orderItemId,
           menuItemId: it.menuItemId,
-          nameSnapshot: name,
+          nameSnapshot: displayName,
           quantity: it.quantity,
           notes: it.notes,
           category
@@ -743,6 +874,8 @@ export const createOrderWithKOTs = async (
       ? Math.round(((discountedSubtotal + serviceCharge) * (params.vatRate ?? 13)) / 100)
       : 0;
     const total = discountedSubtotal + serviceCharge + vat;
+
+    const resolvedOrderType: OrderType = params.orderType || (params.tableNumber === 0 ? 'walk_in' : 'dine_in');
 
     const newOrder: Order = {
       id: orderId,
@@ -768,7 +901,7 @@ export const createOrderWithKOTs = async (
       taxAmount: vat,
       discountAmount: discount,
       paymentStatus: 'unpaid',
-      orderType: 'dine_in'
+      orderType: resolvedOrderType
     };
 
     const createdKOTs: KOTTicket[] = [];
@@ -777,6 +910,10 @@ export const createOrderWithKOTs = async (
 
     // Write the Order
     batch.set(doc(db, 'orders', orderId), cleanFirestoreData(newOrder));
+
+    const tableDisplayLabel = params.tableNumber === 0
+      ? 'Walk-In / Retail'
+      : `Table T${params.tableNumber < 10 ? '0' + params.tableNumber : params.tableNumber}`;
 
     // Create Kitchen KOT if any items
     if (kitchenItems.length > 0) {
@@ -804,7 +941,7 @@ export const createOrderWithKOTs = async (
         })),
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString(),
-        tableLabel: `Table T${params.tableNumber < 10 ? '0' + params.tableNumber : params.tableNumber}`,
+        tableLabel: tableDisplayLabel,
         orderNumber
       };
       createdKOTs.push(kot);
@@ -860,7 +997,7 @@ export const createOrderWithKOTs = async (
         })),
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString(),
-        tableLabel: `Table T${params.tableNumber < 10 ? '0' + params.tableNumber : params.tableNumber}`,
+        tableLabel: tableDisplayLabel,
         orderNumber
       };
       createdKOTs.push(kot);
@@ -888,6 +1025,32 @@ export const createOrderWithKOTs = async (
       };
       createdPrintJobs.push(printJob);
       batch.set(doc(db, 'printJobs', printJobId), cleanFirestoreData(printJob));
+    }
+
+    // Deduct stock for shop items if tracked in Firestore
+    for (const su of stockUpdates) {
+      const itemDoc = menuMap.get(su.menuItemId);
+      if (itemDoc) {
+        if (su.variantId && itemDoc.variants && itemDoc.variants.length > 0) {
+          const updatedVariants = itemDoc.variants.map(v => {
+            if (v.id === su.variantId && typeof v.stockQuantity === 'number') {
+              return { ...v, stockQuantity: Math.max(0, v.stockQuantity - su.quantitySold) };
+            }
+            return v;
+          });
+          batch.update(doc(db, 'menu_items', su.menuItemId), {
+            variants: updatedVariants,
+            updatedAt: new Date().toISOString()
+          });
+        } else if (typeof itemDoc.stockQuantity === 'number') {
+          const newStock = Math.max(0, itemDoc.stockQuantity - su.quantitySold);
+          batch.update(doc(db, 'menu_items', su.menuItemId), {
+            stockQuantity: newStock,
+            inStock: newStock > 0,
+            updatedAt: new Date().toISOString()
+          });
+        }
+      }
     }
 
     // Safely update table bill and status (merge: true prevents NOT_FOUND error)

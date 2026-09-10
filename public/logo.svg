@@ -1,0 +1,378 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 500 500" width="100%" height="100%">
+  <defs>
+    <!-- Background Radial Gradient -->
+    <radialGradient id="bgGrad" cx="50%" cy="50%" r="50%">
+      <stop offset="0%" stop-color="#241910" />
+      <stop offset="55%" stop-color="#140E0A" />
+      <stop offset="100%" stop-color="#080604" />
+    </radialGradient>
+
+    <!-- Sunburst Glow Behind Buddha -->
+    <radialGradient id="sunburstGlow" cx="50%" cy="46%" r="42%">
+      <stop offset="0%" stop-color="#FFB338" stop-opacity="0.35" />
+      <stop offset="50%" stop-color="#D97706" stop-opacity="0.15" />
+      <stop offset="100%" stop-color="#78350F" stop-opacity="0" />
+    </radialGradient>
+
+    <!-- Gold Gradients -->
+    <linearGradient id="goldGradient" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#FFEBB3" />
+      <stop offset="30%" stop-color="#F5B942" />
+      <stop offset="70%" stop-color="#D97706" />
+      <stop offset="100%" stop-color="#8A4608" />
+    </linearGradient>
+
+    <linearGradient id="goldTextGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#FFF5D6" />
+      <stop offset="25%" stop-color="#FCD34D" />
+      <stop offset="65%" stop-color="#F59E0B" />
+      <stop offset="100%" stop-color="#B45309" />
+    </linearGradient>
+
+    <linearGradient id="ribbonGrad" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#A16207" />
+      <stop offset="15%" stop-color="#EAB308" />
+      <stop offset="50%" stop-color="#FDE047" />
+      <stop offset="85%" stop-color="#EAB308" />
+      <stop offset="100%" stop-color="#A16207" />
+    </linearGradient>
+
+    <linearGradient id="buddhaBodyGrad" x1="30%" y1="10%" x2="70%" y2="90%">
+      <stop offset="0%" stop-color="#FFF0BA" />
+      <stop offset="25%" stop-color="#F6CA6B" />
+      <stop offset="60%" stop-color="#E29A26" />
+      <stop offset="100%" stop-color="#9C5209" />
+    </linearGradient>
+
+    <!-- Burger Gradients -->
+    <linearGradient id="bunGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#F4BF78" />
+      <stop offset="50%" stop-color="#C97A24" />
+      <stop offset="100%" stop-color="#8F4308" />
+    </linearGradient>
+    <linearGradient id="pattyGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#693318" />
+      <stop offset="100%" stop-color="#3B1807" />
+    </linearGradient>
+
+    <!-- Juice Gradients -->
+    <linearGradient id="juiceGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#FFC107" />
+      <stop offset="50%" stop-color="#FF9800" />
+      <stop offset="100%" stop-color="#F4511E" />
+    </linearGradient>
+    <linearGradient id="glassGrad" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#FFFFFF" stop-opacity="0.4" />
+      <stop offset="30%" stop-color="#FFFFFF" stop-opacity="0.05" />
+      <stop offset="70%" stop-color="#FFFFFF" stop-opacity="0.1" />
+      <stop offset="100%" stop-color="#FFFFFF" stop-opacity="0.45" />
+    </linearGradient>
+
+    <!-- Leaf Green Gradient -->
+    <linearGradient id="leafGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#84CC16" />
+      <stop offset="50%" stop-color="#4D7C0F" />
+      <stop offset="100%" stop-color="#1A3E05" />
+    </linearGradient>
+
+    <!-- Filters -->
+    <filter id="shadow" x="-10%" y="-10%" width="130%" height="130%">
+      <feDropShadow dx="0" dy="4" stdDeviation="4" flood-color="#000" flood-opacity="0.75" />
+    </filter>
+    <filter id="glow" x="-20%" y="-20%" width="140%" height="140%">
+      <feGaussianBlur stdDeviation="3" result="blur" />
+      <feComposite in="SourceGraphic" in2="blur" operator="over" />
+    </filter>
+  </defs>
+
+  <!-- ================= BACKGROUND BASE ================= -->
+  <circle cx="250" cy="250" r="242" fill="url(#bgGrad)" stroke="url(#goldGradient)" stroke-width="4" />
+  <circle cx="250" cy="250" r="236" fill="none" stroke="#D97706" stroke-width="1.5" stroke-dasharray="4,4" opacity="0.7" />
+  <circle cx="250" cy="250" r="230" fill="none" stroke="#F59E0B" stroke-width="1" opacity="0.4" />
+
+  <!-- Radiant Back Rays -->
+  <g opacity="0.18">
+    <path d="M 250 250 L 235 20 L 265 20 Z" fill="#F59E0B" />
+    <path d="M 250 250 L 330 35 L 355 48 Z" fill="#F59E0B" />
+    <path d="M 250 250 L 415 85 L 432 108 Z" fill="#F59E0B" />
+    <path d="M 250 250 L 465 170 L 474 198 Z" fill="#F59E0B" />
+    <path d="M 250 250 L 474 302 L 465 330 Z" fill="#F59E0B" />
+    <path d="M 250 250 L 432 392 L 415 415 Z" fill="#F59E0B" />
+    <path d="M 250 250 L 85 415 L 68 392 Z" fill="#F59E0B" />
+    <path d="M 250 250 L 35 330 L 26 302 Z" fill="#F59E0B" />
+    <path d="M 250 250 L 26 198 L 35 170 Z" fill="#F59E0B" />
+    <path d="M 250 250 L 68 108 L 85 85 Z" fill="#F59E0B" />
+    <path d="M 250 250 L 145 48 L 170 35 Z" fill="#F59E0B" />
+  </g>
+
+  <!-- Aura Glow Behind Buddha -->
+  <circle cx="250" cy="245" r="160" fill="url(#sunburstGlow)" />
+
+  <!-- ================= BOTANICAL FOLIAGE (SIDES) ================= -->
+  <!-- Left Laurel Leaves -->
+  <g id="leftLeaves" opacity="0.85">
+    <path d="M 52 230 C 40 215 50 195 72 205 C 72 220 62 235 52 230 Z" fill="url(#leafGrad)" stroke="#233E06" stroke-width="0.8" />
+    <path d="M 45 270 C 30 255 42 235 65 245 C 64 260 55 275 45 270 Z" fill="url(#leafGrad)" stroke="#233E06" stroke-width="0.8" />
+    <path d="M 48 310 C 35 300 45 280 70 290 C 68 305 58 320 48 310 Z" fill="url(#leafGrad)" stroke="#233E06" stroke-width="0.8" />
+    <path d="M 62 350 C 48 340 60 320 82 330 C 80 348 70 360 62 350 Z" fill="url(#leafGrad)" stroke="#233E06" stroke-width="0.8" />
+    <!-- Leaf veins -->
+    <path d="M 48 223 Q 60 215 70 210" stroke="#FDE047" stroke-width="0.8" fill="none" opacity="0.6" />
+    <path d="M 42 263 Q 54 253 63 248" stroke="#FDE047" stroke-width="0.8" fill="none" opacity="0.6" />
+    <path d="M 45 305 Q 58 296 68 293" stroke="#FDE047" stroke-width="0.8" fill="none" opacity="0.6" />
+  </g>
+
+  <!-- Right Laurel Leaves -->
+  <g id="rightLeaves" opacity="0.85">
+    <path d="M 448 230 C 460 215 450 195 428 205 C 428 220 438 235 448 230 Z" fill="url(#leafGrad)" stroke="#233E06" stroke-width="0.8" />
+    <path d="M 455 270 C 470 255 458 235 435 245 C 436 260 445 275 455 270 Z" fill="url(#leafGrad)" stroke="#233E06" stroke-width="0.8" />
+    <path d="M 452 310 C 465 300 455 280 430 290 C 432 305 442 320 452 310 Z" fill="url(#leafGrad)" stroke="#233E06" stroke-width="0.8" />
+    <path d="M 438 350 C 452 340 440 320 418 330 C 420 348 430 360 438 350 Z" fill="url(#leafGrad)" stroke="#233E06" stroke-width="0.8" />
+    <!-- Leaf veins -->
+    <path d="M 452 223 Q 440 215 430 210" stroke="#FDE047" stroke-width="0.8" fill="none" opacity="0.6" />
+    <path d="M 458 263 Q 446 253 437 248" stroke="#FDE047" stroke-width="0.8" fill="none" opacity="0.6" />
+    <path d="M 455 305 Q 442 296 432 293" stroke="#FDE047" stroke-width="0.8" fill="none" opacity="0.6" />
+  </g>
+
+  <!-- ================= SIDE BADGES ================= -->
+  <!-- Left: ESTD 2024 -->
+  <g text-anchor="middle" font-family="'Cinzel', Georgia, serif" font-weight="bold">
+    <text x="56" y="278" font-size="11" fill="#FCD34D" letter-spacing="1">ESTD</text>
+    <circle cx="56" cy="290" r="2" fill="#F59E0B" />
+    <text x="56" y="312" font-size="12" fill="#FFFBEB" letter-spacing="1">2024</text>
+  </g>
+
+  <!-- Right: MADE WITH LOVE -->
+  <g text-anchor="middle" font-family="'Cinzel', Georgia, serif" font-weight="bold">
+    <text x="444" y="278" font-size="10" fill="#FCD34D" letter-spacing="1">MADE</text>
+    <text x="444" y="293" font-size="10" fill="#FCD34D" letter-spacing="1">WITH</text>
+    <text x="444" y="310" font-size="11" fill="#FFFBEB" letter-spacing="1">LOVE</text>
+    <!-- Little Heart -->
+    <path d="M 444 322 C 441 319 437 321 437 324 C 437 327 444 332 444 332 C 444 332 451 327 451 324 C 451 321 447 319 444 322 Z" fill="#F59E0B" />
+  </g>
+
+  <!-- ================= THE GOLDEN BUDDHA CHARACTER ================= -->
+  <g id="fatBuddhaFigure" filter="url(#shadow)">
+    <!-- Base / Seated Crossed Legs -->
+    <ellipse cx="250" cy="328" rx="86" ry="38" fill="url(#buddhaBodyGrad)" stroke="#5A2E05" stroke-width="2.5" />
+    <!-- Feet details -->
+    <ellipse cx="198" cy="336" rx="20" ry="12" fill="#E29A26" stroke="#5A2E05" stroke-width="1.8" />
+    <ellipse cx="302" cy="336" rx="20" ry="12" fill="#E29A26" stroke="#5A2E05" stroke-width="1.8" />
+
+    <!-- Big Round Chubby Belly -->
+    <circle cx="250" cy="272" r="64" fill="url(#buddhaBodyGrad)" stroke="#5A2E05" stroke-width="2.5" />
+    <!-- Belly fold & Navel -->
+    <path d="M 222 268 C 235 278 265 278 278 268" stroke="#874304" stroke-width="2.5" fill="none" stroke-linecap="round" />
+    <circle cx="250" cy="284" r="3.2" fill="#5A2E05" />
+
+    <!-- Arms & Shoulders -->
+    <!-- Right Arm (holding burger) -->
+    <path d="M 200 236 C 165 240 148 262 135 272 C 128 278 122 284 134 290 C 146 295 165 285 186 264 Z" fill="url(#buddhaBodyGrad)" stroke="#5A2E05" stroke-width="2" />
+    <!-- Left Arm (holding juice) -->
+    <path d="M 300 236 C 335 240 352 262 365 272 C 372 278 378 284 366 290 C 354 295 335 285 314 264 Z" fill="url(#buddhaBodyGrad)" stroke="#5A2E05" stroke-width="2" />
+
+    <!-- Head & Ushnisha Topknot -->
+    <!-- Topknot -->
+    <circle cx="250" cy="116" r="14" fill="url(#buddhaBodyGrad)" stroke="#5A2E05" stroke-width="2" />
+    <ellipse cx="250" cy="112" rx="7" ry="4" fill="#FFE082" opacity="0.6" />
+    <!-- Main Head -->
+    <ellipse cx="250" cy="168" rx="48" ry="44" fill="url(#buddhaBodyGrad)" stroke="#5A2E05" stroke-width="2.5" />
+
+    <!-- Long Traditional Auspicious Earlobes -->
+    <!-- Left Ear -->
+    <path d="M 203 148 C 196 154 192 176 195 196 C 198 206 206 208 208 198 C 208 186 208 160 205 148 Z" fill="url(#buddhaBodyGrad)" stroke="#5A2E05" stroke-width="2" />
+    <!-- Right Ear -->
+    <path d="M 297 148 C 304 154 308 176 305 196 C 302 206 294 208 292 198 C 292 186 292 160 295 148 Z" fill="url(#buddhaBodyGrad)" stroke="#5A2E05" stroke-width="2" />
+
+    <!-- Chubby Cheeks Highlight -->
+    <circle cx="222" cy="180" r="10" fill="#F59E0B" opacity="0.25" />
+    <circle cx="278" cy="180" r="10" fill="#F59E0B" opacity="0.25" />
+
+    <!-- Serene Smiling Facial Features -->
+    <!-- Forehead Bindi / Urna Dot -->
+    <circle cx="250" cy="144" r="3.5" fill="#5A2E05" />
+    <!-- Peaceful Closed Eyes (crescent smiling curves) -->
+    <path d="M 226 166 C 230 172 238 172 242 166" stroke="#4A2504" stroke-width="3" fill="none" stroke-linecap="round" />
+    <path d="M 258 166 C 262 172 270 172 274 166" stroke="#4A2504" stroke-width="3" fill="none" stroke-linecap="round" />
+    <!-- Gentle Cheerful Eyebrows -->
+    <path d="M 224 158 C 230 154 238 155 244 158" stroke="#6C3905" stroke-width="2.2" fill="none" stroke-linecap="round" />
+    <path d="M 256 158 C 262 155 270 154 276 158" stroke="#6C3905" stroke-width="2.2" fill="none" stroke-linecap="round" />
+    <!-- Cute Smile -->
+    <path d="M 238 184 C 244 194 256 194 262 184" stroke="#4A2504" stroke-width="3.2" fill="#991B1B" stroke-linecap="round" />
+    <path d="M 241 184 C 246 189 254 189 259 184" fill="#F87171" opacity="0.7" />
+    <!-- Nose -->
+    <circle cx="250" cy="176" r="2.5" fill="#874304" />
+  </g>
+
+  <!-- ================= RIGHT HAND: JUICY GOURMET BURGER ================= -->
+  <g id="burgerItem" filter="url(#shadow)">
+    <!-- Right Hand Clamping Burger from Below -->
+    <g fill="url(#buddhaBodyGrad)" stroke="#5A2E05" stroke-width="1.8">
+      <ellipse cx="118" cy="272" rx="5" ry="12" />
+      <ellipse cx="126" cy="274" rx="5" ry="13" />
+      <ellipse cx="134" cy="275" rx="5" ry="12" />
+      <ellipse cx="142" cy="274" rx="5" ry="11" />
+    </g>
+
+    <!-- Bottom Bun -->
+    <path d="M 82 254 C 82 263 158 263 158 254 Z" fill="url(#bunGrad)" stroke="#5A2E05" stroke-width="1.8" />
+
+    <!-- Patty -->
+    <rect x="80" y="244" width="80" height="11" rx="5" fill="url(#pattyGrad)" stroke="#271004" stroke-width="1.5" />
+
+    <!-- Dripping Cheddar Cheese -->
+    <path d="M 80 242 L 160 242 L 156 248 L 146 245 L 138 252 L 130 244 L 120 252 L 112 245 L 98 250 L 92 244 L 80 248 Z" fill="#FACC15" stroke="#CA8A04" stroke-width="1" />
+
+    <!-- Fresh Red Tomatoes -->
+    <rect x="86" y="236" width="32" height="6" rx="3" fill="#DC2626" stroke="#991B1B" stroke-width="1" />
+    <rect x="122" y="236" width="32" height="6" rx="3" fill="#DC2626" stroke="#991B1B" stroke-width="1" />
+
+    <!-- Frilly Curly Green Lettuce -->
+    <path d="M 76 235 C 82 230 88 238 94 233 C 100 238 106 230 112 236 C 118 231 124 238 130 232 C 136 237 142 231 148 236 C 154 231 160 238 164 234 L 164 239 L 76 239 Z" fill="#4ADE80" stroke="#16A34A" stroke-width="1" />
+
+    <!-- Top Brioche Bun (Dome) -->
+    <path d="M 78 232 C 78 198 162 198 162 232 Z" fill="url(#bunGrad)" stroke="#5A2E05" stroke-width="2" />
+
+    <!-- White Sesame Seeds on Bun -->
+    <g fill="#FFFDF0" opacity="0.95">
+      <ellipse cx="102" cy="214" rx="2.5" ry="1.3" transform="rotate(-15 102 214)" />
+      <ellipse cx="118" cy="208" rx="2.5" ry="1.3" transform="rotate(5 118 208)" />
+      <ellipse cx="134" cy="212" rx="2.5" ry="1.3" transform="rotate(20 134 212)" />
+      <ellipse cx="108" cy="222" rx="2.5" ry="1.3" transform="rotate(10 108 222)" />
+      <ellipse cx="126" cy="220" rx="2.5" ry="1.3" transform="rotate(-5 126 220)" />
+      <ellipse cx="144" cy="223" rx="2.5" ry="1.3" transform="rotate(25 144 223)" />
+      <ellipse cx="94" cy="224" rx="2.5" ry="1.3" transform="rotate(-20 94 224)" />
+    </g>
+
+    <!-- Toothpick with Red "YUMMY" Flag -->
+    <line x1="120" y1="202" x2="120" y2="164" stroke="#D97706" stroke-width="2" />
+    <!-- Pennant Flag -->
+    <path d="M 120 166 L 156 166 L 152 178 L 156 190 L 120 190 Z" fill="#DC2626" stroke="#991B1B" stroke-width="1" />
+    <text x="135" y="181" font-family="'Plus Jakarta Sans', Arial, sans-serif" font-size="7.5" font-weight="900" fill="#FFFFFF" text-anchor="middle" letter-spacing="0.5">YUMMY</text>
+  </g>
+
+  <!-- ================= LEFT HAND: FRESH NATURAL JUICE ================= -->
+  <g id="juiceItem" filter="url(#shadow)">
+    <!-- Left Hand Holding Glass -->
+    <g fill="url(#buddhaBodyGrad)" stroke="#5A2E05" stroke-width="1.8">
+      <ellipse cx="382" cy="272" rx="5" ry="12" />
+      <ellipse cx="374" cy="274" rx="5" ry="13" />
+      <ellipse cx="366" cy="275" rx="5" ry="12" />
+      <ellipse cx="358" cy="274" rx="5" ry="11" />
+    </g>
+
+    <!-- The Tall Glass Tumbler with Orange Juice -->
+    <!-- Liquid Content -->
+    <path d="M 352 195 L 396 195 L 388 288 L 360 288 Z" fill="url(#juiceGrad)" />
+
+    <!-- Faceted Glass Reflection & Outline -->
+    <path d="M 350 186 L 398 186 L 390 292 L 358 292 Z" fill="url(#glassGrad)" stroke="#FFFFFF" stroke-width="1.5" stroke-opacity="0.75" />
+    <!-- Bottom base rim -->
+    <rect x="356" y="289" width="36" height="5" rx="2" fill="#FFFFFF" opacity="0.5" />
+
+    <!-- Sliced Fresh Orange Wheel on Rim -->
+    <g id="orangeSlice" transform="translate(398, 185)">
+      <!-- Outer Orange Rind -->
+      <circle cx="12" cy="-4" r="22" fill="#EA580C" stroke="#C2410C" stroke-width="1.5" />
+      <circle cx="12" cy="-4" r="19" fill="#FFF7ED" />
+      <!-- Pulp Wedges -->
+      <g fill="#F97316">
+        <path d="M 12 -4 L 8 -19 A 16 16 0 0 1 16 -19 Z" />
+        <path d="M 12 -4 L 21 -14 A 16 16 0 0 1 26 -7 Z" />
+        <path d="M 12 -4 L 27 0 A 16 16 0 0 1 24 9 Z" />
+        <path d="M 12 -4 L 18 11 A 16 16 0 0 1 9 12 Z" />
+        <path d="M 12 -4 L 2 9 A 16 16 0 0 1 -1 0 Z" />
+        <path d="M 12 -4 L 0 -8 A 16 16 0 0 1 4 -15 Z" />
+      </g>
+      <circle cx="12" cy="-4" r="3" fill="#FFF7ED" />
+    </g>
+
+    <!-- Drinking Straw -->
+    <path d="M 374 250 L 372 165 L 350 156" stroke="#1F2937" stroke-width="4.5" stroke-linecap="round" fill="none" />
+    <path d="M 374 250 L 372 165 L 350 156" stroke="#F97316" stroke-width="1.5" stroke-linecap="round" fill="none" opacity="0.6" />
+
+    <!-- Inscription on Glass: FRESH NATURAL -->
+    <!-- Mini Lotus / Leaf on Glass -->
+    <path d="M 374 220 C 370 215 365 220 374 228 C 383 220 378 215 374 220 Z" fill="#451A03" opacity="0.7" />
+    <text x="374" y="238" font-family="'Plus Jakarta Sans', Arial, sans-serif" font-size="6.5" font-weight="900" fill="#451A03" text-anchor="middle" letter-spacing="0.5" opacity="0.85">FRESH</text>
+    <text x="374" y="247" font-family="'Plus Jakarta Sans', Arial, sans-serif" font-size="6.5" font-weight="900" fill="#451A03" text-anchor="middle" letter-spacing="0.5" opacity="0.85">NATURAL</text>
+  </g>
+
+  <!-- ================= TOP ARCHED TYPOGRAPHY ================= -->
+  <!-- "The" in graceful flowing cursive -->
+  <g text-anchor="middle" filter="url(#shadow)">
+    <text x="160" y="112" font-family="'Brush Script MT', cursive, Georgia, serif" font-size="34" font-style="italic" fill="url(#goldTextGrad)" stroke="#451A03" stroke-width="1">
+      The
+    </text>
+  </g>
+
+  <!-- Curved Path for "FAT BUDDHA" -->
+  <path id="archFatBuddha" d="M 70 178 Q 250 48 430 178" fill="none" />
+  
+  <text font-family="'Cinzel', 'Impact', 'Times New Roman', serif" font-weight="900" font-size="44" fill="url(#goldTextGrad)" stroke="#3E1A04" stroke-width="3" filter="url(#shadow)" letter-spacing="2">
+    <textPath href="#archFatBuddha" startOffset="50%" text-anchor="middle">
+      Fat Buddha
+    </textPath>
+  </text>
+  <text font-family="'Cinzel', 'Impact', 'Times New Roman', serif" font-weight="900" font-size="44" fill="url(#goldTextGrad)" letter-spacing="2">
+    <textPath href="#archFatBuddha" startOffset="50%" text-anchor="middle">
+      Fat Buddha
+    </textPath>
+  </text>
+
+  <!-- ================= BOTTOM CALLIGRAPHY: "Delight" ================= -->
+  <g text-anchor="middle" filter="url(#shadow)">
+    <!-- Shadow / 3D Extrusion -->
+    <text x="252" y="394" font-family="'Brush Script MT', 'Great Vibes', 'Edwardian Script ITC', cursive" font-size="82" font-weight="bold" fill="#3B1804" stroke="#260E02" stroke-width="4">
+      Delight
+    </text>
+    <!-- Foreground Script -->
+    <text x="250" y="390" font-family="'Brush Script MT', 'Great Vibes', 'Edwardian Script ITC', cursive" font-size="82" font-weight="bold" fill="url(#goldTextGrad)" stroke="#78350F" stroke-width="1.5">
+      Delight
+    </text>
+  </g>
+
+  <!-- ================= BOTTOM RIBBON BANNER ================= -->
+  <g id="bottomRibbon" filter="url(#shadow)">
+    <!-- Ribbon Outer Tails -->
+    <path d="M 130 435 L 150 422 L 150 445 L 130 455 L 140 445 Z" fill="#854D0E" stroke="#451A03" stroke-width="1" />
+    <path d="M 370 435 L 350 422 L 350 445 L 370 455 L 360 445 Z" fill="#854D0E" stroke="#451A03" stroke-width="1" />
+
+    <!-- Arched Main Ribbon Body -->
+    <path d="M 145 425 Q 250 448 355 425 L 350 452 Q 250 475 150 452 Z" fill="url(#ribbonGrad)" stroke="#451A03" stroke-width="2" />
+
+    <!-- Banner Inner Shadow / Crease -->
+    <path d="M 148 428 Q 250 450 352 428" stroke="#FEF08A" stroke-width="1.5" fill="none" opacity="0.8" />
+    <path d="M 152 449 Q 250 472 348 449" stroke="#713F12" stroke-width="1.5" fill="none" opacity="0.6" />
+
+    <!-- Ribbon Text Path -->
+    <path id="ribbonTextPath" d="M 150 444 Q 250 466 350 444" fill="none" />
+    <text font-family="'Cinzel', Georgia, serif" font-weight="900" font-size="11.5" fill="#3B1804" letter-spacing="2">
+      <textPath href="#ribbonTextPath" startOffset="50%" text-anchor="middle">
+        • GOOD FOOD, GOOD MOOD •
+      </textPath>
+    </text>
+  </g>
+
+  <!-- Mini Triad Icons Below Ribbon (Burger, Drink, Leaf) -->
+  <g transform="translate(250, 480)" filter="url(#shadow)">
+    <!-- Burger Icon (Center-Left) -->
+    <g transform="translate(-32, -4) scale(0.65)" fill="#F59E0B" stroke="#451A03" stroke-width="1.5">
+      <path d="M 0 0 C 0 -10 16 -10 16 0 Z" />
+      <rect x="1" y="2" width="14" height="2" rx="1" fill="#DC2626" />
+      <rect x="0" y="5" width="16" height="4" rx="2" fill="#F59E0B" />
+    </g>
+
+    <!-- Drink Icon (Center) -->
+    <g transform="translate(-4, -5) scale(0.65)" fill="#F59E0B" stroke="#451A03" stroke-width="1.5">
+      <path d="M 1 4 L 11 4 L 9 18 L 3 18 Z" />
+      <line x1="6" y1="4" x2="6" y2="-2" stroke="#451A03" stroke-width="2" />
+      <circle cx="6" cy="11" r="1.5" fill="#451A03" />
+    </g>
+
+    <!-- Leaf Icon (Center-Right) -->
+    <g transform="translate(22, -4) scale(0.65)" fill="#84CC16" stroke="#451A03" stroke-width="1.5">
+      <path d="M 0 8 C 0 0 12 0 12 8 C 12 16 0 16 0 8 Z" />
+      <line x1="0" y1="8" x2="12" y2="8" stroke="#451A03" stroke-width="1" />
+    </g>
+  </g>
+</svg>

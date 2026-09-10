@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { usePOS } from '../../context/POSContext';
+import { FatBuddhaLogo } from '../common/FatBuddhaLogo';
 import {
   LayoutDashboard,
   Layers,
@@ -26,7 +27,8 @@ import {
   Wifi,
   ChevronRight,
   Volume2,
-  Clock
+  Clock,
+  ShoppingBag
 } from 'lucide-react';
 import { DashboardView } from './DashboardView';
 import { TablesView } from './TablesView';
@@ -34,6 +36,7 @@ import { OrdersView } from './OrdersView';
 import { KOTView } from './KOTView';
 import { ManualPOSView } from './ManualPOSView';
 import { MenuView } from './MenuView';
+import { ShopView } from './ShopView';
 import { InventoryView } from './InventoryView';
 import { PaymentsView } from './PaymentsView';
 import { ReportsView } from './ReportsView';
@@ -137,6 +140,7 @@ export const AdminLayout: React.FC = () => {
     { id: 'kot', label: 'KOT', icon: ChefHat, badge: activeKOTCount > 0 ? activeKOTCount : null, alert: activeKOTCount > 0 },
     { id: 'manual_order', label: 'Manual Order', icon: UtensilsCrossed },
     { id: 'menu', label: 'Menu', icon: BookOpen },
+    { id: 'shop', label: 'Shop', icon: ShoppingBag },
     { id: 'inventory', label: 'Inventory', icon: Package },
     { id: 'payments', label: 'Payments', icon: CreditCard },
     { id: 'reports', label: 'Reports', icon: BarChart3 },
@@ -162,6 +166,8 @@ export const AdminLayout: React.FC = () => {
         return 'Manual Fast POS Order';
       case 'menu':
         return 'Menu & Recipe Catalog';
+      case 'shop':
+        return 'Clothing & Merchandise Shop';
       case 'inventory':
         return 'Inventory & Stock Control';
       case 'payments':
@@ -195,9 +201,7 @@ export const AdminLayout: React.FC = () => {
         <div>
           <div className="p-5 flex items-center justify-between border-b border-slate-800">
             <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-amber-500 to-amber-600 flex items-center justify-center text-white shadow-md shadow-amber-500/30">
-                <UtensilsCrossed className="w-5 h-5" />
-              </div>
+              <FatBuddhaLogo size={38} alt="The Fat Buddha Delight Logo" />
               <div>
                 <h1 className="font-bold text-white text-sm tracking-tight leading-tight">
                   The Fat Buddha Delight
@@ -434,6 +438,8 @@ export const AdminLayout: React.FC = () => {
             )}
 
             {adminActiveTab === 'menu' && <MenuView />}
+
+            {adminActiveTab === 'shop' && <ShopView />}
 
             {adminActiveTab === 'inventory' && <InventoryView />}
 

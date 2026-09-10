@@ -1,6 +1,6 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { usePOS } from '../../context/POSContext';
-import { MenuItem } from '../../types';
+import { MenuItem, Department } from '../../types';
 import { normalizeImageUrl, DEFAULT_DISH_IMAGE } from '../../utils/imageUtils';
 import { CATEGORY_NAMES, RESTAURANT_PROFILE } from '../../data/restaurantMenu';
 import {
@@ -24,7 +24,8 @@ import {
   Check,
   BellRing,
   AlertTriangle,
-  X
+  X,
+  UtensilsCrossed
 } from 'lucide-react';
 import {
   playReadySound,
@@ -35,6 +36,8 @@ import { GuestCartDrawer } from './GuestCartDrawer';
 import { GuestLiveOrderTracker } from './GuestLiveOrderTracker';
 import { CallServiceModal } from './CallServiceModal';
 import { TableQRModal } from './TableQRModal';
+import { WifiQRModal } from './WifiQRModal';
+import { FatBuddhaLogo } from '../common/FatBuddhaLogo';
 
 export const GuestQRView: React.FC = () => {
   const {
@@ -55,6 +58,7 @@ export const GuestQRView: React.FC = () => {
   } = usePOS();
 
   // Local View States
+  const [selectedDepartment, setSelectedDepartment] = useState<'ALL' | Department>('ALL');
   const [selectedCategory, setSelectedCategory] = useState('All');
   const [searchQuery, setSearchQuery] = useState('');
   const [dietaryFilter, setDietaryFilter] = useState<'all' | 'veg' | 'non-veg' | 'vegan'>('all');
@@ -66,6 +70,7 @@ export const GuestQRView: React.FC = () => {
   const [isTrackerOpen, setIsTrackerOpen] = useState(false);
   const [isServiceModalOpen, setIsServiceModalOpen] = useState(false);
   const [isQRModalOpen, setIsQRModalOpen] = useState(false);
+  const [isWifiModalOpen, setIsWifiModalOpen] = useState(false);
 
   const currentTable = getCurrentTable();
   const activeOrders = getTableOrders(currentGuestTableNumber);
@@ -81,7 +86,7 @@ export const GuestQRView: React.FC = () => {
   React.useEffect(() => {
     if (unreadTableAlerts.length > prevAlertCount.current && unreadTableAlerts.length > 0) {
       const latest = unreadTableAlerts[0];
-      if (latest.type === 'order_ready') {
+      if (latest.type === 'order_ready' || latest.type === 'order_preparing') {
         playReadySound();
       } else if (latest.type === 'order_cancelled') {
         playCancelSound();
@@ -90,25 +95,32 @@ export const GuestQRView: React.FC = () => {
     prevAlertCount.current = unreadTableAlerts.length;
   }, [unreadTableAlerts]);
 
-  // Categories list derived dynamically from Firestore categories, menuItems, & official list
+  // Categories list derived dynamically based on selected department
   const categories = useMemo(() => {
     const set = new Set<string>();
     // 1. Live Firestore categories collection
     (firestoreCategories || []).forEach(c => {
       if (c.name && c.name.trim() && c.isActive !== false) {
-        set.add(c.name.trim());
+        if (selectedDepartment === 'ALL' || (c.department || 'RESTAURANT') === selectedDepartment) {
+          set.add(c.name.trim());
+        }
       }
     });
     // 2. Official fallback categories
-    (CATEGORY_NAMES || []).forEach(c => set.add(c));
+    if (selectedDepartment === 'ALL' || selectedDepartment === 'RESTAURANT') {
+      (CATEGORY_NAMES || []).forEach(c => set.add(c));
+    }
     // 3. Menu items category tags
     (menuItems || []).forEach(item => {
-      if (item && item.category && item.category.trim()) {
-        set.add(item.category.trim());
+      const itemDept = item.department || 'RESTAURANT';
+      if (selectedDepartment === 'ALL' || itemDept === selectedDepartment) {
+        if (item && item.category && item.category.trim()) {
+          set.add(item.category.trim());
+        }
       }
     });
     return ['All', ...Array.from(set)];
-  }, [firestoreCategories, menuItems]);
+  }, [firestoreCategories, menuItems, selectedDepartment]);
 
   // If active category was deleted or renamed, gracefully fallback to 'All'
   useEffect(() => {
@@ -117,24 +129,34 @@ export const GuestQRView: React.FC = () => {
     }
   }, [categories, selectedCategory]);
 
-  // Filtered Menu Items
+  // Filtered Menu & Shop Items
   const filteredItems = menuItems.filter(item => {
+    const itemDept = item.department || 'RESTAURANT';
+    if (selectedDepartment !== 'ALL' && itemDept !== selectedDepartment) {
+      return false;
+    }
+
     // Category filter
     if (selectedCategory !== 'All' && item.category !== selectedCategory) {
       return false;
     }
-    // Dietary filter
-    if (dietaryFilter === 'veg' && item.dietary !== 'veg') return false;
-    if (dietaryFilter === 'non-veg' && item.dietary !== 'non-veg') return false;
-    if (dietaryFilter === 'vegan' && item.dietary !== 'vegan') return false;
+
+    // Dietary filter (only applies to RESTAURANT food)
+    if (itemDept === 'RESTAURANT') {
+      if (dietaryFilter === 'veg' && item.dietary !== 'veg') return false;
+      if (dietaryFilter === 'non-veg' && item.dietary !== 'non-veg') return false;
+      if (dietaryFilter === 'vegan' && item.dietary !== 'vegan') return false;
+    }
 
     // Search query
     if (searchQuery.trim()) {
       const q = searchQuery.toLowerCase();
       const matchName = item.name.toLowerCase().includes(q);
-      const matchDesc = item.description.toLowerCase().includes(q);
-      const matchTag = item.tags.some(t => t.toLowerCase().includes(q));
-      if (!matchName && !matchDesc && !matchTag) return false;
+      const matchDesc = (item.description || '').toLowerCase().includes(q);
+      const matchTag = (item.tags || []).some(t => t.toLowerCase().includes(q));
+      const matchSku = (item.sku || '').toLowerCase().includes(q);
+      const matchCategory = (item.category || '').toLowerCase().includes(q);
+      if (!matchName && !matchDesc && !matchTag && !matchSku && !matchCategory) return false;
     }
 
     return true;
@@ -191,32 +213,35 @@ export const GuestQRView: React.FC = () => {
         <div className="relative rounded-2xl overflow-hidden bg-gradient-to-br from-gray-900 via-gray-800 to-gray-900 text-white p-4 sm:p-5 mb-4 shadow-md">
           <div className="relative z-10">
             <div className="flex items-start justify-between gap-3">
-              <div>
-                <div className="flex items-center gap-2 mb-1">
-                  <span className="px-2 py-0.5 rounded-md bg-amber-500 text-white font-black text-[10px] uppercase tracking-wider shadow-sm">
-                    Table {currentGuestTableNumber < 10 ? '0' + currentGuestTableNumber : currentGuestTableNumber}
-                  </span>
-                  <span className="text-[11px] text-amber-300 font-medium">
-                    {currentTable?.section || 'Indoor Dining'}
-                  </span>
-                </div>
-                <h1 className="text-xl sm:text-2xl font-bold text-white tracking-tight">
-                  {settings.restaurantName || RESTAURANT_PROFILE.name}
-                </h1>
-                <p className="text-xs text-amber-200/90 mt-1 max-w-sm">
-                  {settings.tagline || RESTAURANT_PROFILE.tagline}
-                </p>
-                <div className="flex items-center gap-2 mt-1 text-[10px] text-gray-300">
-                  <span>📸 {RESTAURANT_PROFILE.social.instagram}</span>
-                  <span>•</span>
-                  <span>🎵 {RESTAURANT_PROFILE.social.tiktok}</span>
+              <div className="flex items-start gap-3.5">
+                <FatBuddhaLogo size={58} className="mt-0.5" alt="The Fat Buddha Delight Logo" />
+                <div>
+                  <div className="flex items-center gap-2 mb-1">
+                    <span className="px-2 py-0.5 rounded-md bg-amber-500 text-white font-black text-[10px] uppercase tracking-wider shadow-sm">
+                      Table {currentGuestTableNumber < 10 ? '0' + currentGuestTableNumber : currentGuestTableNumber}
+                    </span>
+                    <span className="text-[11px] text-amber-300 font-medium">
+                      {currentTable?.section || 'Indoor Dining'}
+                    </span>
+                  </div>
+                  <h1 className="text-xl sm:text-2xl font-bold text-white tracking-tight">
+                    {settings.restaurantName || RESTAURANT_PROFILE.name}
+                  </h1>
+                  <p className="text-xs text-amber-200/90 mt-1 max-w-sm">
+                    {settings.tagline || RESTAURANT_PROFILE.tagline}
+                  </p>
+                  <div className="flex items-center gap-2 mt-1 text-[10px] text-gray-300">
+                    <span>📸 {RESTAURANT_PROFILE.social.instagram}</span>
+                    <span>•</span>
+                    <span>🎵 {RESTAURANT_PROFILE.social.tiktok}</span>
+                  </div>
                 </div>
               </div>
 
               {/* Table QR Button */}
               <button
                 onClick={() => setIsQRModalOpen(true)}
-                className="p-2.5 rounded-xl bg-white/10 hover:bg-white/20 text-amber-300 border border-white/20 transition shadow"
+                className="p-2.5 rounded-xl bg-white/10 hover:bg-white/20 text-amber-300 border border-white/20 transition shadow flex-shrink-0"
                 title="View Table QR Code"
               >
                 <QrCode className="w-5 h-5" />
@@ -243,10 +268,24 @@ export const GuestQRView: React.FC = () => {
                 </button>
               )}
 
-              <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-white/10 text-gray-300 border border-white/15 transition flex-shrink-0">
-                <Wifi className="w-3.5 h-3.5 text-gray-300" />
-                <span className="text-[11px] font-mono">{settings.wifiSsid}</span>
-              </div>
+              <button
+                id="guest-wifi-qr-trigger"
+                onClick={() => setIsWifiModalOpen(true)}
+                className="flex items-center gap-2 px-3.5 py-1.5 rounded-xl bg-gradient-to-r from-amber-500/25 via-amber-500/20 to-amber-600/25 hover:from-amber-500/40 hover:to-amber-600/40 text-amber-200 border border-amber-400/40 transition-all duration-150 flex-shrink-0 cursor-pointer shadow-sm active:scale-95 group"
+                title="Tap to view WiFi QR Code and connect"
+              >
+                <div className="relative flex items-center justify-center">
+                  <span className="animate-ping absolute inline-flex h-2.5 w-2.5 rounded-full bg-emerald-400 opacity-75"></span>
+                  <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
+                </div>
+                <Wifi className="w-3.5 h-3.5 text-amber-300 group-hover:scale-110 transition-transform" />
+                <span className="text-[11px] font-medium text-amber-100">
+                  WiFi: <span className="font-mono font-bold text-amber-300">{settings.wifiSsid || 'Fat Buddha Guest'}</span>
+                </span>
+                <span className="text-[9px] font-black uppercase tracking-wider bg-amber-400 text-gray-950 px-1.5 py-0.5 rounded shadow-xs ml-0.5 group-hover:bg-amber-300 transition-colors">
+                  Show QR
+                </span>
+              </button>
             </div>
           </div>
         </div>
@@ -260,6 +299,8 @@ export const GuestQRView: React.FC = () => {
                 className={`p-4 rounded-2xl border-2 shadow-md flex items-start justify-between gap-3 animate-in fade-in slide-in-from-top-2 duration-300 ${
                   alert.type === 'order_ready'
                     ? 'bg-emerald-50 border-emerald-400 text-emerald-950'
+                    : alert.type === 'order_preparing'
+                    ? 'bg-blue-50 border-blue-400 text-blue-950'
                     : 'bg-rose-50 border-rose-300 text-rose-950'
                 }`}
               >
@@ -268,11 +309,15 @@ export const GuestQRView: React.FC = () => {
                     className={`w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0 shadow-xs ${
                       alert.type === 'order_ready'
                         ? 'bg-emerald-600 text-white'
+                        : alert.type === 'order_preparing'
+                        ? 'bg-blue-600 text-white'
                         : 'bg-rose-600 text-white'
                     }`}
                   >
                     {alert.type === 'order_ready' ? (
                       <BellRing className="w-5 h-5 animate-bounce" />
+                    ) : alert.type === 'order_preparing' ? (
+                      <Flame className="w-5 h-5 animate-pulse text-amber-300" />
                     ) : (
                       <AlertTriangle className="w-5 h-5" />
                     )}
@@ -287,10 +332,16 @@ export const GuestQRView: React.FC = () => {
                         className={`px-2 py-0.2 rounded-full text-[10px] font-bold uppercase tracking-wider ${
                           alert.type === 'order_ready'
                             ? 'bg-emerald-200 text-emerald-800'
+                            : alert.type === 'order_preparing'
+                            ? 'bg-blue-200 text-blue-800'
                             : 'bg-rose-200 text-rose-800'
                         }`}
                       >
-                        {alert.type === 'order_ready' ? 'Ready to Serve' : 'Item Notice'}
+                        {alert.type === 'order_ready'
+                          ? 'Ready to Serve'
+                          : alert.type === 'order_preparing'
+                          ? 'Preparing in Kitchen'
+                          : 'Item Notice'}
                       </span>
                     </div>
 
@@ -299,13 +350,17 @@ export const GuestQRView: React.FC = () => {
                     </p>
 
                     <div className="mt-3 flex items-center gap-2 flex-wrap">
-                      {alert.type === 'order_ready' ? (
+                      {alert.type === 'order_ready' || alert.type === 'order_preparing' ? (
                         <button
                           onClick={() => {
                             setIsTrackerOpen(true);
                             markTableNotificationRead(alert.id);
                           }}
-                          className="px-3.5 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs shadow-xs transition cursor-pointer"
+                          className={`px-3.5 py-1.5 rounded-lg text-white font-bold text-xs shadow-xs transition cursor-pointer ${
+                            alert.type === 'order_ready'
+                              ? 'bg-emerald-600 hover:bg-emerald-700'
+                              : 'bg-blue-600 hover:bg-blue-700'
+                          }`}
                         >
                           View Order Tracker
                         </button>
@@ -368,52 +423,99 @@ export const GuestQRView: React.FC = () => {
             )}
           </div>
 
-          {/* Dietary Badges */}
-          <div className="flex items-center gap-1.5 overflow-x-auto pb-1 no-scrollbar overscroll-x-contain touch-pan-x">
+          {/* Department Filter Switcher (All / Restaurant / Shop) */}
+          <div className="flex items-center gap-1.5 p-1 bg-amber-900/5 rounded-xl border border-amber-900/10">
             <button
-              onClick={() => setDietaryFilter('all')}
-              className={`px-3 py-1 rounded-lg text-xs font-semibold transition ${
-                dietaryFilter === 'all'
-                  ? 'bg-amber-500 text-white font-bold shadow-sm'
-                  : 'bg-white hover:bg-gray-50 text-gray-600 border border-gray-200'
+              onClick={() => {
+                setSelectedDepartment('ALL');
+                setSelectedCategory('All');
+              }}
+              className={`flex-1 flex items-center justify-center gap-1.5 py-1.5 rounded-lg text-xs font-bold transition ${
+                selectedDepartment === 'ALL'
+                  ? 'bg-white text-gray-900 shadow-xs'
+                  : 'text-gray-600 hover:text-gray-900'
               }`}
             >
-              All Items
+              <span>All Items</span>
             </button>
-
             <button
-              onClick={() => setDietaryFilter('veg')}
-              className={`flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-semibold transition ${
-                dietaryFilter === 'veg'
-                  ? 'bg-emerald-600 text-white font-bold shadow-sm'
-                  : 'bg-white hover:bg-emerald-50 text-emerald-700 border border-emerald-200'
+              onClick={() => {
+                setSelectedDepartment('RESTAURANT');
+                setSelectedCategory('All');
+              }}
+              className={`flex-1 flex items-center justify-center gap-1.5 py-1.5 rounded-lg text-xs font-bold transition ${
+                selectedDepartment === 'RESTAURANT'
+                  ? 'bg-amber-600 text-white shadow-xs'
+                  : 'text-gray-600 hover:text-gray-900'
               }`}
             >
-              <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" /> Veg Only
+              <UtensilsCrossed className="w-3.5 h-3.5" />
+              <span>Restaurant Menu</span>
             </button>
-
             <button
-              onClick={() => setDietaryFilter('non-veg')}
-              className={`flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-semibold transition ${
-                dietaryFilter === 'non-veg'
-                  ? 'bg-rose-600 text-white font-bold shadow-sm'
-                  : 'bg-white hover:bg-rose-50 text-rose-700 border border-rose-200'
+              onClick={() => {
+                setSelectedDepartment('SHOP');
+                setSelectedCategory('All');
+              }}
+              className={`flex-1 flex items-center justify-center gap-1.5 py-1.5 rounded-lg text-xs font-bold transition ${
+                selectedDepartment === 'SHOP'
+                  ? 'bg-indigo-600 text-white shadow-xs'
+                  : 'text-gray-600 hover:text-gray-900'
               }`}
             >
-              <span className="w-1.5 h-1.5 rounded-full bg-rose-500" /> Non-Veg
-            </button>
-
-            <button
-              onClick={() => setDietaryFilter('vegan')}
-              className={`flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-semibold transition ${
-                dietaryFilter === 'vegan'
-                  ? 'bg-teal-600 text-white font-bold shadow-sm'
-                  : 'bg-white hover:bg-teal-50 text-teal-700 border border-teal-200'
-              }`}
-            >
-              <Leaf className="w-3 h-3 text-teal-600" /> Vegan
+              <ShoppingBag className="w-3.5 h-3.5" />
+              <span>Clothing & Shop</span>
             </button>
           </div>
+
+          {/* Dietary Badges (Only shown when Restaurant is in view) */}
+          {selectedDepartment !== 'SHOP' && (
+            <div className="flex items-center gap-1.5 overflow-x-auto pb-1 no-scrollbar overscroll-x-contain touch-pan-x">
+              <button
+                onClick={() => setDietaryFilter('all')}
+                className={`px-3 py-1 rounded-lg text-xs font-semibold transition ${
+                  dietaryFilter === 'all'
+                    ? 'bg-amber-500 text-white font-bold shadow-sm'
+                    : 'bg-white hover:bg-gray-50 text-gray-600 border border-gray-200'
+                }`}
+              >
+                All Food
+              </button>
+
+              <button
+                onClick={() => setDietaryFilter('veg')}
+                className={`flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-semibold transition ${
+                  dietaryFilter === 'veg'
+                    ? 'bg-emerald-600 text-white font-bold shadow-sm'
+                    : 'bg-white hover:bg-emerald-50 text-emerald-700 border border-emerald-200'
+                }`}
+              >
+                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" /> Veg Only
+              </button>
+
+              <button
+                onClick={() => setDietaryFilter('non-veg')}
+                className={`flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-semibold transition ${
+                  dietaryFilter === 'non-veg'
+                    ? 'bg-rose-600 text-white font-bold shadow-sm'
+                    : 'bg-white hover:bg-rose-50 text-rose-700 border border-rose-200'
+                }`}
+              >
+                <span className="w-1.5 h-1.5 rounded-full bg-rose-500" /> Non-Veg
+              </button>
+
+              <button
+                onClick={() => setDietaryFilter('vegan')}
+                className={`flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-semibold transition ${
+                  dietaryFilter === 'vegan'
+                    ? 'bg-teal-600 text-white font-bold shadow-sm'
+                    : 'bg-white hover:bg-teal-50 text-teal-700 border border-teal-200'
+                }`}
+              >
+                <Leaf className="w-3 h-3 text-teal-600" /> Vegan
+              </button>
+            </div>
+          )}
 
           {/* Category Tabs Scroll */}
           <div className="flex items-center gap-1.5 overflow-x-auto pb-1 pt-1 no-scrollbar overscroll-x-contain touch-pan-x">
@@ -468,19 +570,40 @@ export const GuestQRView: React.FC = () => {
                 <div className="flex-1 min-w-0">
                   {/* Badges */}
                   <div className="flex items-center gap-1.5 mb-1 flex-wrap">
-                    {item.dietary === 'veg' && (
-                      <span className="w-3.5 h-3.5 border border-emerald-600 flex items-center justify-center p-0.5 rounded-sm bg-emerald-50">
-                        <span className="w-1.5 h-1.5 rounded-full bg-emerald-600" />
+                    {item.department === 'SHOP' ? (
+                      <span className="inline-flex items-center gap-1 px-1.5 py-0.2 rounded bg-indigo-100 text-indigo-800 text-[10px] font-bold border border-indigo-200">
+                        <ShoppingBag className="w-3 h-3" />
+                        <span>SHOP</span>
+                      </span>
+                    ) : (
+                      <>
+                        {item.dietary === 'veg' && (
+                          <span className="w-3.5 h-3.5 border border-emerald-600 flex items-center justify-center p-0.5 rounded-sm bg-emerald-50">
+                            <span className="w-1.5 h-1.5 rounded-full bg-emerald-600" />
+                          </span>
+                        )}
+                        {item.dietary === 'non-veg' && (
+                          <span className="w-3.5 h-3.5 border border-rose-600 flex items-center justify-center p-0.5 rounded-sm bg-rose-50">
+                            <span className="w-1.5 h-1.5 rounded-full bg-rose-600" />
+                          </span>
+                        )}
+                        {item.dietary === 'vegan' && (
+                          <span className="w-3.5 h-3.5 border border-teal-600 flex items-center justify-center p-0.5 rounded-sm bg-teal-50">
+                            <Leaf className="w-2.5 h-2.5 text-teal-600" />
+                          </span>
+                        )}
+                      </>
+                    )}
+
+                    {item.size && (
+                      <span className="text-[10px] font-bold px-1.5 py-0.2 rounded bg-gray-100 text-gray-700 border border-gray-200">
+                        Size: {item.size}
                       </span>
                     )}
-                    {item.dietary === 'non-veg' && (
-                      <span className="w-3.5 h-3.5 border border-rose-600 flex items-center justify-center p-0.5 rounded-sm bg-rose-50">
-                        <span className="w-1.5 h-1.5 rounded-full bg-rose-600" />
-                      </span>
-                    )}
-                    {item.dietary === 'vegan' && (
-                      <span className="w-3.5 h-3.5 border border-teal-600 flex items-center justify-center p-0.5 rounded-sm bg-teal-50">
-                        <Leaf className="w-2.5 h-2.5 text-teal-600" />
+
+                    {item.color && (
+                      <span className="text-[10px] font-bold px-1.5 py-0.2 rounded bg-gray-100 text-gray-700 border border-gray-200">
+                        {item.color}
                       </span>
                     )}
 
@@ -506,10 +629,16 @@ export const GuestQRView: React.FC = () => {
                     {item.description}
                   </p>
 
-                  <div className="flex items-center gap-3 mt-2">
+                  <div className="flex items-center gap-3 mt-2 flex-wrap">
                     <span className="font-mono font-black text-sm sm:text-base text-gray-900">
                       ₹{item.price}
                     </span>
+
+                    {item.sku && (
+                      <span className="text-[10px] font-mono text-gray-400">
+                        SKU: {item.sku}
+                      </span>
+                    )}
 
                     {item.spiceLevel !== undefined && item.spiceLevel > 0 && (
                       <span className="text-[10px] text-rose-600 font-semibold flex items-center gap-0.5">
@@ -518,9 +647,11 @@ export const GuestQRView: React.FC = () => {
                       </span>
                     )}
 
-                    <span className="text-[10px] text-gray-400 flex items-center gap-0.5">
-                      <Clock className="w-3 h-3" /> {item.prepTimeMinutes}m
-                    </span>
+                    {item.department !== 'SHOP' && item.prepTimeMinutes && (
+                      <span className="text-[10px] text-gray-400 flex items-center gap-0.5">
+                        <Clock className="w-3 h-3" /> {item.prepTimeMinutes}m
+                      </span>
+                    )}
                   </div>
                 </div>
 
@@ -650,6 +781,13 @@ export const GuestQRView: React.FC = () => {
           isOpen={isQRModalOpen}
           onClose={() => setIsQRModalOpen(false)}
           initialTableNum={currentGuestTableNumber}
+          lockTable={true}
+        />
+
+        <WifiQRModal
+          isOpen={isWifiModalOpen}
+          onClose={() => setIsWifiModalOpen(false)}
+          tableNumber={currentGuestTableNumber}
         />
       </div>
     </div>

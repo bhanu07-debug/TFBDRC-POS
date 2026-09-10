@@ -268,12 +268,32 @@ export const GuestLiveOrderTracker: React.FC<GuestLiveOrderTrackerProps> = ({
                     (k.status || '').toLowerCase() === 'completed' ||
                     (k.status || '').toLowerCase() === 'bumped'
                 );
+                const isKotPreparing = linkedKots.some(
+                  k => {
+                    const st = (k.status || '').toLowerCase();
+                    return st === 'in_progress' || st === 'preparing' || st === 'cooking';
+                  }
+                );
                 const orderStatusLower = (order.status || '').toLowerCase();
                 const isOrderReady = orderStatusLower === 'ready' || isKotReady;
-                const effectiveStatus =
-                  isOrderReady && orderStatusLower !== 'served' && orderStatusLower !== 'completed'
-                    ? 'ready'
-                    : order.status;
+                const isOrderPreparing =
+                  orderStatusLower === 'preparing' ||
+                  orderStatusLower === 'cooking' ||
+                  orderStatusLower === 'confirmed' ||
+                  isKotPreparing;
+
+                let effectiveStatus: string = order.status;
+                if (orderStatusLower === 'cancelled') {
+                  effectiveStatus = 'cancelled';
+                } else if (orderStatusLower === 'served' || orderStatusLower === 'completed') {
+                  effectiveStatus = order.status;
+                } else if (isOrderReady) {
+                  effectiveStatus = 'ready';
+                } else if (isOrderPreparing) {
+                  effectiveStatus = 'preparing';
+                } else {
+                  effectiveStatus = order.status;
+                }
 
                 const step = getStatusStep(effectiveStatus);
                 return (
@@ -368,7 +388,11 @@ export const GuestLiveOrderTracker: React.FC<GuestLiveOrderTrackerProps> = ({
                           <div className="flex flex-col items-center relative z-10">
                             <div
                               className={`w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-bold mb-1 transition-all ${
-                                step >= 2 ? 'bg-blue-600 text-white shadow-xs' : 'bg-gray-200 text-gray-500'
+                                step === 2
+                                  ? 'bg-blue-600 text-white shadow-xs animate-pulse ring-2 ring-blue-300'
+                                  : step > 2
+                                  ? 'bg-blue-600 text-white shadow-xs'
+                                  : 'bg-gray-200 text-gray-500'
                               }`}
                             >
                               {step > 2 ? '✓' : '2'}
@@ -406,6 +430,17 @@ export const GuestLiveOrderTracker: React.FC<GuestLiveOrderTrackerProps> = ({
                             </span>
                           </div>
                         </div>
+                        {step === 2 && (
+                          <div className="mt-2.5 px-3 py-1.5 bg-blue-50/90 border border-blue-200/80 rounded-lg text-[11px] text-blue-900 flex items-center justify-between animate-in fade-in duration-300">
+                            <span className="font-semibold flex items-center gap-1.5">
+                              <span className="w-2 h-2 rounded-full bg-blue-600 animate-ping inline-block" />
+                              Kitchen staff is preparing your order fresh right now!
+                            </span>
+                            <span className="text-[10px] font-mono text-blue-700 bg-blue-100 px-1.5 py-0.5 rounded font-bold">
+                              In Kitchen
+                            </span>
+                          </div>
+                        )}
                       </div>
                     )}
 
@@ -486,13 +521,23 @@ export const GuestLiveOrderTracker: React.FC<GuestLiveOrderTrackerProps> = ({
                                 {item.quantity}x
                               </span>
                               <div>
-                                <span className="text-gray-900 font-medium">
-                                  {item.name || item.nameSnapshot}
-                                </span>
-                                {item.variantName && (
-                                  <span className="text-[10px] text-gray-500 ml-1.5">
-                                    ({item.variantName})
+                                <div className="flex items-center gap-1.5 flex-wrap">
+                                  <span className="text-gray-900 font-medium">
+                                    {item.name || item.nameSnapshot}
                                   </span>
+                                  {item.department === 'SHOP' && (
+                                    <span className="text-[9px] font-bold px-1.5 py-0.2 rounded bg-indigo-100 text-indigo-800 border border-indigo-200">
+                                      SHOP
+                                    </span>
+                                  )}
+                                </div>
+                                {(item.size || item.color || item.variantName || item.sku) && (
+                                  <div className="text-[10px] text-gray-500 mt-0.5 space-x-1.5">
+                                    {item.size && <span>Size: <strong className="text-gray-700">{item.size}</strong></span>}
+                                    {item.color && <span>Color: <strong className="text-gray-700">{item.color}</strong></span>}
+                                    {item.variantName && <span>({item.variantName})</span>}
+                                    {item.sku && <span className="font-mono text-gray-400">[{item.sku}]</span>}
+                                  </div>
                                 )}
                               </div>
                             </div>

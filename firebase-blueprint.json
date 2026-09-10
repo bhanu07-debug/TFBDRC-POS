@@ -242,14 +242,14 @@
     },
     "TableNotification": {
       "title": "TableNotification",
-      "description": "Real-time notifications sent to dining tables for order status (ready, cancelled, out of stock).",
+      "description": "Real-time notifications sent to dining tables for order status (ready, preparing, cancelled, out of stock).",
       "type": "object",
       "properties": {
         "id": { "type": "string", "maxLength": 128 },
         "tableNumber": { "type": "number" },
-        "type": { "type": "string", "enum": ["order_ready", "order_cancelled", "order_placed", "service_call", "custom"] },
-        "title": { "type": "string", "maxLength": 128 },
-        "message": { "type": "string", "maxLength": 500 },
+        "type": { "type": "string", "enum": ["order_ready", "order_preparing", "order_cancelled", "order_placed", "service_call", "custom"] },
+        "title": { "type": "string", "maxLength": 256 },
+        "message": { "type": "string", "maxLength": 1000 },
         "orderId": { "type": "string", "maxLength": 128 },
         "kotId": { "type": "string", "maxLength": 128 },
         "station": { "type": "string", "enum": ["kitchen", "reception", "all"] },

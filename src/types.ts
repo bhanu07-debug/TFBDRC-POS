@@ -5,6 +5,7 @@ export type AdminTab =
   | 'kot'
   | 'manual_order'
   | 'menu'
+  | 'shop'
   | 'inventory'
   | 'payments'
   | 'reports'
@@ -50,8 +51,10 @@ export interface Table {
 }
 
 // ==========================================
-// 2. CATEGORIES
+// 2. CATEGORIES & DEPARTMENTS
 // ==========================================
+export type Department = 'RESTAURANT' | 'SHOP';
+
 export interface Category {
   id: string;
   name: string;
@@ -59,20 +62,27 @@ export interface Category {
   imageUrl?: string;
   sortOrder: number;
   isActive: boolean;
+  department?: Department; // 'RESTAURANT' (default) or 'SHOP'
   createdAt: string;
   updatedAt: string;
 }
 
 // ==========================================
-// 3. MENU ITEMS
+// 3. MENU ITEMS & SHOP PRODUCTS
 // ==========================================
 export type KOTDestination = 'KITCHEN' | 'RECEPTION' | 'kitchen' | 'reception';
 export type DietaryType = 'veg' | 'non-veg' | 'vegan' | 'egg';
 
 export interface MenuItemVariant {
   id: string;
-  name: string;
+  name: string; // e.g. "Size: M" or "Full"
   price: number;
+  costPrice?: number;
+  sku?: string;
+  size?: string;
+  color?: string;
+  stockQuantity?: number;
+  inStock?: boolean;
 }
 
 export interface MenuItemAddOn {
@@ -90,10 +100,14 @@ export interface CartItem {
   specialInstructions?: string;
   unitPrice: number;
   totalPrice: number;
+  department?: Department;
+  sku?: string;
+  size?: string;
+  color?: string;
 }
 
 export type OrderItemStatus = 'pending' | 'preparing' | 'ready' | 'served' | 'cancelled';
-export type OrderType = 'dine_in' | 'takeaway' | 'delivery';
+export type OrderType = 'dine_in' | 'takeaway' | 'delivery' | 'walk_in';
 
 export interface MenuItem {
   id: string;
@@ -104,9 +118,17 @@ export interface MenuItem {
   imageUrl?: string;
   isAvailable?: boolean;
   kotDestination?: KOTDestination;
+  department?: Department; // 'RESTAURANT' (default) or 'SHOP'
   sortOrder?: number;
   createdAt?: string;
   updatedAt?: string;
+
+  // Shop / Clothing specific fields
+  sku?: string;
+  costPrice?: number;
+  size?: string;
+  color?: string;
+  stockQuantity?: number;
 
   // Compatibility fields
   code?: string;
@@ -169,6 +191,12 @@ export interface OrderItemSnapshot {
   quantity: number;
   notes?: string;
   kotDestination: KOTDestination;
+  department?: Department; // 'RESTAURANT' or 'SHOP'
+  sku?: string;
+  size?: string;
+  color?: string;
+  variantId?: string;
+  variantName?: string;
   status: 'PENDING' | 'COOKING' | 'DONE' | 'CANCELLED';
   cancelled: boolean;
   cancelledBy: string | null;
@@ -205,13 +233,15 @@ export interface Order {
   guestName?: string;
   guestPhone?: string;
   paymentStatus?: 'unpaid' | 'paid' | 'partial' | 'refunded';
-  paymentMethod?: 'cash' | 'card' | 'upi' | 'split';
+  paymentMethod?: PaymentMethod;
   paidAt?: string;
   finalAmount?: number;
   taxAmount?: number;
   serviceCharge?: number;
   discountAmount?: number;
-  orderType?: 'dine_in' | 'takeaway' | 'delivery';
+  orderType?: OrderType;
+  cashierName?: string;
+  settledBy?: string;
 }
 
 // ==========================================
@@ -330,6 +360,14 @@ export interface PaymentRecord {
   orderId?: string;
   orderNumber?: string;
   tableNumber?: number;
+  subtotal?: number;
+  discount?: number;
+  vat?: number;
+  serviceCharge?: number;
+  totalAmount?: number;
+  paymentMethod?: PaymentMethod;
+  orderType?: OrderType;
+  customerName?: string;
   timestamp?: string;
   paidAt?: string;
   cashierName?: string;
@@ -460,11 +498,11 @@ export interface ServiceRequest {
   status: 'pending' | 'attended';
 }
 
-// Table Notification for Kitchen/Reception to Guest Table alerts (Order Ready, Cancelled, etc.)
+// Table Notification for Kitchen/Reception to Guest Table alerts (Order Ready, Preparing, Cancelled, etc.)
 export interface TableNotification {
   id: string;
   tableNumber: number;
-  type: 'order_ready' | 'order_cancelled' | 'order_placed' | 'service_call' | 'custom';
+  type: 'order_ready' | 'order_preparing' | 'order_cancelled' | 'order_placed' | 'service_call' | 'custom';
   title: string;
   message: string;
   orderId?: string;

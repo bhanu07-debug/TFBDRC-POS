@@ -1,5 +1,6 @@
 import React from 'react';
 import { usePOS } from '../../context/POSContext';
+import { FatBuddhaLogo } from './FatBuddhaLogo';
 import {
   UtensilsCrossed,
   LayoutDashboard,
@@ -49,9 +50,7 @@ export const Header: React.FC = () => {
         <div className="flex items-center justify-between h-16 gap-2 sm:gap-4">
           {/* Brand Logo & Name */}
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl bg-amber-500 flex items-center justify-center shadow-lg shadow-amber-500/30 text-white font-bold text-xl flex-shrink-0">
-              🕉️
-            </div>
+            <FatBuddhaLogo size={42} alt="The Fat Buddha Delight Logo" />
             <div className="hidden sm:block">
               <div className="flex items-center gap-2">
                 <span className="font-bold tracking-wide text-amber-50 text-base lg:text-lg leading-tight">

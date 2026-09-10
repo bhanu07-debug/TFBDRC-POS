@@ -12,7 +12,9 @@ import {
   Smartphone,
   CreditCard,
   X,
-  Sparkles
+  Sparkles,
+  UserCheck,
+  User
 } from 'lucide-react';
 
 interface OrdersViewProps {
@@ -28,7 +30,10 @@ export const OrdersView: React.FC<OrdersViewProps> = ({ onOpenReceipt }) => {
   const [typeFilter, setTypeFilter] = useState<string>('all');
   const [inspectOrder, setInspectOrder] = useState<Order | null>(null);
   const [selectedPayMethod, setSelectedPayMethod] = useState<PaymentMethod>('cash');
+  const [settleCashierName, setSettleCashierName] = useState(() => localStorage.getItem('last_cashier_name') || 'Sunil Verma (Captain)');
   const [isSettleSubmitting, setIsSettleSubmitting] = useState(false);
+
+  const isCashierValid = Boolean(settleCashierName && settleCashierName.trim().length > 0);
 
   const unpaidOrdersCount = orders.filter(
     o => (o.status || '').toLowerCase() !== 'cancelled' && (o.paymentStatus || '').toLowerCase() !== 'paid'
@@ -91,15 +96,20 @@ export const OrdersView: React.FC<OrdersViewProps> = ({ onOpenReceipt }) => {
   };
 
   const handleQuickPay = async (orderId: string, method: PaymentMethod) => {
+    if (!settleCashierName.trim()) return;
     setIsSettleSubmitting(true);
+    const cleanCashier = settleCashierName.trim();
+    localStorage.setItem('last_cashier_name', cleanCashier);
     try {
-      await markOrderPaid(orderId, method);
+      await markOrderPaid(orderId, method, cleanCashier);
       if (inspectOrder && inspectOrder.id === orderId) {
         setInspectOrder({
           ...inspectOrder,
           status: 'completed',
           paymentStatus: 'paid',
           paymentMethod: method,
+          cashierName: cleanCashier,
+          settledBy: cleanCashier,
           paidAt: new Date().toISOString()
         });
       }
@@ -297,7 +307,10 @@ export const OrdersView: React.FC<OrdersViewProps> = ({ onOpenReceipt }) => {
                       </td>
 
                       <td className="p-3.5 text-gray-600 max-w-xs truncate">
-                        {order.items.map(i => `${i.quantity || 1}x ${i.name || i.nameSnapshot || 'Item'}`).join(', ')}
+                        {order.items.map(i => {
+                          const portion = i.variantName && !i.name?.includes(i.variantName) ? ` (${i.variantName})` : '';
+                          return `${i.quantity || 1}x ${i.name || i.nameSnapshot || 'Item'}${portion}`;
+                        }).join(', ')}
                       </td>
 
                       <td className="p-3.5 font-mono font-bold text-gray-900 text-xs">
@@ -339,9 +352,14 @@ export const OrdersView: React.FC<OrdersViewProps> = ({ onOpenReceipt }) => {
 
                       <td className="p-3.5 text-right space-x-1" onClick={e => e.stopPropagation()}>
                         <button
-                          onClick={() => onOpenReceipt?.(order)}
+                          onClick={async () => {
+                            if (order.status === 'placed' || (order.status as string) === 'pending') {
+                              await updateOrderStatus(order.id, 'preparing');
+                            }
+                            onOpenReceipt?.(order);
+                          }}
                           className="p-1.5 rounded-lg text-gray-400 hover:text-amber-600 hover:bg-amber-50 transition"
-                          title="Print Receipt"
+                          title="Print Receipt & Mark Preparing"
                         >
                           <Printer className="w-4 h-4" />
                         </button>
@@ -417,7 +435,48 @@ export const OrdersView: React.FC<OrdersViewProps> = ({ onOpenReceipt }) => {
                 </div>
 
                 {(inspectOrder.paymentStatus || '').toLowerCase() !== 'paid' ? (
-                  <div className="space-y-2 pt-2 border-t border-amber-200">
+                  <div className="space-y-2.5 pt-2 border-t border-amber-200">
+                    {/* Mandatory Cashier Section */}
+                    <div className="p-2.5 rounded-lg bg-amber-50/80 border border-amber-200 space-y-1.5">
+                      <div className="flex items-center justify-between">
+                        <label className="text-[11px] font-bold text-amber-950 flex items-center gap-1">
+                          <UserCheck className="w-3.5 h-3.5 text-amber-600" />
+                          <span>Cashier Name <span className="text-rose-600">*</span></span>
+                        </label>
+                        {!isCashierValid && (
+                          <span className="text-[9px] font-bold text-rose-600 bg-rose-50 px-1.5 py-0.2 rounded border border-rose-200">
+                            Required to settle
+                          </span>
+                        )}
+                      </div>
+                      <input
+                        type="text"
+                        value={settleCashierName}
+                        onChange={e => setSettleCashierName(e.target.value)}
+                        placeholder="Type cashier / captain name..."
+                        className={`w-full px-2.5 py-1.5 bg-white border rounded-lg text-xs font-semibold text-gray-900 focus:outline-none ${
+                          !isCashierValid ? 'border-rose-400 focus:border-rose-500' : 'border-amber-300 focus:border-amber-500'
+                        }`}
+                      />
+                      <div className="flex items-center gap-1 flex-wrap text-[10px]">
+                        <span className="text-gray-500 font-medium">Quick:</span>
+                        {['Sunil Verma (Captain)', 'Ramesh Shrestha', 'Admin Cashier'].map(name => (
+                          <button
+                            key={name}
+                            type="button"
+                            onClick={() => setSettleCashierName(name)}
+                            className={`px-1.5 py-0.5 rounded text-[10px] font-medium border transition ${
+                              settleCashierName === name
+                                ? 'bg-amber-600 text-white border-amber-600'
+                                : 'bg-white text-gray-700 border-gray-200 hover:bg-amber-50'
+                            }`}
+                          >
+                            {name}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+
                     <label className="text-[11px] font-bold text-gray-700">Select Settlement Method:</label>
                     <div className="grid grid-cols-3 gap-1.5">
                       {[
@@ -444,20 +503,29 @@ export const OrdersView: React.FC<OrdersViewProps> = ({ onOpenReceipt }) => {
                     </div>
 
                     <button
-                      disabled={isSettleSubmitting}
+                      disabled={isSettleSubmitting || !isCashierValid}
                       onClick={() => handleQuickPay(inspectOrder.id, selectedPayMethod)}
-                      className="w-full py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-bold transition flex items-center justify-center gap-1.5 shadow-xs disabled:opacity-50"
+                      className="w-full py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-bold transition flex items-center justify-center gap-1.5 shadow-xs disabled:opacity-50 disabled:cursor-not-allowed"
                     >
                       <CheckCircle2 className="w-4 h-4" />
                       <span>
-                        Mark as Paid (Rs. {((inspectOrder.finalAmount ?? inspectOrder.total ?? 0) || 0).toLocaleString()})
+                        {!isCashierValid
+                          ? 'Enter Cashier Name to Settle'
+                          : `Mark as Paid (Rs. ${((inspectOrder.finalAmount ?? inspectOrder.total ?? 0) || 0).toLocaleString()})`}
                       </span>
                     </button>
                   </div>
                 ) : (
-                  <p className="text-[11px] text-emerald-700">
-                    Order bill settled and completed. Table availability updated.
-                  </p>
+                  <div className="p-2.5 rounded-lg bg-emerald-50 border border-emerald-200 text-[11px] text-emerald-800 space-y-1">
+                    <p className="font-semibold flex items-center gap-1">
+                      <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
+                      Order bill settled and completed. Table availability updated.
+                    </p>
+                    <p className="text-gray-600 text-[10px]">
+                      Settled by: <strong className="text-emerald-900 font-bold">{inspectOrder.cashierName || inspectOrder.settledBy || inspectOrder.createdBy || 'Cashier'}</strong>
+                      {inspectOrder.paidAt && ` at ${new Date(inspectOrder.paidAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`}
+                    </p>
+                  </div>
                 )}
               </div>
 
@@ -493,9 +561,28 @@ export const OrdersView: React.FC<OrdersViewProps> = ({ onOpenReceipt }) => {
                   {inspectOrder.items.map(item => (
                     <div key={item.id} className="py-2 first:pt-0 last:pb-0 flex items-start justify-between">
                       <div>
-                        <p className="font-bold text-gray-900">
-                          {item.quantity}x {item.name}
-                        </p>
+                        <div className="flex items-center gap-1.5 flex-wrap">
+                          <p className="font-bold text-gray-900">
+                            {item.quantity}x {item.name}
+                          </p>
+                          {item.department === 'SHOP' && (
+                            <span className="text-[9px] font-bold px-1.5 py-0.2 rounded bg-indigo-100 text-indigo-800 border border-indigo-200">
+                              SHOP
+                            </span>
+                          )}
+                        </div>
+                        {(item.size || item.color || item.variantName || item.sku) && (
+                          <div className="text-[11px] text-gray-500 mt-0.5 flex items-center gap-1.5 flex-wrap">
+                            {item.variantName && (
+                              <span className="px-1.5 py-0.2 rounded text-[10px] font-extrabold bg-amber-100 text-amber-900 border border-amber-200">
+                                {item.variantName}
+                              </span>
+                            )}
+                            {item.size && <span>Size: <strong>{item.size}</strong></span>}
+                            {item.color && <span>Color: <strong>{item.color}</strong></span>}
+                            {item.sku && <span className="font-mono text-gray-400">[{item.sku}]</span>}
+                          </div>
+                        )}
                         {item.instructions && (
                           <p className="text-[11px] text-amber-700">Note: {item.instructions}</p>
                         )}
