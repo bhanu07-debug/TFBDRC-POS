@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { usePOS } from '../../context/POSContext';
 import { MenuItem, DietaryType, KOTDestination, MenuItemVariant } from '../../types';
 import { DishImageUploader } from '../common/DishImageUploader';
@@ -195,6 +195,19 @@ export const MenuView: React.FC = () => {
     });
     setEditingItem(null);
   };
+
+  // Keyboard accessibility: Close active modal on Escape key
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        if (isNewItemModalOpen) setIsNewItemModalOpen(false);
+        if (editingItem) setEditingItem(null);
+        if (itemToDelete) setItemToDelete(null);
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [isNewItemModalOpen, editingItem, itemToDelete]);
 
   return (
     <div className="space-y-6">
@@ -441,27 +454,37 @@ export const MenuView: React.FC = () => {
 
       {/* Add New Dish Modal */}
       {isNewItemModalOpen && (
-        <div className="fixed inset-0 z-50 overflow-y-auto flex items-center justify-center p-4 bg-black/50 backdrop-blur-xs">
-          <div className="bg-white rounded-2xl max-w-lg w-full p-6 shadow-2xl border border-gray-200 space-y-4">
-            <div className="flex items-center justify-between pb-3 border-b border-gray-200">
-              <div className="flex items-center gap-2">
-                <div className="w-8 h-8 rounded-lg bg-amber-50 text-amber-600 border border-amber-200 flex items-center justify-center">
+        <div 
+          className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-black/60 backdrop-blur-xs animate-in fade-in duration-150"
+          onClick={(e) => {
+            if (e.target === e.currentTarget) setIsNewItemModalOpen(false);
+          }}
+        >
+          <div className="bg-white rounded-2xl max-w-xl w-full max-h-[92vh] sm:max-h-[88vh] shadow-2xl border border-gray-200 flex flex-col overflow-hidden animate-in fade-in zoom-in-95 duration-150">
+            {/* Pinned Sticky Header - Always Visible */}
+            <div className="flex-shrink-0 px-5 sm:px-6 py-4 border-b border-gray-200 bg-white flex items-center justify-between z-10">
+              <div className="flex items-center gap-2.5 min-w-0">
+                <div className="w-8 h-8 rounded-lg bg-amber-50 text-amber-600 border border-amber-200 flex items-center justify-center flex-shrink-0">
                   <Plus className="w-4 h-4" />
                 </div>
-                <div>
-                  <h3 className="font-bold text-base text-gray-900">Add New Dish</h3>
-                  <p className="text-[11px] text-gray-500">Configure recipe, price, dietary, and KOT dispatch</p>
+                <div className="min-w-0">
+                  <h3 className="font-bold text-base text-gray-900 leading-tight">Add New Dish</h3>
+                  <p className="text-[11px] text-gray-500 truncate">Configure recipe, price, dietary, and KOT dispatch</p>
                 </div>
               </div>
               <button
+                type="button"
                 onClick={() => setIsNewItemModalOpen(false)}
-                className="p-1.5 rounded-lg text-gray-400 hover:text-gray-700 hover:bg-gray-100 transition"
+                className="p-2 rounded-xl text-gray-400 hover:text-gray-700 hover:bg-gray-100 transition cursor-pointer flex-shrink-0"
+                title="Close dialog (X)"
+                aria-label="Close"
               >
                 <X className="w-5 h-5" />
               </button>
             </div>
 
-            <div className="space-y-3.5 text-xs">
+            {/* Scrollable Form Body */}
+            <div className="flex-1 overflow-y-auto px-5 sm:px-6 py-4 space-y-4 text-xs overscroll-contain">
               <div>
                 <label className="font-bold text-gray-900 block mb-1">Dish Name *</label>
                 <input
@@ -695,16 +718,19 @@ export const MenuView: React.FC = () => {
               </div>
             </div>
 
-            <div className="pt-3 border-t border-gray-200 flex items-center justify-end gap-2">
+            {/* Pinned Sticky Footer - Always Visible */}
+            <div className="flex-shrink-0 px-5 sm:px-6 py-3.5 border-t border-gray-200 bg-gray-50/90 backdrop-blur-xs flex items-center justify-end gap-2.5 z-10">
               <button
+                type="button"
                 onClick={() => setIsNewItemModalOpen(false)}
-                className="px-4 py-2 rounded-xl border border-gray-300 text-gray-700 text-xs font-bold hover:bg-gray-50 transition"
+                className="px-4 py-2 rounded-xl border border-gray-300 text-gray-700 text-xs font-bold hover:bg-gray-100 transition cursor-pointer"
               >
                 Cancel
               </button>
               <button
+                type="button"
                 onClick={handleSaveNewItem}
-                className="px-5 py-2 rounded-xl bg-amber-500 hover:bg-amber-600 text-white text-xs font-extrabold shadow-md shadow-amber-500/20 transition"
+                className="px-5 py-2 rounded-xl bg-amber-500 hover:bg-amber-600 text-white text-xs font-extrabold shadow-md shadow-amber-500/20 transition cursor-pointer"
               >
                 Save Dish
               </button>
@@ -715,27 +741,37 @@ export const MenuView: React.FC = () => {
 
       {/* Edit Dish Modal */}
       {editingItem && (
-        <div className="fixed inset-0 z-50 overflow-y-auto flex items-center justify-center p-4 bg-black/50 backdrop-blur-xs">
-          <div className="bg-white rounded-2xl max-w-lg w-full p-6 shadow-2xl border border-gray-200 space-y-4">
-            <div className="flex items-center justify-between pb-3 border-b border-gray-200">
-              <div className="flex items-center gap-2">
-                <div className="w-8 h-8 rounded-lg bg-amber-50 text-amber-600 border border-amber-200 flex items-center justify-center">
+        <div 
+          className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-black/60 backdrop-blur-xs animate-in fade-in duration-150"
+          onClick={(e) => {
+            if (e.target === e.currentTarget) setEditingItem(null);
+          }}
+        >
+          <div className="bg-white rounded-2xl max-w-xl w-full max-h-[92vh] sm:max-h-[88vh] shadow-2xl border border-gray-200 flex flex-col overflow-hidden animate-in fade-in zoom-in-95 duration-150">
+            {/* Pinned Sticky Header - Always Visible */}
+            <div className="flex-shrink-0 px-5 sm:px-6 py-4 border-b border-gray-200 bg-white flex items-center justify-between z-10">
+              <div className="flex items-center gap-2.5 min-w-0">
+                <div className="w-8 h-8 rounded-lg bg-amber-50 text-amber-600 border border-amber-200 flex items-center justify-center flex-shrink-0">
                   <Edit2 className="w-4 h-4" />
                 </div>
-                <div>
-                  <h3 className="font-bold text-base text-gray-900">Edit Dish</h3>
-                  <p className="text-[11px] text-gray-500">{editingItem.name}</p>
+                <div className="min-w-0">
+                  <h3 className="font-bold text-base text-gray-900 leading-tight">Edit Dish</h3>
+                  <p className="text-[11px] text-gray-500 truncate">{editingItem.name}</p>
                 </div>
               </div>
               <button
+                type="button"
                 onClick={() => setEditingItem(null)}
-                className="p-1.5 rounded-lg text-gray-400 hover:text-gray-700 hover:bg-gray-100 transition"
+                className="p-2 rounded-xl text-gray-400 hover:text-gray-700 hover:bg-gray-100 transition cursor-pointer flex-shrink-0"
+                title="Close dialog (X)"
+                aria-label="Close"
               >
                 <X className="w-5 h-5" />
               </button>
             </div>
 
-            <div className="space-y-3.5 text-xs">
+            {/* Scrollable Form Body */}
+            <div className="flex-1 overflow-y-auto px-5 sm:px-6 py-4 space-y-4 text-xs overscroll-contain">
               <div>
                 <label className="font-bold text-gray-900 block mb-1">Dish Name *</label>
                 <input
@@ -969,16 +1005,19 @@ export const MenuView: React.FC = () => {
               </div>
             </div>
 
-            <div className="pt-3 border-t border-gray-200 flex items-center justify-end gap-2">
+            {/* Pinned Sticky Footer - Always Visible */}
+            <div className="flex-shrink-0 px-5 sm:px-6 py-3.5 border-t border-gray-200 bg-gray-50/90 backdrop-blur-xs flex items-center justify-end gap-2.5 z-10">
               <button
+                type="button"
                 onClick={() => setEditingItem(null)}
-                className="px-4 py-2 rounded-xl border border-gray-300 text-gray-700 text-xs font-bold hover:bg-gray-50 transition"
+                className="px-4 py-2 rounded-xl border border-gray-300 text-gray-700 text-xs font-bold hover:bg-gray-100 transition cursor-pointer"
               >
                 Cancel
               </button>
               <button
+                type="button"
                 onClick={handleSaveEditItem}
-                className="px-5 py-2 rounded-xl bg-amber-500 hover:bg-amber-600 text-white text-xs font-extrabold shadow-md shadow-amber-500/20 transition"
+                className="px-5 py-2 rounded-xl bg-amber-500 hover:bg-amber-600 text-white text-xs font-extrabold shadow-md shadow-amber-500/20 transition cursor-pointer"
               >
                 Update Dish
               </button>

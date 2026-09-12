@@ -20,6 +20,10 @@ export const ThermalReceiptDocument: React.FC<ThermalReceiptDocumentProps> = ({
 
   const originUrl = typeof window !== 'undefined' ? window.location.origin : 'https://fatbuddha.cafe';
   const feedbackUrl = `${originUrl}/feedback?order=${order.orderNumber || order.id}`;
+  // Restaurant Google Review QR Code
+  const reviewQrImage = settings.googleReviewQrImage || '/google-review-qr.svg';
+  const reviewQrUrl = settings.googleReviewUrl;
+  const useDynamicUrlQR = Boolean(reviewQrUrl && reviewQrUrl.trim() && settings.googleReviewQrImage === undefined);
 
   const subtotal = order.subtotal ?? order.total ?? 0;
   const discount = order.discountAmount ?? order.discount ?? 0;
@@ -270,14 +274,31 @@ export const ThermalReceiptDocument: React.FC<ThermalReceiptDocumentProps> = ({
       </div>
 
       {/* ====================================================
-          6. FOOTER QR & APPRECIATION MESSAGE
+          6. FOOTER QR & APPRECIATION MESSAGE (GOOGLE REVIEW)
          ==================================================== */}
       <div className="pt-2.5 pb-4 text-center flex flex-col items-center space-y-1 avoid-break">
         <div className="p-1 bg-white border border-black rounded inline-block">
-          <QRCodeSVG value={feedbackUrl} size={is58mm ? 44 : 54} level="M" />
+          {useDynamicUrlQR && reviewQrUrl ? (
+            <QRCodeSVG value={reviewQrUrl} size={is58mm ? 48 : 58} level="M" />
+          ) : (
+            <img
+              src={reviewQrImage}
+              alt="Restaurant Google Review QR"
+              className="object-contain block mx-auto"
+              style={{
+                width: is58mm ? '50px' : '62px',
+                height: is58mm ? '50px' : '62px',
+                imageRendering: 'crisp-edges'
+              }}
+            />
+          )}
         </div>
-        <div className="text-[8.5px] font-bold tracking-tight">
-          Scan to Rate Experience & View Digital Bill
+        <div className="text-[9px] font-black tracking-tight text-neutral-900 flex items-center justify-center gap-1">
+          <span>Scan to Rate on Google</span>
+          <span className="text-[8px] tracking-tighter">★★★★★</span>
+        </div>
+        <div className="text-[8px] font-medium text-neutral-700">
+          Leave a Review & Share Your Experience
         </div>
         <div className="text-[9.5px] font-black uppercase pt-1 tracking-wider">
           *** THANK YOU FOR DINING WITH US ***

@@ -135,6 +135,8 @@ export const DEFAULT_SETTINGS: RestaurantSettings = {
   autoPrintKOT: true,
   soundAlerts: true,
   tableCount: 10,
+  googleReviewUrl: "https://g.page/r/TheFatBuddhaDelight/review",
+  googleReviewQrImage: "/google-review-qr.svg",
   adminUsername: "admin",
   adminPassword: "buddhaadmin@123",
   adminRecoveryEmail: "vanuchdry05@gmail.com"

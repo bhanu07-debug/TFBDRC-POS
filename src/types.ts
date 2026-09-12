@@ -476,6 +476,10 @@ export interface RestaurantSettings {
   soundAlerts?: boolean;
   tableCount?: number;
 
+  // Google Review QR & Link
+  googleReviewUrl?: string;
+  googleReviewQrImage?: string;
+
   // Admin Portal Authentication & Recovery
   adminUsername?: string; // default: 'admin'
   adminPassword?: string; // default: 'buddhaadmin@123'

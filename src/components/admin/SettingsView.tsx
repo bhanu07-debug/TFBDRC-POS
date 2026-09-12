@@ -14,7 +14,9 @@ import {
   Building2,
   Phone,
   Mail,
-  ReceiptText
+  ReceiptText,
+  Upload,
+  Star
 } from 'lucide-react';
 import { QRCodeSVG } from 'qrcode.react';
 import { FatBuddhaLogo } from '../common/FatBuddhaLogo';
@@ -46,6 +48,8 @@ export const SettingsView: React.FC = () => {
       currencySymbol: settings.currencySymbol ?? 'Rs.',
       autoPrintKOT: settings.autoPrintKOT ?? true,
       soundAlerts: settings.soundAlerts ?? true,
+      googleReviewUrl: settings.googleReviewUrl ?? 'https://g.page/r/TheFatBuddhaDelight/review',
+      googleReviewQrImage: settings.googleReviewQrImage ?? '/google-review-qr.svg',
     });
   }, [settings]);
 
@@ -424,6 +428,95 @@ export const SettingsView: React.FC = () => {
               <Wifi className="w-4 h-4 text-amber-600" />
               <span>Preview & Print Guest WiFi QR Code</span>
             </button>
+          </div>
+        </div>
+
+        {/* Bill Receipt Google Review QR */}
+        <div className="p-5 bg-white rounded-xl border border-gray-200 shadow-xs space-y-4">
+          <div className="flex items-center justify-between pb-2 border-b border-gray-200">
+            <div className="flex items-center gap-2 text-gray-900 font-bold text-xs uppercase tracking-wider">
+              <Star className="w-4 h-4 text-amber-500 fill-amber-400" />
+              <span>Receipt Google Review QR</span>
+            </div>
+            <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-50 text-amber-800 border border-amber-200">
+              Active on Bills
+            </span>
+          </div>
+
+          <p className="text-xs text-gray-500">
+            This QR code appears at the bottom of customer bills upon payment settlement. Customers can scan it with their camera to rate the restaurant on Google.
+          </p>
+
+          <div className="flex flex-col sm:flex-row items-center gap-4 p-3.5 bg-neutral-50 rounded-xl border border-gray-200">
+            {/* Live QR Preview */}
+            <div className="p-2 bg-white rounded-lg border border-gray-300 shadow-xs flex-shrink-0 text-center">
+              <img
+                src={formData.googleReviewQrImage || '/google-review-qr.svg'}
+                alt="Google Review QR Preview"
+                className="w-24 h-24 object-contain mx-auto"
+                style={{ imageRendering: 'crisp-edges' }}
+              />
+              <div className="text-[10px] font-bold text-gray-700 mt-1 flex items-center justify-center gap-1">
+                <span>Google Review</span>
+                <span className="text-amber-500 text-[9px]">★★★★★</span>
+              </div>
+            </div>
+
+            {/* Controls */}
+            <div className="flex-1 space-y-2.5 w-full text-xs">
+              <div>
+                <label className="block text-gray-700 font-bold mb-1">
+                  Google Review Direct URL (Optional)
+                </label>
+                <input
+                  type="text"
+                  value={formData.googleReviewUrl ?? ''}
+                  onChange={e => setFormData({ ...formData, googleReviewUrl: e.target.value })}
+                  placeholder="e.g. https://g.page/r/.../review"
+                  className="w-full px-3 py-2 bg-white border border-gray-200 rounded-lg text-gray-800 focus:outline-none focus:border-amber-500 text-xs font-mono"
+                />
+              </div>
+
+              <div className="flex flex-wrap items-center gap-2 pt-1">
+                {/* Upload from device button */}
+                <label className="px-3 py-2 bg-amber-500 hover:bg-amber-600 text-white font-bold rounded-lg cursor-pointer flex items-center gap-1.5 transition shadow-2xs text-xs">
+                  <Upload className="w-3.5 h-3.5" />
+                  <span>Upload QR from Device</span>
+                  <input
+                    type="file"
+                    accept="image/*"
+                    className="hidden"
+                    onChange={(e) => {
+                      const file = e.target.files?.[0];
+                      if (file) {
+                        const reader = new FileReader();
+                        reader.onload = (evt) => {
+                          const base64 = evt.target?.result as string;
+                          if (base64) {
+                            setFormData(prev => ({ ...prev, googleReviewQrImage: base64 }));
+                          }
+                        };
+                        reader.readAsDataURL(file);
+                      }
+                    }}
+                  />
+                </label>
+
+                {/* Restore default attached QR */}
+                <button
+                  type="button"
+                  onClick={() => setFormData(prev => ({
+                    ...prev,
+                    googleReviewQrImage: '/google-review-qr.svg'
+                  }))}
+                  className="px-3 py-2 bg-white hover:bg-gray-100 text-gray-700 font-bold rounded-lg transition flex items-center gap-1.5 border border-gray-200 text-xs cursor-pointer"
+                  title="Restore default restaurant review QR code"
+                >
+                  <RotateCcw className="w-3.5 h-3.5 text-gray-500" />
+                  <span>Restore Default QR</span>
+                </button>
+              </div>
+            </div>
           </div>
         </div>
 
