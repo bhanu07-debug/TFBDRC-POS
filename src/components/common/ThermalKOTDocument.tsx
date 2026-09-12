@@ -71,7 +71,7 @@ export const ThermalKOTDocument: React.FC<ThermalKOTDocumentProps> = ({
     : '★ KITCHEN FOOD KOT ★';
 
   // Waiter & Order Type details
-  const captainName = ticket.waiterName || linkedOrder?.waiterName || 'Staff (Captain)';
+  const captainName = ticket.waiterName || linkedOrder?.waiterName || 'Nischal Thapa';
   const orderType = (linkedOrder?.orderType || 'DINE_IN').replace('_', ' ').toUpperCase();
   const orderSource = ticket.orderSource || linkedOrder?.source || 'POS Counter';
   const orderSourceLabel = orderSource === 'GUEST_QR' ? 'Guest Self-Order (QR)' : 'POS Counter';

@@ -1,6 +1,8 @@
 import React, { useState, useMemo } from 'react';
 import { usePOS } from '../../context/POSContext';
 import { MenuItem, MenuItemVariant, Department, PaymentMethod } from '../../types';
+import { DishImageUploader } from '../common/DishImageUploader';
+import { normalizeImageUrl, DEFAULT_SHOP_IMAGE } from '../../utils/imageUtils';
 import {
   ShoppingBag,
   Plus,
@@ -65,7 +67,7 @@ export const ShopView: React.FC = () => {
     size: '',
     color: '',
     stockQuantity: 10,
-    image: 'https://images.unsplash.com/photo-1521572267360-ee0c2909d518?auto=format&fit=crop&w=600&q=80',
+    image: '',
     variants: [] as MenuItemVariant[]
   });
 
@@ -146,7 +148,7 @@ export const ShopView: React.FC = () => {
       size: 'M',
       color: 'Black',
       stockQuantity: 10,
-      image: 'https://images.unsplash.com/photo-1521572267360-ee0c2909d518?auto=format&fit=crop&w=600&q=80',
+      image: '',
       variants: []
     });
     setIsNewModalOpen(true);
@@ -203,7 +205,7 @@ export const ShopView: React.FC = () => {
       size: formData.size,
       color: formData.color,
       stockQuantity: Number(formData.stockQuantity),
-      image: formData.image,
+      image: formData.image?.trim() || DEFAULT_SHOP_IMAGE,
       variants: formData.variants,
       isAvailable: true,
       inStock: Number(formData.stockQuantity) > 0 || formData.variants.some(v => (v.stockQuantity || 0) > 0)
@@ -244,7 +246,7 @@ export const ShopView: React.FC = () => {
       size: formData.size,
       color: formData.color,
       stockQuantity: Number(formData.stockQuantity),
-      image: formData.image,
+      image: formData.image?.trim() || editingItem.image || DEFAULT_SHOP_IMAGE,
       variants: formData.variants,
       inStock: Number(formData.stockQuantity) > 0 || formData.variants.some(v => (v.stockQuantity || 0) > 0)
     });
@@ -516,11 +518,12 @@ export const ShopView: React.FC = () => {
                       {/* Product Image */}
                       <div className="relative h-40 bg-slate-900 overflow-hidden">
                         <img
-                          src={product.image || 'https://images.unsplash.com/photo-1521572267360-ee0c2909d518?auto=format&fit=crop&w=600&q=80'}
+                          src={normalizeImageUrl(product.image) || DEFAULT_SHOP_IMAGE}
                           alt={product.name}
                           className="w-full h-full object-cover"
+                          referrerPolicy="no-referrer"
                           onError={(e) => {
-                            (e.target as HTMLImageElement).src = 'https://images.unsplash.com/photo-1521572267360-ee0c2909d518?auto=format&fit=crop&w=600&q=80';
+                            (e.target as HTMLImageElement).src = DEFAULT_SHOP_IMAGE;
                           }}
                         />
                         <div className="absolute top-2 left-2 flex flex-col gap-1">
@@ -688,9 +691,13 @@ export const ShopView: React.FC = () => {
                     <div>
                       <div className="h-24 rounded-lg bg-slate-900 overflow-hidden mb-2 relative">
                         <img
-                          src={product.image || 'https://images.unsplash.com/photo-1521572267360-ee0c2909d518?auto=format&fit=crop&w=600&q=80'}
+                          src={normalizeImageUrl(product.image) || DEFAULT_SHOP_IMAGE}
                           alt={product.name}
                           className="w-full h-full object-cover group-hover:scale-105 transition-transform"
+                          referrerPolicy="no-referrer"
+                          onError={(e) => {
+                            (e.target as HTMLImageElement).src = DEFAULT_SHOP_IMAGE;
+                          }}
                         />
                         <span className="absolute bottom-1 right-1 px-1.5 py-0.5 bg-black/80 text-amber-400 text-[10px] font-bold rounded">
                           NPR {product.price}
@@ -1002,14 +1009,13 @@ export const ShopView: React.FC = () => {
                 />
               </div>
 
-              <div>
-                <label className="text-slate-400 mb-1 block">Image URL</label>
-                <input
-                  type="text"
+              <div className="col-span-2">
+                <DishImageUploader
                   value={formData.image}
-                  onChange={e => setFormData({ ...formData, image: e.target.value })}
-                  placeholder="https://..."
-                  className="w-full bg-[#0B0F17] border border-slate-800 rounded-lg p-2 text-white"
+                  onChange={url => setFormData({ ...formData, image: url })}
+                  idPrefix="shop-product-image"
+                  label="Product Photo (Upload from Device or Web Link)"
+                  theme="dark"
                 />
               </div>
 

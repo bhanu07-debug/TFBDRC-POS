@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { usePOS } from '../../context/POSContext';
-import { Table, PaymentMethod } from '../../types';
+import { Table, PaymentMethod, Order } from '../../types';
 import {
   X,
   CreditCard,
@@ -13,15 +13,19 @@ import {
   Sparkles,
   UserCheck,
   User,
-  Check
+  Check,
+  Printer
 } from 'lucide-react';
 import confetti from 'canvas-confetti';
+import { ThermalReceiptDocument } from '../common/ThermalReceiptDocument';
+import { ThermalPrintPortal } from '../common/ThermalPrintPortal';
+import { triggerThermalPrint } from '../../utils/printUtils';
 
 interface SettleBillModalProps {
   table: Table | null;
   isOpen: boolean;
   onClose: () => void;
-  onReceiptOpen?: () => void;
+  onReceiptOpen?: (order?: Order) => void;
   onSettled?: () => void;
 }
 
@@ -36,10 +40,19 @@ export const SettleBillModal: React.FC<SettleBillModalProps> = ({
 
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>('cash');
   const [discountPercent, setDiscountPercent] = useState<number>(0);
-  const [cashierName, setCashierName] = useState(() => localStorage.getItem('last_cashier_name') || 'Sunil Verma (Captain)');
+  const [cashierName, setCashierName] = useState(() => localStorage.getItem('last_cashier_name') || 'Nischal Thapa');
   const [notes, setNotes] = useState('');
   const [isSettled, setIsSettled] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
+  const [settledOrder, setSettledOrder] = useState<Order | null>(null);
+  const [settledSummary, setSettledSummary] = useState<{
+    orderNumber: string;
+    finalPayable: number;
+    paymentMethod: string;
+    cashierName: string;
+    itemCount: number;
+  } | null>(null);
+  const [isPrintTriggered, setIsPrintTriggered] = useState(false);
 
   if (!isOpen || !table) return null;
 
@@ -73,6 +86,18 @@ export const SettleBillModal: React.FC<SettleBillModalProps> = ({
     }))
   );
 
+  const handleClose = () => {
+    if (isSettled) {
+      onSettled?.();
+    }
+    setIsSettled(false);
+    setIsProcessing(false);
+    setSettledOrder(null);
+    setSettledSummary(null);
+    setIsPrintTriggered(false);
+    onClose();
+  };
+
   const handleSettle = async () => {
     if (!cashierName.trim()) {
       return;
@@ -81,24 +106,69 @@ export const SettleBillModal: React.FC<SettleBillModalProps> = ({
     try {
       const cleanCashier = cashierName.trim();
       localStorage.setItem('last_cashier_name', cleanCashier);
-      await settleTableBill(table.number, paymentMethod, cleanCashier, discountAmount, notes || undefined);
-      setIsSettled(true);
 
-      confetti({
-        particleCount: 50,
-        spread: 60,
-        origin: { y: 0.7 }
+      // Snapshot complete bill order details for thermal receipt printing before clearing table
+      const allItems = tableOrders.flatMap(o => o.items || []);
+      const currentPayable = finalPayable;
+      const currentOrderNumber = tableOrders.length === 1 && tableOrders[0].orderNumber
+        ? tableOrders[0].orderNumber
+        : `INV-T${table.number < 10 ? '0' + table.number : table.number}-${Date.now().toString().slice(-4)}`;
+
+      const consolidatedOrder: Order = {
+        id: `BILL-T${table.number}-${Date.now().toString().slice(-4)}`,
+        orderNumber: currentOrderNumber,
+        sessionId: table.currentSessionId || `SES-${table.number}`,
+        tableId: table.id || `T${table.number}`,
+        tableNumber: table.number,
+        items: allItems,
+        subtotal: rawSubtotal,
+        discount: discountAmount,
+        serviceCharge: serviceCharge,
+        vat: vatAmount,
+        total: currentPayable,
+        finalAmount: currentPayable,
+        status: 'completed',
+        paymentStatus: 'paid',
+        paymentMethod: paymentMethod,
+        orderType: 'dine_in',
+        source: 'ADMIN_MANUAL',
+        cashierName: cleanCashier,
+        waiterName: cleanCashier,
+        createdBy: cleanCashier,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString()
+      };
+      setSettledOrder(consolidatedOrder);
+      setSettledSummary({
+        orderNumber: currentOrderNumber,
+        finalPayable: currentPayable,
+        paymentMethod: paymentMethod,
+        cashierName: cleanCashier,
+        itemCount: allItems.length
       });
 
-      setTimeout(() => {
-        setIsSettled(false);
-        setIsProcessing(false);
-        onSettled?.();
-        onClose();
-      }, 1200);
+      await settleTableBill(table.number, paymentMethod, cleanCashier, discountAmount, notes || undefined);
+      setIsSettled(true);
+      setIsProcessing(false);
+
+      confetti({
+        particleCount: 60,
+        spread: 70,
+        origin: { y: 0.6 }
+      });
+      // Do NOT auto-close modal or call onSettled here. The cashier will see the success view and choose to Print or Close.
     } catch (err) {
       console.error("Settlement error:", err);
       setIsProcessing(false);
+    }
+  };
+
+  const handlePrintReceipt = () => {
+    if (settledOrder) {
+      triggerThermalPrint('80mm');
+      setIsPrintTriggered(true);
+    } else if (onReceiptOpen) {
+      onReceiptOpen();
     }
   };
 
@@ -112,40 +182,125 @@ export const SettleBillModal: React.FC<SettleBillModalProps> = ({
   ];
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in duration-200">
-      <div className="bg-white border border-gray-200 rounded-2xl w-full max-w-lg overflow-hidden shadow-2xl flex flex-col">
-        {/* Header */}
-        <div className="p-4 bg-gray-50 border-b border-gray-200 flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <Receipt className="w-5 h-5 text-amber-500" />
-            <div>
-              <h3 className="text-sm font-bold text-gray-900 uppercase tracking-wider">
-                Settle Check & Bill
-              </h3>
-              <p className="text-[11px] text-gray-500">
-                Table {table.number < 10 ? '0' + table.number : table.number} • {table.section}
-              </p>
-            </div>
-          </div>
-          <button
-            onClick={onClose}
-            className="p-1.5 rounded-lg text-gray-400 hover:text-gray-700 hover:bg-gray-100 transition"
-          >
-            <X className="w-5 h-5" />
-          </button>
-        </div>
+    <>
+      {/* Root portal for thermal printing directly under <body> */}
+      {isSettled && settledOrder && (
+        <ThermalPrintPortal active={true}>
+          <ThermalReceiptDocument
+            order={settledOrder}
+            settings={settings}
+            paperWidth="80mm"
+            id="printable-receipt"
+          />
+        </ThermalPrintPortal>
+      )}
 
-        {isSettled ? (
-          <div className="p-8 text-center space-y-3">
-            <div className="w-14 h-14 rounded-full bg-emerald-100 text-emerald-600 flex items-center justify-center mx-auto">
-              <CheckCircle2 className="w-8 h-8" />
+      <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in duration-200">
+        <div className="bg-white border border-gray-200 rounded-2xl w-full max-w-lg overflow-hidden shadow-2xl flex flex-col">
+          {/* Header */}
+          <div className="p-4 bg-gray-50 border-b border-gray-200 flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <Receipt className="w-5 h-5 text-amber-500" />
+              <div>
+                <h3 className="text-sm font-bold text-gray-900 uppercase tracking-wider">
+                  {isSettled ? 'Settlement Completed' : 'Settle Check & Bill'}
+                </h3>
+                <p className="text-[11px] text-gray-500">
+                  Table {table.number < 10 ? '0' + table.number : table.number} • {table.section}
+                </p>
+              </div>
             </div>
-            <h4 className="text-lg font-bold text-gray-900">Payment Settled Successfully!</h4>
-            <p className="text-xs text-gray-500">
-              {settings.currencySymbol || 'Rs.'} {finalPayable} received via {paymentMethod.toUpperCase()}. Table {table.number} is now cleared.
-            </p>
+            <button
+              onClick={handleClose}
+              className="p-1.5 rounded-lg text-gray-400 hover:text-gray-700 hover:bg-gray-100 transition cursor-pointer"
+              title="Close"
+            >
+              <X className="w-5 h-5" />
+            </button>
           </div>
-        ) : (
+
+          {isSettled ? (
+            <div className="p-6 sm:p-8 flex flex-col items-center text-center space-y-4 animate-in fade-in zoom-in-95 duration-200">
+              <div className="w-16 h-16 rounded-full bg-emerald-100 text-emerald-600 flex items-center justify-center shadow-inner">
+                <CheckCircle2 className="w-10 h-10" />
+              </div>
+
+              <div className="space-y-1">
+                <h4 className="text-xl font-bold text-gray-900">Payment Settled Successfully!</h4>
+                <p className="text-xs text-gray-500">
+                  Table {table.number < 10 ? '0' + table.number : table.number} bill is settled and table is cleared.
+                </p>
+              </div>
+
+              {/* Bill Details Summary Card */}
+              <div className="w-full bg-gray-50 border border-gray-200 rounded-xl p-4 text-xs space-y-2 text-left">
+                <div className="flex justify-between items-center pb-2 border-b border-gray-200 font-mono">
+                  <span className="text-gray-500 font-sans font-medium">Invoice / Bill #</span>
+                  <span className="font-bold text-gray-900">{settledSummary?.orderNumber || settledOrder?.orderNumber || `INV-T${table.number}`}</span>
+                </div>
+                <div className="flex justify-between items-center text-gray-600">
+                  <span>Amount Collected:</span>
+                  <span className="font-bold text-emerald-700 font-mono text-sm">
+                    {settings.currencySymbol || 'Rs.'} {(settledSummary?.finalPayable ?? finalPayable).toLocaleString()}.00
+                  </span>
+                </div>
+                <div className="flex justify-between items-center text-gray-600">
+                  <span>Payment Mode:</span>
+                  <span className="font-bold uppercase px-2 py-0.5 rounded bg-white border border-gray-200 text-gray-800 text-[10px]">
+                    {settledSummary?.paymentMethod || paymentMethod}
+                  </span>
+                </div>
+                <div className="flex justify-between items-center text-gray-600">
+                  <span>Cashier / Staff:</span>
+                  <span className="font-semibold text-gray-900">{settledSummary?.cashierName || cashierName.trim() || 'Nischal Thapa'}</span>
+                </div>
+                {(settledSummary || settledOrder) && (
+                  <div className="flex justify-between items-center text-gray-600">
+                    <span>Dishes / Items:</span>
+                    <span className="font-semibold text-gray-900">{settledSummary?.itemCount ?? settledOrder?.items.length ?? 0} items</span>
+                  </div>
+                )}
+              </div>
+
+              {/* Action Buttons: Print Bill and Close */}
+              <div className="w-full flex flex-col sm:flex-row items-center gap-2.5 pt-2">
+                <button
+                  id="btn-print-settled-bill"
+                  type="button"
+                  onClick={handlePrintReceipt}
+                  className="w-full sm:flex-1 py-3 px-4 bg-amber-500 hover:bg-amber-600 text-white font-bold text-xs rounded-xl shadow-xs transition flex items-center justify-center gap-2 cursor-pointer"
+                >
+                  <Printer className="w-4 h-4" />
+                  <span>{isPrintTriggered ? 'Print Bill Again' : 'Print Bill'}</span>
+                </button>
+
+                {onReceiptOpen && settledOrder && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      onReceiptOpen(settledOrder);
+                      handleClose();
+                    }}
+                    className="w-full sm:w-auto py-3 px-3.5 bg-gray-100 hover:bg-gray-200 text-gray-700 font-bold text-xs rounded-xl border border-gray-200 transition flex items-center justify-center gap-1.5 cursor-pointer"
+                    title="View Full Thermal Receipt Preview"
+                  >
+                    <Receipt className="w-4 h-4 text-amber-600" />
+                    <span>View Bill</span>
+                  </button>
+                )}
+
+                <button
+                  id="btn-close-settled-modal"
+                  type="button"
+                  onClick={handleClose}
+                  className="w-full sm:w-28 py-3 px-4 bg-white hover:bg-gray-100 text-gray-800 font-bold text-xs rounded-xl border border-gray-300 transition flex items-center justify-center gap-1.5 cursor-pointer shadow-2xs"
+                >
+                  <X className="w-4 h-4 text-gray-500" />
+                  <span>Close</span>
+                </button>
+              </div>
+            </div>
+          ) : (
           <div className="p-5 space-y-4 overflow-y-auto max-h-[75vh]">
             {/* Orders summary */}
             <div className="bg-gray-50 p-3 rounded-xl border border-gray-200 space-y-2">
@@ -265,7 +420,7 @@ export const SettleBillModal: React.FC<SettleBillModalProps> = ({
               {/* Quick cashier buttons */}
               <div className="flex items-center gap-1.5 flex-wrap pt-0.5">
                 <span className="text-[10px] font-semibold text-amber-800">Quick Staff:</span>
-                {['Sunil Verma (Captain)', 'Ramesh Shrestha', 'Pooja Gurung', 'Admin Cashier'].map(name => (
+                {['Nischal Thapa', 'Abhay Thapa', 'Dilip Chaudhary', 'Rohan Mishra'].map(name => (
                   <button
                     key={name}
                     type="button"
@@ -368,5 +523,6 @@ export const SettleBillModal: React.FC<SettleBillModalProps> = ({
         )}
       </div>
     </div>
-  );
+  </>
+);
 };

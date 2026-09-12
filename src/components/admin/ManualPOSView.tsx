@@ -46,7 +46,7 @@ export const ManualPOSView: React.FC<ManualPOSViewProps> = ({
   const [orderType, setOrderType] = useState<OrderType>('dine_in');
   const [guestName, setGuestName] = useState('');
   const [guestPhone, setGuestPhone] = useState('');
-  const [waiterName, setWaiterName] = useState('Rohit S. (Captain)');
+  const [waiterName, setWaiterName] = useState('Nischal Thapa');
   const [discountPercent, setDiscountPercent] = useState<number>(0);
   const [selectedCategory, setSelectedCategory] = useState<string>('All');
   const [selectedDepartment, setSelectedDepartment] = useState<'ALL' | Department>('ALL');
@@ -481,6 +481,21 @@ export const ManualPOSView: React.FC<ManualPOSViewProps> = ({
                 <option value="delivery">Delivery</option>
               </select>
             </div>
+          </div>
+
+          {/* Waiter / Captain Selector */}
+          <div>
+            <label className="text-[10px] font-bold text-gray-400 uppercase">Waiter / Captain</label>
+            <select
+              value={waiterName}
+              onChange={e => setWaiterName(e.target.value)}
+              className="w-full mt-0.5 px-2.5 py-1.5 bg-white border border-gray-200 rounded-lg text-xs font-bold text-gray-900 focus:outline-none focus:border-amber-500"
+            >
+              <option value="Nischal Thapa">Nischal Thapa</option>
+              <option value="Abhay Thapa">Abhay Thapa</option>
+              <option value="Dilip Chaudhary">Dilip Chaudhary</option>
+              <option value="Rohan Mishra">Rohan Mishra</option>
+            </select>
           </div>
         </div>
 

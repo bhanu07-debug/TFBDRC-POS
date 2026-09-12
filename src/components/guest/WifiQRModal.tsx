@@ -37,8 +37,10 @@ export const WifiQRModal: React.FC<WifiQRModalProps> = ({
   const activeTable = tableNumber ?? currentGuestTableNumber ?? 1;
   const tableDisplay = activeTable < 10 ? `0${activeTable}` : `${activeTable}`;
   
-  const ssid = settings.wifiSsid || 'Fat_Buddha_Guest_WiFi';
-  const password = settings.wifiPassword || 'fatbuddhadelight';
+  const ssid = settings.wifiSsid || 'Delight_Restaurant_Guest';
+  const password = (settings.wifiPassword && settings.wifiPassword !== 'fatbuddhadelight' && settings.wifiPassword !== 'delightnature')
+    ? settings.wifiPassword
+    : 'Newdelight@123';
 
   // Standard Wi-Fi network configuration QR payload (RFC / Android / iOS native spec)
   const wifiPayload = `WIFI:T:WPA;S:${ssid};P:${password};;`;
@@ -82,7 +84,7 @@ export const WifiQRModal: React.FC<WifiQRModalProps> = ({
                   Table {tableDisplay}
                 </span>
                 <span className="text-[11px] text-amber-300 font-semibold flex items-center gap-1">
-                  <Sparkles className="w-3 h-3 text-amber-400" /> Free High-Speed WiFi
+                  <Sparkles className="w-3 h-3 text-amber-400" /> Access WiFi
                 </span>
               </div>
               <h3 className="text-base font-bold text-white tracking-tight leading-tight mt-0.5">
@@ -115,7 +117,7 @@ export const WifiQRModal: React.FC<WifiQRModalProps> = ({
                   {settings.restaurantName || 'The Fat Buddha Delight'}
                 </h4>
                 <p className="text-[10px] text-amber-600 font-bold uppercase tracking-wider">
-                  Guest Wi-Fi Network
+                  Access WiFi
                 </p>
               </div>
             </div>

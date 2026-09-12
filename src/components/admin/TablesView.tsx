@@ -743,7 +743,11 @@ export const TablesView: React.FC<TablesViewProps> = ({
           table={settleTable}
           isOpen={!!settleTable}
           onClose={() => setSettleTable(null)}
-          onReceiptOpen={() => {
+          onReceiptOpen={(order?: Order) => {
+            if (order) {
+              onOpenReceipt?.(order);
+              return;
+            }
             const tableOrders = getTableOrders(settleTable.number);
             if (tableOrders.length === 1) {
               onOpenReceipt?.(tableOrders[0]);
@@ -774,7 +778,7 @@ export const TablesView: React.FC<TablesViewProps> = ({
             }
           }}
           onSettled={() => {
-            setSettleTable(null);
+            // Keep modal open so cashier sees Payment Successful and Print Bill options
           }}
         />
       )}

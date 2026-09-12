@@ -47,8 +47,10 @@ export const TableQRModal: React.FC<TableQRModalProps> = ({
   const originUrl = typeof window !== 'undefined' ? window.location.origin : 'https://fatbuddha.cafe';
   const tableUrl = `${originUrl}?table=${activeTableNum}`;
   
-  const ssid = settings.wifiSsid || 'Fat_Buddha_Guest_WiFi';
-  const wifiPass = settings.wifiPassword || 'fatbuddhadelight';
+  const ssid = settings.wifiSsid || 'Delight_Restaurant_Guest';
+  const wifiPass = (settings.wifiPassword && settings.wifiPassword !== 'fatbuddhadelight' && settings.wifiPassword !== 'delightnature')
+    ? settings.wifiPassword
+    : 'Newdelight@123';
   const wifiPayload = `WIFI:T:WPA;S:${ssid};P:${wifiPass};;`;
 
   const handleCopy = () => {
@@ -132,7 +134,7 @@ export const TableQRModal: React.FC<TableQRModalProps> = ({
             }`}
           >
             <Wifi className="w-3.5 h-3.5" />
-            <span>Guest WiFi QR</span>
+            <span>Access WiFi QR</span>
           </button>
           <button
             onClick={() => setCardMode('dual')}
@@ -186,7 +188,7 @@ export const TableQRModal: React.FC<TableQRModalProps> = ({
               </p>
               <div className="mt-2 text-[8px] text-gray-400 border-t border-gray-100 pt-1 w-full flex items-center justify-center gap-1">
                 <Wifi className="w-2.5 h-2.5 text-amber-600" />
-                <span>Free WiFi: <span className="font-semibold text-gray-700">{ssid}</span></span>
+                <span>Access WiFi: <span className="font-semibold text-gray-700">{ssid}</span></span>
               </div>
             </div>
           )}
@@ -200,8 +202,8 @@ export const TableQRModal: React.FC<TableQRModalProps> = ({
               <h4 className="font-serif font-black text-gray-900 text-base leading-tight">
                 The Fat Buddha Delight
               </h4>
-              <p className="text-[9px] font-semibold uppercase tracking-wider text-amber-700 mb-3">
-                Free Guest High-Speed Wi-Fi
+              <p className="text-[10px] font-bold uppercase tracking-wider text-amber-700 mb-3">
+                Access WiFi
               </p>
 
               {/* QR Code Container */}
@@ -269,7 +271,7 @@ export const TableQRModal: React.FC<TableQRModalProps> = ({
                 <div className="p-2.5 bg-amber-50/60 rounded-xl border border-amber-200 flex flex-col items-center">
                   <div className="text-[9px] font-extrabold uppercase text-amber-900 mb-1 flex items-center gap-1">
                     <Wifi className="w-2.5 h-2.5 text-amber-600" />
-                    <span>Free Wi-Fi</span>
+                    <span>Access WiFi</span>
                   </div>
                   <QRCodeSVG
                     value={wifiPayload}

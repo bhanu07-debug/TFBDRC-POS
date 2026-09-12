@@ -131,7 +131,7 @@ export const DEFAULT_SETTINGS: RestaurantSettings = {
   discountEnabled: true,
   timezone: "Asia/Kathmandu",
   wifiSsid: "Delight_Restaurant_Guest",
-  wifiPassword: "delightnature",
+  wifiPassword: "Newdelight@123",
   autoPrintKOT: true,
   soundAlerts: true,
   tableCount: 10,
@@ -1410,8 +1410,16 @@ export const listenSettings = (
           adminUsername: raw?.adminUsername || DEFAULT_SETTINGS.adminUsername,
           adminPassword: raw?.adminPassword || DEFAULT_SETTINGS.adminPassword,
           adminRecoveryEmail: raw?.adminRecoveryEmail || DEFAULT_SETTINGS.adminRecoveryEmail,
-          adminLastPasswordChangedAt: raw?.adminLastPasswordChangedAt
+          adminLastPasswordChangedAt: raw?.adminLastPasswordChangedAt,
+          wifiPassword: (raw?.wifiPassword && raw.wifiPassword !== 'fatbuddhadelight' && raw.wifiPassword !== 'delightnature')
+            ? raw.wifiPassword
+            : 'Newdelight@123'
         });
+
+        // Silently sync Newdelight@123 to Firestore if stale password was in db
+        if (raw && (!raw.wifiPassword || raw.wifiPassword === 'fatbuddhadelight' || raw.wifiPassword === 'delightnature')) {
+          updateDoc(doc(db, 'settings', 'restaurant_config'), { wifiPassword: 'Newdelight@123' }).catch(() => {});
+        }
       } else {
         onSuccess(DEFAULT_SETTINGS);
       }

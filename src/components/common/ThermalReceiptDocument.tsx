@@ -109,7 +109,7 @@ export const ThermalReceiptDocument: React.FC<ThermalReceiptDocumentProps> = ({
           <span className="pr-1">SRC: <strong className="uppercase font-bold">{(order.source || 'POS').replace('_', ' ')}</strong></span>
         </div>
         <div className="flex justify-between items-center text-[9px] text-neutral-800">
-          <span>CAPTAIN: <strong className="font-bold">{order.waiterName || 'Staff (Captain)'}</strong></span>
+          <span>CAPTAIN: <strong className="font-bold">{order.waiterName || 'Nischal Thapa'}</strong></span>
           {(order.cashierName || (order as any).settledBy) ? (
             <span className="pr-1">CASHIER: <strong className="font-bold">{order.cashierName || (order as any).settledBy}</strong></span>
           ) : order.kotNumber ? (

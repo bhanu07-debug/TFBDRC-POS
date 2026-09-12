@@ -5,6 +5,7 @@
  */
 
 export const DEFAULT_DISH_IMAGE = 'https://images.unsplash.com/photo-1541696432-82c6da8ce7bf?auto=format&fit=crop&w=600&q=80';
+export const DEFAULT_SHOP_IMAGE = 'https://images.unsplash.com/photo-1521572267360-ee0c2909d518?auto=format&fit=crop&w=600&q=80';
 
 /**
  * Normalizes user-supplied image URLs, converting Google Drive sharing links,

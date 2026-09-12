@@ -39,8 +39,10 @@ export const SettingsView: React.FC = () => {
       panNumber: settings.panNumber ?? settings.panNo ?? '302194821',
       panNo: settings.panNumber ?? settings.panNo ?? '302194821',
       gstNumber: settings.gstNumber ?? '',
-      wifiSsid: settings.wifiSsid ?? '',
-      wifiPassword: settings.wifiPassword ?? '',
+      wifiSsid: settings.wifiSsid ?? 'Delight_Restaurant_Guest',
+      wifiPassword: (settings.wifiPassword && settings.wifiPassword !== 'fatbuddhadelight' && settings.wifiPassword !== 'delightnature')
+        ? settings.wifiPassword
+        : 'Newdelight@123',
       currencySymbol: settings.currencySymbol ?? 'Rs.',
       autoPrintKOT: settings.autoPrintKOT ?? true,
       soundAlerts: settings.soundAlerts ?? true,
@@ -185,8 +187,12 @@ export const SettingsView: React.FC = () => {
           <div className={`grid gap-4 ${batchMode === 'dual' ? 'grid-cols-1 sm:grid-cols-2 md:grid-cols-3' : 'grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5'}`}>
             {tables.map(tbl => {
               const tableUrl = `${originUrl}/?table=${tbl.number}`;
-              const ssid = formData.wifiSsid || settings.wifiSsid || 'Fat_Buddha_Guest_WiFi';
-              const pass = formData.wifiPassword || settings.wifiPassword || 'fatbuddhadelight';
+              const ssid = formData.wifiSsid || settings.wifiSsid || 'Delight_Restaurant_Guest';
+              const pass = (formData.wifiPassword && formData.wifiPassword !== 'fatbuddhadelight' && formData.wifiPassword !== 'delightnature')
+                ? formData.wifiPassword
+                : (settings.wifiPassword && settings.wifiPassword !== 'fatbuddhadelight' && settings.wifiPassword !== 'delightnature')
+                ? settings.wifiPassword
+                : 'Newdelight@123';
               const wifiPayload = `WIFI:T:WPA;S:${ssid};P:${pass};;`;
 
               if (batchMode === 'order') {
@@ -233,7 +239,7 @@ export const SettingsView: React.FC = () => {
                   >
                     <FatBuddhaLogo size={28} alt="The Fat Buddha Delight" />
                     <div className="text-[10px] font-bold tracking-wider uppercase text-amber-600">
-                      Guest Free Wi-Fi
+                      Access WiFi
                     </div>
 
                     <div className="p-2 bg-white border border-gray-200 rounded-lg">
@@ -294,10 +300,10 @@ export const SettingsView: React.FC = () => {
                       <span className="text-[7px] text-gray-500 mt-1 font-bold">Scan Menu</span>
                     </div>
 
-                    {/* Free WiFi */}
+                    {/* Access WiFi */}
                     <div className="p-2 bg-amber-50/70 rounded-lg border border-amber-200 flex flex-col items-center">
                       <span className="text-[8px] font-extrabold uppercase text-amber-800 mb-1">
-                        Free WiFi
+                        Access WiFi
                       </span>
                       <QRCodeSVG
                         value={wifiPayload}

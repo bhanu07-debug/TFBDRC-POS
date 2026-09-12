@@ -279,8 +279,8 @@ export const GuestQRView: React.FC = () => {
                   <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
                 </div>
                 <Wifi className="w-3.5 h-3.5 text-amber-300 group-hover:scale-110 transition-transform" />
-                <span className="text-[11px] font-medium text-amber-100">
-                  WiFi: <span className="font-mono font-bold text-amber-300">{settings.wifiSsid || 'Fat Buddha Guest'}</span>
+                <span className="text-[11px] font-bold text-amber-100">
+                  Access WiFi
                 </span>
                 <span className="text-[9px] font-black uppercase tracking-wider bg-amber-400 text-gray-950 px-1.5 py-0.5 rounded shadow-xs ml-0.5 group-hover:bg-amber-300 transition-colors">
                   Show QR

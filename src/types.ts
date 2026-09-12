@@ -242,6 +242,7 @@ export interface Order {
   orderType?: OrderType;
   cashierName?: string;
   settledBy?: string;
+  waiterName?: string;
 }
 
 // ==========================================

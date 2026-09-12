@@ -30,7 +30,7 @@ export const OrdersView: React.FC<OrdersViewProps> = ({ onOpenReceipt }) => {
   const [typeFilter, setTypeFilter] = useState<string>('all');
   const [inspectOrder, setInspectOrder] = useState<Order | null>(null);
   const [selectedPayMethod, setSelectedPayMethod] = useState<PaymentMethod>('cash');
-  const [settleCashierName, setSettleCashierName] = useState(() => localStorage.getItem('last_cashier_name') || 'Sunil Verma (Captain)');
+  const [settleCashierName, setSettleCashierName] = useState(() => localStorage.getItem('last_cashier_name') || 'Nischal Thapa');
   const [isSettleSubmitting, setIsSettleSubmitting] = useState(false);
 
   const isCashierValid = Boolean(settleCashierName && settleCashierName.trim().length > 0);
@@ -460,7 +460,7 @@ export const OrdersView: React.FC<OrdersViewProps> = ({ onOpenReceipt }) => {
                       />
                       <div className="flex items-center gap-1 flex-wrap text-[10px]">
                         <span className="text-gray-500 font-medium">Quick:</span>
-                        {['Sunil Verma (Captain)', 'Ramesh Shrestha', 'Admin Cashier'].map(name => (
+                        {['Nischal Thapa', 'Abhay Thapa', 'Dilip Chaudhary', 'Rohan Mishra'].map(name => (
                           <button
                             key={name}
                             type="button"
