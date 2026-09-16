@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { usePOS } from '../../context/POSContext';
 import { InventoryItem } from '../../types';
 import {
@@ -200,6 +200,20 @@ export const InventoryView: React.FC = () => {
     await deleteInventoryItem(itemToDelete.id);
     setItemToDelete(null);
   };
+
+  // Close modals on Escape key
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        if (isAddModalOpen) setIsAddModalOpen(false);
+        if (restockItem) setRestockItem(null);
+        if (editingItem) setEditingItem(null);
+        if (itemToDelete) setItemToDelete(null);
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [isAddModalOpen, restockItem, editingItem, itemToDelete]);
 
   return (
     <div className="space-y-6" id="inventory-view-container">
@@ -452,143 +466,160 @@ export const InventoryView: React.FC = () => {
       {/* 1. ADD NEW INVENTORY ITEM MODAL */}
       {/* ==================================================== */}
       {isAddModalOpen && (
-        <div className="fixed inset-0 z-50 overflow-y-auto flex items-center justify-center p-4 bg-black/50 backdrop-blur-xs">
-          <div className="bg-white rounded-2xl max-w-lg w-full p-6 shadow-2xl border border-gray-200 space-y-4">
-            <div className="flex items-center justify-between pb-3 border-b border-gray-200">
-              <div className="flex items-center gap-2">
-                <div className="w-8 h-8 rounded-lg bg-amber-50 text-amber-600 border border-amber-200 flex items-center justify-center">
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-black/60 backdrop-blur-xs animate-in fade-in duration-150"
+          onClick={(e) => {
+            if (e.target === e.currentTarget) setIsAddModalOpen(false);
+          }}
+        >
+          <div
+            id="modal-add-inventory-dialog"
+            className="bg-white rounded-2xl max-w-lg w-full max-h-[92vh] sm:max-h-[88vh] shadow-2xl border border-gray-200 flex flex-col overflow-hidden animate-in fade-in zoom-in-95 duration-150"
+          >
+            {/* Pinned Header - ALWAYS VISIBLE */}
+            <div className="flex-shrink-0 px-5 sm:px-6 py-4 border-b border-gray-200 bg-white flex items-center justify-between z-10">
+              <div className="flex items-center gap-2.5 min-w-0">
+                <div className="w-8 h-8 rounded-lg bg-amber-50 text-amber-600 border border-amber-200 flex items-center justify-center flex-shrink-0">
                   <Package className="w-4 h-4" />
                 </div>
-                <div>
-                  <h3 className="font-bold text-base text-gray-900">Add Inventory Item</h3>
-                  <p className="text-[11px] text-gray-500">Track pantry ingredient, bar liquor, or packaging stock</p>
+                <div className="min-w-0">
+                  <h3 className="font-bold text-base text-gray-900 leading-tight">Add Inventory Item</h3>
+                  <p className="text-[11px] text-gray-500 truncate">Track pantry ingredient, bar liquor, or packaging stock</p>
                 </div>
               </div>
               <button
+                type="button"
+                id="btn-close-add-inventory-modal"
                 onClick={() => setIsAddModalOpen(false)}
-                className="p-1.5 rounded-lg text-gray-400 hover:text-gray-700 hover:bg-gray-100 transition"
+                className="p-2 rounded-xl text-gray-400 hover:text-gray-700 hover:bg-gray-100 transition cursor-pointer flex-shrink-0"
+                title="Close dialog (X)"
+                aria-label="Close"
               >
                 <X className="w-5 h-5" />
               </button>
             </div>
 
-            <form onSubmit={handleSaveNewItem} className="space-y-3.5 text-xs">
-              <div>
-                <label className="font-bold text-gray-900 block mb-1">Item / Ingredient Name *</label>
-                <input
-                  type="text"
-                  required
-                  value={newItem.name ?? ''}
-                  onChange={e => setNewItem({ ...newItem, name: e.target.value })}
-                  placeholder="e.g. Fresh Mozzarella Cheese, Truffle Oil, Basmati Rice"
-                  className="w-full px-3 py-2 bg-white text-gray-900 font-semibold border border-gray-300 rounded-lg placeholder:text-gray-400 focus:outline-none focus:border-amber-500 focus:ring-1 focus:ring-amber-500 shadow-2xs"
-                />
-              </div>
-
-              <div className="grid grid-cols-2 gap-3">
+            <form onSubmit={handleSaveNewItem} className="flex-1 flex flex-col min-h-0 overflow-hidden">
+              {/* Scrollable Form Body */}
+              <div className="flex-1 overflow-y-auto px-5 sm:px-6 py-4 space-y-3.5 text-xs overscroll-contain">
                 <div>
-                  <label className="font-bold text-gray-900 block mb-1">Category *</label>
-                  <select
-                    value={newItem.category ?? 'Dairy & Cheese'}
-                    onChange={e => setNewItem({ ...newItem, category: e.target.value })}
-                    className="w-full px-3 py-2 bg-white text-gray-900 font-semibold border border-gray-300 rounded-lg focus:outline-none focus:border-amber-500 focus:ring-1 focus:ring-amber-500 shadow-2xs"
-                  >
-                    {categories.filter(c => c !== 'all').map(cat => (
-                      <option key={cat} value={cat}>{cat}</option>
-                    ))}
-                  </select>
-                </div>
-
-                <div>
-                  <label className="font-bold text-gray-900 block mb-1">SKU / Item Code</label>
+                  <label className="font-bold text-gray-900 block mb-1">Item / Ingredient Name *</label>
                   <input
                     type="text"
-                    value={newItem.sku ?? ''}
-                    onChange={e => setNewItem({ ...newItem, sku: e.target.value })}
-                    placeholder="e.g. SKU-MOZZ-01"
-                    className="w-full px-3 py-2 bg-white text-gray-900 font-mono font-bold border border-gray-300 rounded-lg placeholder:text-gray-400 focus:outline-none focus:border-amber-500 focus:ring-1 focus:ring-amber-500 shadow-2xs"
+                    required
+                    value={newItem.name ?? ''}
+                    onChange={e => setNewItem({ ...newItem, name: e.target.value })}
+                    placeholder="e.g. Fresh Mozzarella Cheese, Truffle Oil, Basmati Rice"
+                    className="w-full px-3 py-2 bg-white text-gray-900 font-semibold border border-gray-300 rounded-lg placeholder:text-gray-400 focus:outline-none focus:border-amber-500 focus:ring-1 focus:ring-amber-500 shadow-2xs"
                   />
+                </div>
+
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="font-bold text-gray-900 block mb-1">Category *</label>
+                    <select
+                      value={newItem.category ?? 'Dairy & Cheese'}
+                      onChange={e => setNewItem({ ...newItem, category: e.target.value })}
+                      className="w-full px-3 py-2 bg-white text-gray-900 font-semibold border border-gray-300 rounded-lg focus:outline-none focus:border-amber-500 focus:ring-1 focus:ring-amber-500 shadow-2xs"
+                    >
+                      {categories.filter(c => c !== 'all').map(cat => (
+                        <option key={cat} value={cat}>{cat}</option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="font-bold text-gray-900 block mb-1">SKU / Item Code</label>
+                    <input
+                      type="text"
+                      value={newItem.sku ?? ''}
+                      onChange={e => setNewItem({ ...newItem, sku: e.target.value })}
+                      placeholder="e.g. SKU-MOZZ-01"
+                      className="w-full px-3 py-2 bg-white text-gray-900 font-mono font-bold border border-gray-300 rounded-lg placeholder:text-gray-400 focus:outline-none focus:border-amber-500 focus:ring-1 focus:ring-amber-500 shadow-2xs"
+                    />
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-3 gap-3">
+                  <div>
+                    <label className="font-bold text-gray-900 block mb-1">Unit of Measure *</label>
+                    <select
+                      value={newItem.unit ?? 'kg'}
+                      onChange={e => setNewItem({ ...newItem, unit: e.target.value })}
+                      className="w-full px-3 py-2 bg-white text-gray-900 font-semibold border border-gray-300 rounded-lg focus:outline-none focus:border-amber-500 focus:ring-1 focus:ring-amber-500 shadow-2xs"
+                    >
+                      {standardUnits.map(u => (
+                        <option key={u} value={u}>{u}</option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="font-bold text-gray-900 block mb-1">Initial Stock *</label>
+                    <input
+                      type="number"
+                      step="0.1"
+                      min="0"
+                      required
+                      value={newItem.currentStock ?? 0}
+                      onChange={e => setNewItem({ ...newItem, currentStock: parseFloat(e.target.value) || 0 })}
+                      className="w-full px-3 py-2 bg-white text-gray-900 font-mono font-bold border border-gray-300 rounded-lg focus:outline-none focus:border-amber-500 focus:ring-1 focus:ring-amber-500 shadow-2xs"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="font-bold text-gray-900 block mb-1">Min Threshold *</label>
+                    <input
+                      type="number"
+                      step="0.1"
+                      min="0"
+                      required
+                      value={newItem.minThreshold ?? 3}
+                      onChange={e => setNewItem({ ...newItem, minThreshold: parseFloat(e.target.value) || 0 })}
+                      className="w-full px-3 py-2 bg-white text-gray-900 font-mono font-bold border border-gray-300 rounded-lg focus:outline-none focus:border-amber-500 focus:ring-1 focus:ring-amber-500 shadow-2xs"
+                    />
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="font-bold text-gray-900 block mb-1">Unit Cost (Rs.) *</label>
+                    <input
+                      type="number"
+                      step="1"
+                      min="0"
+                      required
+                      value={newItem.costPerUnit ?? 0}
+                      onChange={e => setNewItem({ ...newItem, costPerUnit: parseFloat(e.target.value) || 0 })}
+                      className="w-full px-3 py-2 bg-white text-gray-900 font-mono font-bold border border-gray-300 rounded-lg focus:outline-none focus:border-amber-500 focus:ring-1 focus:ring-amber-500 shadow-2xs"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="font-bold text-gray-900 block mb-1">Supplier / Vendor</label>
+                    <input
+                      type="text"
+                      value={newItem.supplier ?? ''}
+                      onChange={e => setNewItem({ ...newItem, supplier: e.target.value })}
+                      placeholder="e.g. Amul Dairy Distribution"
+                      className="w-full px-3 py-2 bg-white text-gray-900 font-medium border border-gray-300 rounded-lg placeholder:text-gray-400 focus:outline-none focus:border-amber-500 focus:ring-1 focus:ring-amber-500 shadow-2xs"
+                    />
+                  </div>
                 </div>
               </div>
 
-              <div className="grid grid-cols-3 gap-3">
-                <div>
-                  <label className="font-bold text-gray-900 block mb-1">Unit of Measure *</label>
-                  <select
-                    value={newItem.unit ?? 'kg'}
-                    onChange={e => setNewItem({ ...newItem, unit: e.target.value })}
-                    className="w-full px-3 py-2 bg-white text-gray-900 font-semibold border border-gray-300 rounded-lg focus:outline-none focus:border-amber-500 focus:ring-1 focus:ring-amber-500 shadow-2xs"
-                  >
-                    {standardUnits.map(u => (
-                      <option key={u} value={u}>{u}</option>
-                    ))}
-                  </select>
-                </div>
-
-                <div>
-                  <label className="font-bold text-gray-900 block mb-1">Initial Stock *</label>
-                  <input
-                    type="number"
-                    step="0.1"
-                    min="0"
-                    required
-                    value={newItem.currentStock ?? 0}
-                    onChange={e => setNewItem({ ...newItem, currentStock: parseFloat(e.target.value) || 0 })}
-                    className="w-full px-3 py-2 bg-white text-gray-900 font-mono font-bold border border-gray-300 rounded-lg focus:outline-none focus:border-amber-500 focus:ring-1 focus:ring-amber-500 shadow-2xs"
-                  />
-                </div>
-
-                <div>
-                  <label className="font-bold text-gray-900 block mb-1">Min Threshold *</label>
-                  <input
-                    type="number"
-                    step="0.1"
-                    min="0"
-                    required
-                    value={newItem.minThreshold ?? 3}
-                    onChange={e => setNewItem({ ...newItem, minThreshold: parseFloat(e.target.value) || 0 })}
-                    className="w-full px-3 py-2 bg-white text-gray-900 font-mono font-bold border border-gray-300 rounded-lg focus:outline-none focus:border-amber-500 focus:ring-1 focus:ring-amber-500 shadow-2xs"
-                  />
-                </div>
-              </div>
-
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="font-bold text-gray-900 block mb-1">Unit Cost (Rs.) *</label>
-                  <input
-                    type="number"
-                    step="1"
-                    min="0"
-                    required
-                    value={newItem.costPerUnit ?? 0}
-                    onChange={e => setNewItem({ ...newItem, costPerUnit: parseFloat(e.target.value) || 0 })}
-                    className="w-full px-3 py-2 bg-white text-gray-900 font-mono font-bold border border-gray-300 rounded-lg focus:outline-none focus:border-amber-500 focus:ring-1 focus:ring-amber-500 shadow-2xs"
-                  />
-                </div>
-
-                <div>
-                  <label className="font-bold text-gray-900 block mb-1">Supplier / Vendor</label>
-                  <input
-                    type="text"
-                    value={newItem.supplier ?? ''}
-                    onChange={e => setNewItem({ ...newItem, supplier: e.target.value })}
-                    placeholder="e.g. Amul Dairy Distribution"
-                    className="w-full px-3 py-2 bg-white text-gray-900 font-medium border border-gray-300 rounded-lg placeholder:text-gray-400 focus:outline-none focus:border-amber-500 focus:ring-1 focus:ring-amber-500 shadow-2xs"
-                  />
-                </div>
-              </div>
-
-              <div className="pt-3 border-t border-gray-200 flex items-center justify-end gap-2.5">
+              {/* Pinned Sticky Footer - ALWAYS VISIBLE */}
+              <div className="flex-shrink-0 px-5 sm:px-6 py-3.5 border-t border-gray-200 bg-gray-50/90 backdrop-blur-xs flex items-center justify-end gap-2.5 z-10">
                 <button
                   type="button"
                   onClick={() => setIsAddModalOpen(false)}
-                  className="px-4 py-2 rounded-xl border border-gray-300 text-gray-700 text-xs font-bold hover:bg-gray-50 transition"
+                  className="px-4 py-2 rounded-xl border border-gray-300 text-gray-700 text-xs font-bold hover:bg-gray-100 transition cursor-pointer"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
-                  className="px-5 py-2 rounded-xl bg-amber-500 hover:bg-amber-600 text-white text-xs font-extrabold shadow-md shadow-amber-500/20 transition flex items-center gap-1.5"
+                  className="px-5 py-2 rounded-xl bg-amber-500 hover:bg-amber-600 text-white text-xs font-extrabold shadow-md shadow-amber-500/20 transition flex items-center gap-1.5 cursor-pointer"
                 >
                   <Plus className="w-3.5 h-3.5" />
                   <span>Save Inventory Item</span>
@@ -603,217 +634,234 @@ export const InventoryView: React.FC = () => {
       {/* 2. RESTOCK MODAL (Interactive & Live Calculations) */}
       {/* ==================================================== */}
       {restockItem && (
-        <div className="fixed inset-0 z-50 overflow-y-auto flex items-center justify-center p-4 bg-black/50 backdrop-blur-xs">
-          <div className="bg-white rounded-2xl max-w-lg w-full p-6 shadow-2xl border border-gray-200 space-y-4">
-            <div className="flex items-center justify-between pb-3 border-b border-gray-200">
-              <div className="flex items-center gap-2">
-                <div className="w-8 h-8 rounded-lg bg-emerald-50 text-emerald-600 border border-emerald-200 flex items-center justify-center">
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-black/60 backdrop-blur-xs animate-in fade-in duration-150"
+          onClick={(e) => {
+            if (e.target === e.currentTarget) setRestockItem(null);
+          }}
+        >
+          <div
+            id="modal-restock-inventory-dialog"
+            className="bg-white rounded-2xl max-w-lg w-full max-h-[92vh] sm:max-h-[88vh] shadow-2xl border border-gray-200 flex flex-col overflow-hidden animate-in fade-in zoom-in-95 duration-150"
+          >
+            {/* Pinned Header - ALWAYS VISIBLE */}
+            <div className="flex-shrink-0 px-5 sm:px-6 py-4 border-b border-gray-200 bg-white flex items-center justify-between z-10">
+              <div className="flex items-center gap-2.5 min-w-0">
+                <div className="w-8 h-8 rounded-lg bg-emerald-50 text-emerald-600 border border-emerald-200 flex items-center justify-center flex-shrink-0">
                   <Truck className="w-4 h-4" />
                 </div>
-                <div>
-                  <h3 className="font-bold text-base text-gray-900">Restock Item</h3>
-                  <p className="text-[11px] text-gray-500">{restockItem.name} ({restockItem.category})</p>
+                <div className="min-w-0">
+                  <h3 className="font-bold text-base text-gray-900 leading-tight">Restock Item</h3>
+                  <p className="text-[11px] text-gray-500 truncate">{restockItem.name} ({restockItem.category})</p>
                 </div>
               </div>
               <button
+                type="button"
+                id="btn-close-restock-modal"
                 onClick={() => setRestockItem(null)}
-                className="p-1.5 rounded-lg text-gray-400 hover:text-gray-700 hover:bg-gray-100 transition"
+                className="p-2 rounded-xl text-gray-400 hover:text-gray-700 hover:bg-gray-100 transition cursor-pointer flex-shrink-0"
+                title="Close dialog (X)"
+                aria-label="Close"
               >
                 <X className="w-5 h-5" />
               </button>
             </div>
 
-            <form onSubmit={handleSaveRestock} className="space-y-4 text-xs">
-              {/* Current Stock Banner */}
-              <div className="p-3 bg-gray-50 rounded-xl border border-gray-200 flex items-center justify-between">
+            <form onSubmit={handleSaveRestock} className="flex-1 flex flex-col min-h-0 overflow-hidden">
+              {/* Scrollable Form Body */}
+              <div className="flex-1 overflow-y-auto px-5 sm:px-6 py-4 space-y-4 text-xs overscroll-contain">
+                {/* Current Stock Banner */}
+                <div className="p-3 bg-gray-50 rounded-xl border border-gray-200 flex items-center justify-between">
+                  <div>
+                    <span className="text-gray-500 text-[11px] block">Current On-Hand Stock</span>
+                    <span className="font-mono font-bold text-gray-900 text-sm">
+                      {restockItem.currentStock} {restockItem.unit}
+                    </span>
+                  </div>
+                  <div className="text-right">
+                    <span className="text-gray-500 text-[11px] block">Minimum Threshold</span>
+                    <span className="font-mono font-semibold text-gray-700 text-sm">
+                      {restockItem.minThreshold ?? restockItem.minimumStock ?? 3} {restockItem.unit}
+                    </span>
+                  </div>
+                </div>
+
+                {/* Mode Selection */}
                 <div>
-                  <span className="text-gray-500 text-[11px] block">Current On-Hand Stock</span>
-                  <span className="font-mono font-bold text-gray-900 text-sm">
-                    {restockItem.currentStock} {restockItem.unit}
-                  </span>
-                </div>
-                <div className="text-right">
-                  <span className="text-gray-500 text-[11px] block">Minimum Threshold</span>
-                  <span className="font-mono font-semibold text-gray-700 text-sm">
-                    {restockItem.minThreshold ?? restockItem.minimumStock ?? 3} {restockItem.unit}
-                  </span>
-                </div>
-              </div>
+                  <label className="font-bold text-gray-900 block mb-1.5">Restock Method</label>
+                  <div className="grid grid-cols-2 gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setRestockMode('add')}
+                      className={`py-2 px-3 rounded-lg border text-xs font-bold flex items-center justify-center gap-1.5 transition ${
+                        restockMode === 'add'
+                          ? 'bg-amber-500 text-white border-amber-600 shadow-xs'
+                          : 'bg-gray-50 text-gray-700 border-gray-300 hover:bg-gray-100'
+                      }`}
+                    >
+                      <Plus className="w-3.5 h-3.5" />
+                      <span>Add to Stock (+ Qty)</span>
+                    </button>
 
-              {/* Mode Selection */}
-              <div>
-                <label className="font-bold text-gray-900 block mb-1.5">Restock Method</label>
-                <div className="grid grid-cols-2 gap-2">
-                  <button
-                    type="button"
-                    onClick={() => setRestockMode('add')}
-                    className={`py-2 px-3 rounded-lg border text-xs font-bold flex items-center justify-center gap-1.5 transition ${
-                      restockMode === 'add'
-                        ? 'bg-amber-500 text-white border-amber-600 shadow-xs'
-                        : 'bg-gray-50 text-gray-700 border-gray-300 hover:bg-gray-100'
-                    }`}
-                  >
-                    <Plus className="w-3.5 h-3.5" />
-                    <span>Add to Stock (+ Qty)</span>
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setRestockMode('set');
-                      setRestockExactStock(restockItem.currentStock);
-                    }}
-                    className={`py-2 px-3 rounded-lg border text-xs font-bold flex items-center justify-center gap-1.5 transition ${
-                      restockMode === 'set'
-                        ? 'bg-amber-500 text-white border-amber-600 shadow-xs'
-                        : 'bg-gray-50 text-gray-700 border-gray-300 hover:bg-gray-100'
-                    }`}
-                  >
-                    <Layers className="w-3.5 h-3.5" />
-                    <span>Set Exact Stock Level</span>
-                  </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setRestockMode('set');
+                        setRestockExactStock(restockItem.currentStock);
+                      }}
+                      className={`py-2 px-3 rounded-lg border text-xs font-bold flex items-center justify-center gap-1.5 transition ${
+                        restockMode === 'set'
+                          ? 'bg-amber-500 text-white border-amber-600 shadow-xs'
+                          : 'bg-gray-50 text-gray-700 border-gray-300 hover:bg-gray-100'
+                      }`}
+                    >
+                      <Layers className="w-3.5 h-3.5" />
+                      <span>Set Exact Stock Level</span>
+                    </button>
+                  </div>
                 </div>
-              </div>
 
-              {/* Restock Quantity Input */}
-              {restockMode === 'add' ? (
-                <div>
-                  <label className="font-bold text-gray-900 block mb-1">
-                    Quantity to Add ({restockItem.unit}) *
-                  </label>
-                  <div className="flex items-center gap-2">
+                {/* Restock Quantity Input */}
+                {restockMode === 'add' ? (
+                  <div>
+                    <label className="font-bold text-gray-900 block mb-1">
+                      Quantity to Add ({restockItem.unit}) *
+                    </label>
+                    <div className="flex items-center gap-2">
+                      <input
+                        type="number"
+                        step="0.1"
+                        min="0.1"
+                        required
+                        value={restockAddQty ?? 0}
+                        onChange={e => setRestockAddQty(parseFloat(e.target.value) || 0)}
+                        className="flex-1 px-3 py-2 bg-white text-gray-900 font-mono font-bold text-sm border border-gray-300 rounded-lg focus:outline-none focus:border-amber-500 focus:ring-1 focus:ring-amber-500 shadow-2xs"
+                      />
+                      {/* Quick + Buttons */}
+                      {[5, 10, 25, 50].map(qty => (
+                        <button
+                          key={qty}
+                          type="button"
+                          onClick={() => setRestockAddQty(qty)}
+                          className="px-2.5 py-2 bg-gray-100 hover:bg-amber-100 hover:text-amber-800 text-gray-700 rounded-lg font-mono font-bold text-xs border border-gray-200 transition"
+                        >
+                          +{qty}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                ) : (
+                  <div>
+                    <label className="font-bold text-gray-900 block mb-1">
+                      New Total On-Hand Stock ({restockItem.unit}) *
+                    </label>
                     <input
                       type="number"
                       step="0.1"
-                      min="0.1"
+                      min="0"
                       required
-                      value={restockAddQty ?? 0}
-                      onChange={e => setRestockAddQty(parseFloat(e.target.value) || 0)}
-                      className="flex-1 px-3 py-2 bg-white text-gray-900 font-mono font-bold text-sm border border-gray-300 rounded-lg focus:outline-none focus:border-amber-500 focus:ring-1 focus:ring-amber-500 shadow-2xs"
+                      value={restockExactStock ?? 0}
+                      onChange={e => setRestockExactStock(parseFloat(e.target.value) || 0)}
+                      className="w-full px-3 py-2 bg-white text-gray-900 font-mono font-bold text-sm border border-gray-300 rounded-lg focus:outline-none focus:border-amber-500 focus:ring-1 focus:ring-amber-500 shadow-2xs"
                     />
-                    {/* Quick + Buttons */}
-                    {[5, 10, 25, 50].map(qty => (
-                      <button
-                        key={qty}
-                        type="button"
-                        onClick={() => setRestockAddQty(qty)}
-                        className="px-2.5 py-2 bg-gray-100 hover:bg-amber-100 hover:text-amber-800 text-gray-700 rounded-lg font-mono font-bold text-xs border border-gray-200 transition"
-                      >
-                        +{qty}
-                      </button>
-                    ))}
+                  </div>
+                )}
+
+                {/* Threshold, Unit Cost, and Supplier */}
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="font-bold text-gray-900 block mb-1">
+                      Min Stock Threshold ({restockItem.unit})
+                    </label>
+                    <input
+                      type="number"
+                      step="0.1"
+                      min="0"
+                      value={restockMinThreshold ?? 0}
+                      onChange={e => setRestockMinThreshold(parseFloat(e.target.value) || 0)}
+                      className="w-full px-3 py-2 bg-white text-gray-900 font-mono font-bold border border-gray-300 rounded-lg focus:outline-none focus:border-amber-500 focus:ring-1 focus:ring-amber-500 shadow-2xs"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="font-bold text-gray-900 block mb-1">
+                      Cost Per Unit (Rs./{restockItem.unit})
+                    </label>
+                    <input
+                      type="number"
+                      step="1"
+                      min="0"
+                      value={restockUnitCost ?? 0}
+                      onChange={e => setRestockUnitCost(parseFloat(e.target.value) || 0)}
+                      className="w-full px-3 py-2 bg-white text-gray-900 font-mono font-bold border border-gray-300 rounded-lg focus:outline-none focus:border-amber-500 focus:ring-1 focus:ring-amber-500 shadow-2xs"
+                    />
                   </div>
                 </div>
-              ) : (
-                <div>
-                  <label className="font-bold text-gray-900 block mb-1">
-                    New Total On-Hand Stock ({restockItem.unit}) *
-                  </label>
-                  <input
-                    type="number"
-                    step="0.1"
-                    min="0"
-                    required
-                    value={restockExactStock ?? 0}
-                    onChange={e => setRestockExactStock(parseFloat(e.target.value) || 0)}
-                    className="w-full px-3 py-2 bg-white text-gray-900 font-mono font-bold text-sm border border-gray-300 rounded-lg focus:outline-none focus:border-amber-500 focus:ring-1 focus:ring-amber-500 shadow-2xs"
-                  />
-                </div>
-              )}
 
-              {/* Threshold, Unit Cost, and Supplier */}
-              <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="font-bold text-gray-900 block mb-1">
-                    Min Stock Threshold ({restockItem.unit})
-                  </label>
+                  <label className="font-bold text-gray-900 block mb-1">Supplier / Batch Vendor</label>
                   <input
-                    type="number"
-                    step="0.1"
-                    min="0"
-                    value={restockMinThreshold ?? 0}
-                    onChange={e => setRestockMinThreshold(parseFloat(e.target.value) || 0)}
-                    className="w-full px-3 py-2 bg-white text-gray-900 font-mono font-bold border border-gray-300 rounded-lg focus:outline-none focus:border-amber-500 focus:ring-1 focus:ring-amber-500 shadow-2xs"
+                    type="text"
+                    value={restockSupplier ?? ''}
+                    onChange={e => setRestockSupplier(e.target.value)}
+                    placeholder="e.g. Amul Dairy Distribution"
+                    className="w-full px-3 py-2 bg-white text-gray-900 font-medium border border-gray-300 rounded-lg placeholder:text-gray-400 focus:outline-none focus:border-amber-500 focus:ring-1 focus:ring-amber-500 shadow-2xs"
                   />
                 </div>
 
-                <div>
-                  <label className="font-bold text-gray-900 block mb-1">
-                    Cost Per Unit (Rs./{restockItem.unit})
-                  </label>
-                  <input
-                    type="number"
-                    step="1"
-                    min="0"
-                    value={restockUnitCost ?? 0}
-                    onChange={e => setRestockUnitCost(parseFloat(e.target.value) || 0)}
-                    className="w-full px-3 py-2 bg-white text-gray-900 font-mono font-bold border border-gray-300 rounded-lg focus:outline-none focus:border-amber-500 focus:ring-1 focus:ring-amber-500 shadow-2xs"
-                  />
-                </div>
-              </div>
+                {/* Calculated Summary Preview */}
+                {(() => {
+                  const finalStock = restockMode === 'add'
+                    ? Math.max(0, restockItem.currentStock + Number(restockAddQty || 0))
+                    : Math.max(0, Number(restockExactStock || 0));
+                  const addedStock = restockMode === 'add'
+                    ? Number(restockAddQty || 0)
+                    : Math.max(0, finalStock - restockItem.currentStock);
+                  const batchCost = addedStock * Number(restockUnitCost || 0);
+                  const isHealthy = finalStock > Number(restockMinThreshold);
 
-              <div>
-                <label className="font-bold text-gray-900 block mb-1">Supplier / Batch Vendor</label>
-                <input
-                  type="text"
-                  value={restockSupplier ?? ''}
-                  onChange={e => setRestockSupplier(e.target.value)}
-                  placeholder="e.g. Amul Dairy Distribution"
-                  className="w-full px-3 py-2 bg-white text-gray-900 font-medium border border-gray-300 rounded-lg placeholder:text-gray-400 focus:outline-none focus:border-amber-500 focus:ring-1 focus:ring-amber-500 shadow-2xs"
-                />
-              </div>
-
-              {/* Calculated Summary Preview */}
-              {(() => {
-                const finalStock = restockMode === 'add'
-                  ? Math.max(0, restockItem.currentStock + Number(restockAddQty || 0))
-                  : Math.max(0, Number(restockExactStock || 0));
-                const addedStock = restockMode === 'add'
-                  ? Number(restockAddQty || 0)
-                  : Math.max(0, finalStock - restockItem.currentStock);
-                const batchCost = addedStock * Number(restockUnitCost || 0);
-                const isHealthy = finalStock > Number(restockMinThreshold);
-
-                return (
-                  <div className="p-3 bg-emerald-50/60 rounded-xl border border-emerald-200 space-y-1.5">
-                    <div className="flex items-center justify-between text-xs font-semibold text-emerald-950">
-                      <span>Updated Resulting Stock:</span>
-                      <span className="font-mono font-bold text-sm text-emerald-900">
-                        {finalStock} {restockItem.unit}
-                      </span>
-                    </div>
-                    {batchCost > 0 && (
-                      <div className="flex items-center justify-between text-[11px] text-emerald-800">
-                        <span>Restock Batch Value:</span>
-                        <span className="font-mono font-bold">
-                          Rs. {batchCost.toLocaleString()}
+                  return (
+                    <div className="p-3 bg-emerald-50/60 rounded-xl border border-emerald-200 space-y-1.5">
+                      <div className="flex items-center justify-between text-xs font-semibold text-emerald-950">
+                        <span>Updated Resulting Stock:</span>
+                        <span className="font-mono font-bold text-sm text-emerald-900">
+                          {finalStock} {restockItem.unit}
                         </span>
                       </div>
-                    )}
-                    <div className="flex items-center gap-1 text-[11px] text-emerald-700 pt-1">
-                      <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
-                      <span>
-                        Status after restock:{' '}
-                        <strong className="text-emerald-900">
-                          {isHealthy ? 'Healthy In Stock' : 'Below Minimum Threshold'}
-                        </strong>
-                      </span>
+                      {batchCost > 0 && (
+                        <div className="flex items-center justify-between text-[11px] text-emerald-800">
+                          <span>Restock Batch Value:</span>
+                          <span className="font-mono font-bold">
+                            Rs. {batchCost.toLocaleString()}
+                          </span>
+                        </div>
+                      )}
+                      <div className="flex items-center gap-1 text-[11px] text-emerald-700 pt-1">
+                        <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
+                        <span>
+                          Status after restock:{' '}
+                          <strong className="text-emerald-900">
+                            {isHealthy ? 'Healthy In Stock' : 'Below Minimum Threshold'}
+                          </strong>
+                        </span>
+                      </div>
                     </div>
-                  </div>
-                );
-              })()}
+                  );
+                })()}
+              </div>
 
-              <div className="pt-3 border-t border-gray-200 flex items-center justify-end gap-2.5">
+              {/* Pinned Sticky Footer - ALWAYS VISIBLE */}
+              <div className="flex-shrink-0 px-5 sm:px-6 py-3.5 border-t border-gray-200 bg-gray-50/90 backdrop-blur-xs flex items-center justify-end gap-2.5 z-10">
                 <button
                   type="button"
                   onClick={() => setRestockItem(null)}
-                  className="px-4 py-2 rounded-xl border border-gray-300 text-gray-700 text-xs font-bold hover:bg-gray-50 transition"
+                  className="px-4 py-2 rounded-xl border border-gray-300 text-gray-700 text-xs font-bold hover:bg-gray-100 transition cursor-pointer"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
-                  className="px-5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-extrabold shadow-md shadow-emerald-600/20 transition flex items-center gap-1.5"
+                  className="px-5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-extrabold shadow-md shadow-emerald-600/20 transition flex items-center gap-1.5 cursor-pointer"
                 >
                   <Check className="w-3.5 h-3.5" />
                   <span>Confirm Restock</span>
@@ -828,140 +876,157 @@ export const InventoryView: React.FC = () => {
       {/* 3. EDIT INVENTORY ITEM MODAL */}
       {/* ==================================================== */}
       {editingItem && (
-        <div className="fixed inset-0 z-50 overflow-y-auto flex items-center justify-center p-4 bg-black/50 backdrop-blur-xs">
-          <div className="bg-white rounded-2xl max-w-lg w-full p-6 shadow-2xl border border-gray-200 space-y-4">
-            <div className="flex items-center justify-between pb-3 border-b border-gray-200">
-              <div className="flex items-center gap-2">
-                <div className="w-8 h-8 rounded-lg bg-amber-50 text-amber-600 border border-amber-200 flex items-center justify-center">
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-black/60 backdrop-blur-xs animate-in fade-in duration-150"
+          onClick={(e) => {
+            if (e.target === e.currentTarget) setEditingItem(null);
+          }}
+        >
+          <div
+            id="modal-edit-inventory-dialog"
+            className="bg-white rounded-2xl max-w-lg w-full max-h-[92vh] sm:max-h-[88vh] shadow-2xl border border-gray-200 flex flex-col overflow-hidden animate-in fade-in zoom-in-95 duration-150"
+          >
+            {/* Pinned Header - ALWAYS VISIBLE */}
+            <div className="flex-shrink-0 px-5 sm:px-6 py-4 border-b border-gray-200 bg-white flex items-center justify-between z-10">
+              <div className="flex items-center gap-2.5 min-w-0">
+                <div className="w-8 h-8 rounded-lg bg-amber-50 text-amber-600 border border-amber-200 flex items-center justify-center flex-shrink-0">
                   <Edit2 className="w-4 h-4" />
                 </div>
-                <div>
-                  <h3 className="font-bold text-base text-gray-900">Edit Inventory Item</h3>
-                  <p className="text-[11px] text-gray-500">{editingItem.name}</p>
+                <div className="min-w-0">
+                  <h3 className="font-bold text-base text-gray-900 leading-tight">Edit Inventory Item</h3>
+                  <p className="text-[11px] text-gray-500 truncate">{editingItem.name}</p>
                 </div>
               </div>
               <button
+                type="button"
+                id="btn-close-edit-inventory-modal"
                 onClick={() => setEditingItem(null)}
-                className="p-1.5 rounded-lg text-gray-400 hover:text-gray-700 hover:bg-gray-100 transition"
+                className="p-2 rounded-xl text-gray-400 hover:text-gray-700 hover:bg-gray-100 transition cursor-pointer flex-shrink-0"
+                title="Close dialog (X)"
+                aria-label="Close"
               >
                 <X className="w-5 h-5" />
               </button>
             </div>
 
-            <form onSubmit={handleSaveEdit} className="space-y-3.5 text-xs">
-              <div>
-                <label className="font-bold text-gray-900 block mb-1">Item / Ingredient Name *</label>
-                <input
-                  type="text"
-                  required
-                  value={editingItem.name ?? ''}
-                  onChange={e => setEditingItem({ ...editingItem, name: e.target.value })}
-                  className="w-full px-3 py-2 bg-white text-gray-900 font-semibold border border-gray-300 rounded-lg focus:outline-none focus:border-amber-500 focus:ring-1 focus:ring-amber-500 shadow-2xs"
-                />
-              </div>
-
-              <div className="grid grid-cols-2 gap-3">
+            <form onSubmit={handleSaveEdit} className="flex-1 flex flex-col min-h-0 overflow-hidden">
+              {/* Scrollable Form Body */}
+              <div className="flex-1 overflow-y-auto px-5 sm:px-6 py-4 space-y-3.5 text-xs overscroll-contain">
                 <div>
-                  <label className="font-bold text-gray-900 block mb-1">Category *</label>
-                  <select
-                    value={editingItem.category ?? 'Dairy & Cheese'}
-                    onChange={e => setEditingItem({ ...editingItem, category: e.target.value })}
-                    className="w-full px-3 py-2 bg-white text-gray-900 font-semibold border border-gray-300 rounded-lg focus:outline-none focus:border-amber-500 focus:ring-1 focus:ring-amber-500 shadow-2xs"
-                  >
-                    {categories.filter(c => c !== 'all').map(cat => (
-                      <option key={cat} value={cat}>{cat}</option>
-                    ))}
-                  </select>
-                </div>
-
-                <div>
-                  <label className="font-bold text-gray-900 block mb-1">SKU / Item Code</label>
+                  <label className="font-bold text-gray-900 block mb-1">Item / Ingredient Name *</label>
                   <input
                     type="text"
-                    value={editingItem.sku ?? ''}
-                    onChange={e => setEditingItem({ ...editingItem, sku: e.target.value })}
-                    className="w-full px-3 py-2 bg-white text-gray-900 font-mono font-bold border border-gray-300 rounded-lg focus:outline-none focus:border-amber-500 focus:ring-1 focus:ring-amber-500 shadow-2xs"
-                  />
-                </div>
-              </div>
-
-              <div className="grid grid-cols-3 gap-3">
-                <div>
-                  <label className="font-bold text-gray-900 block mb-1">Unit of Measure *</label>
-                  <select
-                    value={editingItem.unit ?? 'kg'}
-                    onChange={e => setEditingItem({ ...editingItem, unit: e.target.value })}
+                    required
+                    value={editingItem.name ?? ''}
+                    onChange={e => setEditingItem({ ...editingItem, name: e.target.value })}
                     className="w-full px-3 py-2 bg-white text-gray-900 font-semibold border border-gray-300 rounded-lg focus:outline-none focus:border-amber-500 focus:ring-1 focus:ring-amber-500 shadow-2xs"
-                  >
-                    {standardUnits.map(u => (
-                      <option key={u} value={u}>{u}</option>
-                    ))}
-                  </select>
-                </div>
-
-                <div>
-                  <label className="font-bold text-gray-900 block mb-1">Current Stock *</label>
-                  <input
-                    type="number"
-                    step="0.1"
-                    min="0"
-                    required
-                    value={editingItem.currentStock ?? 0}
-                    onChange={e => setEditingItem({ ...editingItem, currentStock: parseFloat(e.target.value) || 0 })}
-                    className="w-full px-3 py-2 bg-white text-gray-900 font-mono font-bold border border-gray-300 rounded-lg focus:outline-none focus:border-amber-500 focus:ring-1 focus:ring-amber-500 shadow-2xs"
                   />
                 </div>
 
-                <div>
-                  <label className="font-bold text-gray-900 block mb-1">Min Threshold *</label>
-                  <input
-                    type="number"
-                    step="0.1"
-                    min="0"
-                    required
-                    value={editingItem.minThreshold ?? editingItem.minimumStock ?? 3}
-                    onChange={e => setEditingItem({ ...editingItem, minThreshold: parseFloat(e.target.value) || 0, minimumStock: parseFloat(e.target.value) || 0 })}
-                    className="w-full px-3 py-2 bg-white text-gray-900 font-mono font-bold border border-gray-300 rounded-lg focus:outline-none focus:border-amber-500 focus:ring-1 focus:ring-amber-500 shadow-2xs"
-                  />
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="font-bold text-gray-900 block mb-1">Category *</label>
+                    <select
+                      value={editingItem.category ?? 'Dairy & Cheese'}
+                      onChange={e => setEditingItem({ ...editingItem, category: e.target.value })}
+                      className="w-full px-3 py-2 bg-white text-gray-900 font-semibold border border-gray-300 rounded-lg focus:outline-none focus:border-amber-500 focus:ring-1 focus:ring-amber-500 shadow-2xs"
+                    >
+                      {categories.filter(c => c !== 'all').map(cat => (
+                        <option key={cat} value={cat}>{cat}</option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="font-bold text-gray-900 block mb-1">SKU / Item Code</label>
+                    <input
+                      type="text"
+                      value={editingItem.sku ?? ''}
+                      onChange={e => setEditingItem({ ...editingItem, sku: e.target.value })}
+                      className="w-full px-3 py-2 bg-white text-gray-900 font-mono font-bold border border-gray-300 rounded-lg focus:outline-none focus:border-amber-500 focus:ring-1 focus:ring-amber-500 shadow-2xs"
+                    />
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-3 gap-3">
+                  <div>
+                    <label className="font-bold text-gray-900 block mb-1">Unit of Measure *</label>
+                    <select
+                      value={editingItem.unit ?? 'kg'}
+                      onChange={e => setEditingItem({ ...editingItem, unit: e.target.value })}
+                      className="w-full px-3 py-2 bg-white text-gray-900 font-semibold border border-gray-300 rounded-lg focus:outline-none focus:border-amber-500 focus:ring-1 focus:ring-amber-500 shadow-2xs"
+                    >
+                      {standardUnits.map(u => (
+                        <option key={u} value={u}>{u}</option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="font-bold text-gray-900 block mb-1">Current Stock *</label>
+                    <input
+                      type="number"
+                      step="0.1"
+                      min="0"
+                      required
+                      value={editingItem.currentStock ?? 0}
+                      onChange={e => setEditingItem({ ...editingItem, currentStock: parseFloat(e.target.value) || 0 })}
+                      className="w-full px-3 py-2 bg-white text-gray-900 font-mono font-bold border border-gray-300 rounded-lg focus:outline-none focus:border-amber-500 focus:ring-1 focus:ring-amber-500 shadow-2xs"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="font-bold text-gray-900 block mb-1">Min Threshold *</label>
+                    <input
+                      type="number"
+                      step="0.1"
+                      min="0"
+                      required
+                      value={editingItem.minThreshold ?? editingItem.minimumStock ?? 3}
+                      onChange={e => setEditingItem({ ...editingItem, minThreshold: parseFloat(e.target.value) || 0, minimumStock: parseFloat(e.target.value) || 0 })}
+                      className="w-full px-3 py-2 bg-white text-gray-900 font-mono font-bold border border-gray-300 rounded-lg focus:outline-none focus:border-amber-500 focus:ring-1 focus:ring-amber-500 shadow-2xs"
+                    />
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="font-bold text-gray-900 block mb-1">Unit Cost (Rs.) *</label>
+                    <input
+                      type="number"
+                      step="1"
+                      min="0"
+                      required
+                      value={editingItem.costPerUnit ?? 0}
+                      onChange={e => setEditingItem({ ...editingItem, costPerUnit: parseFloat(e.target.value) || 0 })}
+                      className="w-full px-3 py-2 bg-white text-gray-900 font-mono font-bold border border-gray-300 rounded-lg focus:outline-none focus:border-amber-500 focus:ring-1 focus:ring-amber-500 shadow-2xs"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="font-bold text-gray-900 block mb-1">Supplier / Vendor</label>
+                    <input
+                      type="text"
+                      value={editingItem.supplier ?? ''}
+                      onChange={e => setEditingItem({ ...editingItem, supplier: e.target.value })}
+                      className="w-full px-3 py-2 bg-white text-gray-900 font-medium border border-gray-300 rounded-lg focus:outline-none focus:border-amber-500 focus:ring-1 focus:ring-amber-500 shadow-2xs"
+                    />
+                  </div>
                 </div>
               </div>
 
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="font-bold text-gray-900 block mb-1">Unit Cost (Rs.) *</label>
-                  <input
-                    type="number"
-                    step="1"
-                    min="0"
-                    required
-                    value={editingItem.costPerUnit ?? 0}
-                    onChange={e => setEditingItem({ ...editingItem, costPerUnit: parseFloat(e.target.value) || 0 })}
-                    className="w-full px-3 py-2 bg-white text-gray-900 font-mono font-bold border border-gray-300 rounded-lg focus:outline-none focus:border-amber-500 focus:ring-1 focus:ring-amber-500 shadow-2xs"
-                  />
-                </div>
-
-                <div>
-                  <label className="font-bold text-gray-900 block mb-1">Supplier / Vendor</label>
-                  <input
-                    type="text"
-                    value={editingItem.supplier ?? ''}
-                    onChange={e => setEditingItem({ ...editingItem, supplier: e.target.value })}
-                    className="w-full px-3 py-2 bg-white text-gray-900 font-medium border border-gray-300 rounded-lg focus:outline-none focus:border-amber-500 focus:ring-1 focus:ring-amber-500 shadow-2xs"
-                  />
-                </div>
-              </div>
-
-              <div className="pt-3 border-t border-gray-200 flex items-center justify-end gap-2.5">
+              {/* Pinned Sticky Footer - ALWAYS VISIBLE */}
+              <div className="flex-shrink-0 px-5 sm:px-6 py-3.5 border-t border-gray-200 bg-gray-50/90 backdrop-blur-xs flex items-center justify-end gap-2.5 z-10">
                 <button
                   type="button"
                   onClick={() => setEditingItem(null)}
-                  className="px-4 py-2 rounded-xl border border-gray-300 text-gray-700 text-xs font-bold hover:bg-gray-50 transition"
+                  className="px-4 py-2 rounded-xl border border-gray-300 text-gray-700 text-xs font-bold hover:bg-gray-100 transition cursor-pointer"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
-                  className="px-5 py-2 rounded-xl bg-amber-500 hover:bg-amber-600 text-white text-xs font-extrabold shadow-md shadow-amber-500/20 transition flex items-center gap-1.5"
+                  className="px-5 py-2 rounded-xl bg-amber-500 hover:bg-amber-600 text-white text-xs font-extrabold shadow-md shadow-amber-500/20 transition flex items-center gap-1.5 cursor-pointer"
                 >
                   <Check className="w-3.5 h-3.5" />
                   <span>Update Details</span>
@@ -976,57 +1041,79 @@ export const InventoryView: React.FC = () => {
       {/* 4. DELETE CONFIRMATION MODAL (Frontend + DB Sync) */}
       {/* ==================================================== */}
       {itemToDelete && (
-        <div id="modal-delete-inventory" className="fixed inset-0 z-50 overflow-y-auto flex items-center justify-center p-4 bg-black/50 backdrop-blur-xs">
-          <div className="bg-white rounded-2xl max-w-md w-full p-6 shadow-2xl border border-gray-200 space-y-4">
-            <div className="flex items-start gap-3">
-              <div className="w-10 h-10 rounded-xl bg-rose-50 text-rose-600 border border-rose-200 flex items-center justify-center flex-shrink-0">
-                <Trash2 className="w-5 h-5" />
-              </div>
-              <div className="flex-1">
-                <h3 className="font-bold text-base text-gray-900">Are you sure you want to delete?</h3>
-                <p className="text-xs text-gray-500 mt-0.5">
-                  This item will be permanently removed from inventory records, database, and stock alerts.
-                </p>
+        <div
+          id="modal-delete-inventory"
+          className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-black/60 backdrop-blur-xs animate-in fade-in duration-150"
+          onClick={(e) => {
+            if (e.target === e.currentTarget) setItemToDelete(null);
+          }}
+        >
+          <div
+            id="modal-delete-inventory-dialog"
+            className="bg-white rounded-2xl max-w-md w-full max-h-[92vh] sm:max-h-[88vh] shadow-2xl border border-gray-200 flex flex-col overflow-hidden animate-in fade-in zoom-in-95 duration-150"
+          >
+            {/* Pinned Header - ALWAYS VISIBLE */}
+            <div className="flex-shrink-0 px-5 sm:px-6 py-4 border-b border-gray-200 bg-white flex items-center justify-between z-10">
+              <div className="flex items-center gap-2.5 min-w-0">
+                <div className="w-9 h-9 rounded-xl bg-rose-50 text-rose-600 border border-rose-200 flex items-center justify-center flex-shrink-0">
+                  <Trash2 className="w-4 h-4" />
+                </div>
+                <div className="min-w-0">
+                  <h3 className="font-bold text-base text-gray-900 leading-tight">Delete Inventory Item</h3>
+                  <p className="text-[11px] text-gray-500 truncate">Permanent action</p>
+                </div>
               </div>
               <button
+                type="button"
+                id="btn-close-delete-inventory-modal"
                 onClick={() => setItemToDelete(null)}
-                className="p-1.5 rounded-lg text-gray-400 hover:text-gray-700 hover:bg-gray-100 transition"
+                className="p-2 rounded-xl text-gray-400 hover:text-gray-700 hover:bg-gray-100 transition cursor-pointer flex-shrink-0"
+                title="Close dialog (X)"
+                aria-label="Close"
               >
                 <X className="w-5 h-5" />
               </button>
             </div>
 
-            {/* Inventory Item details summary */}
-            <div className="p-3 bg-gray-50 rounded-xl border border-gray-200 space-y-1">
-              <div className="flex items-center justify-between">
-                <h4 className="font-bold text-xs text-gray-900">{itemToDelete.name}</h4>
-                <span className="text-[10px] font-mono bg-gray-200 text-gray-700 px-1.5 py-0.5 rounded font-bold">
-                  {itemToDelete.sku || 'NO SKU'}
-                </span>
-              </div>
-              <div className="flex items-center gap-2 text-[11px] text-gray-500">
-                <span>{itemToDelete.category}</span>
-                <span>•</span>
-                <span>
-                  Current Stock: <strong className="text-gray-900">{itemToDelete.currentStock} {itemToDelete.unit}</strong>
-                </span>
-                <span>•</span>
-                <span>
-                  Cost: <strong className="text-gray-900">Rs. {itemToDelete.costPerUnit}/{itemToDelete.unit}</strong>
-                </span>
-              </div>
-              {itemToDelete.supplier && (
-                <div className="text-[10px] text-gray-400 pt-0.5">
-                  Supplier: {itemToDelete.supplier}
+            {/* Scrollable Content Body */}
+            <div className="flex-1 overflow-y-auto px-5 sm:px-6 py-4 space-y-3.5 text-xs overscroll-contain">
+              <p className="text-gray-600 leading-relaxed">
+                Are you sure you want to delete <strong className="text-gray-900 font-bold">{itemToDelete.name}</strong>? This item will be permanently removed from inventory records, database, and stock alerts.
+              </p>
+
+              {/* Inventory Item details summary */}
+              <div className="p-3 bg-gray-50 rounded-xl border border-gray-200 space-y-1.5">
+                <div className="flex items-center justify-between">
+                  <h4 className="font-bold text-xs text-gray-900">{itemToDelete.name}</h4>
+                  <span className="text-[10px] font-mono bg-gray-200 text-gray-700 px-1.5 py-0.5 rounded font-bold">
+                    {itemToDelete.sku || 'NO SKU'}
+                  </span>
                 </div>
-              )}
+                <div className="flex flex-wrap items-center gap-2 text-[11px] text-gray-500">
+                  <span>{itemToDelete.category}</span>
+                  <span>•</span>
+                  <span>
+                    Current Stock: <strong className="text-gray-900">{itemToDelete.currentStock} {itemToDelete.unit}</strong>
+                  </span>
+                  <span>•</span>
+                  <span>
+                    Cost: <strong className="text-gray-900">Rs. {itemToDelete.costPerUnit}/{itemToDelete.unit}</strong>
+                  </span>
+                </div>
+                {itemToDelete.supplier && (
+                  <div className="text-[10px] text-gray-400 pt-0.5">
+                    Supplier: {itemToDelete.supplier}
+                  </div>
+                )}
+              </div>
             </div>
 
-            <div className="pt-2 border-t border-gray-200 flex items-center justify-end gap-2.5">
+            {/* Pinned Sticky Footer - ALWAYS VISIBLE */}
+            <div className="flex-shrink-0 px-5 sm:px-6 py-3.5 border-t border-gray-200 bg-gray-50/90 backdrop-blur-xs flex items-center justify-end gap-2.5 z-10">
               <button
                 type="button"
                 onClick={() => setItemToDelete(null)}
-                className="px-4 py-2 rounded-xl border border-gray-300 text-gray-700 text-xs font-bold hover:bg-gray-50 transition"
+                className="px-4 py-2 rounded-xl border border-gray-300 text-gray-700 text-xs font-bold hover:bg-gray-100 transition cursor-pointer"
               >
                 Cancel
               </button>

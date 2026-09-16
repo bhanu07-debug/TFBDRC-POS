@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { usePOS } from '../../context/POSContext';
 import { MenuItem, MenuItemVariant, Department, PaymentMethod } from '../../types';
 import { DishImageUploader } from '../common/DishImageUploader';
@@ -80,6 +80,19 @@ export const ShopView: React.FC = () => {
     sku: '',
     stockQuantity: 10
   });
+
+  // Global ESC key listener to dismiss any active modal
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        if (isNewModalOpen) setIsNewModalOpen(false);
+        if (editingItem) setEditingItem(null);
+        if (itemToDelete) setItemToDelete(null);
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [isNewModalOpen, editingItem, itemToDelete]);
 
   // Shop Products only (department === 'SHOP')
   const shopProducts = useMemo(() => {
@@ -901,22 +914,49 @@ export const ShopView: React.FC = () => {
 
       {/* MODAL: ADD / EDIT PRODUCT */}
       {(isNewModalOpen || editingItem) && (
-        <div className="fixed inset-0 z-50 overflow-y-auto bg-black/75 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="bg-[#111827] rounded-2xl border border-slate-800 max-w-xl w-full p-6 space-y-4 text-slate-100 shadow-2xl">
-            <div className="flex items-center justify-between border-b border-slate-800 pb-3">
-              <h3 className="font-bold text-base text-white">
-                {editingItem ? 'Edit Shop Product' : 'Add New Clothing / Shop Product'}
-              </h3>
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-black/75 backdrop-blur-xs animate-in fade-in duration-150"
+          onClick={(e) => {
+            if (e.target === e.currentTarget) {
+              setIsNewModalOpen(false);
+              setEditingItem(null);
+            }
+          }}
+        >
+          <div
+            id="modal-shop-product-dialog"
+            className="bg-[#111827] rounded-2xl border border-slate-800 max-w-xl w-full max-h-[92vh] sm:max-h-[88vh] flex flex-col overflow-hidden text-slate-100 shadow-2xl animate-in fade-in zoom-in-95 duration-150"
+          >
+            {/* Pinned Header - ALWAYS VISIBLE */}
+            <div className="flex-shrink-0 px-5 sm:px-6 py-4 border-b border-slate-800 bg-[#111827] flex items-center justify-between z-10">
+              <div className="flex items-center gap-2.5 min-w-0">
+                <div className="w-8 h-8 rounded-lg bg-indigo-500/20 text-indigo-400 border border-indigo-500/30 flex items-center justify-center flex-shrink-0">
+                  <ShoppingBag className="w-4 h-4" />
+                </div>
+                <div className="min-w-0">
+                  <h3 className="font-bold text-base text-white leading-tight">
+                    {editingItem ? 'Edit Shop Product' : 'Add New Clothing / Shop Product'}
+                  </h3>
+                  <p className="text-[11px] text-slate-400 truncate">Manage retail apparel, accessories, and pricing</p>
+                </div>
+              </div>
               <button
+                type="button"
+                id="btn-close-shop-product-modal"
                 onClick={() => {
                   setIsNewModalOpen(false);
                   setEditingItem(null);
                 }}
-                className="text-slate-400 hover:text-white"
+                className="p-2 rounded-xl text-slate-400 hover:text-white hover:bg-slate-800 transition cursor-pointer flex-shrink-0"
+                title="Close dialog (X)"
+                aria-label="Close"
               >
                 <X className="w-5 h-5" />
               </button>
             </div>
+
+            {/* Scrollable Form Body */}
+            <div className="flex-1 overflow-y-auto px-5 sm:px-6 py-4 space-y-4 text-xs overscroll-contain">
 
             <div className="grid grid-cols-2 gap-3 text-xs">
               <div className="col-span-2">
@@ -1102,20 +1142,24 @@ export const ShopView: React.FC = () => {
               </span>
             </div>
 
-            {/* Actions */}
-            <div className="flex justify-end gap-2 pt-2 border-t border-slate-800">
+            </div>
+
+            {/* Pinned Sticky Footer - ALWAYS VISIBLE */}
+            <div className="flex-shrink-0 px-5 sm:px-6 py-3.5 border-t border-slate-800 bg-[#111827]/95 backdrop-blur-xs flex items-center justify-end gap-2.5 z-10">
               <button
+                type="button"
                 onClick={() => {
                   setIsNewModalOpen(false);
                   setEditingItem(null);
                 }}
-                className="px-4 py-2 rounded-lg text-xs font-semibold text-slate-400 hover:text-white"
+                className="px-4 py-2 rounded-xl text-xs font-semibold text-slate-400 hover:text-white hover:bg-slate-800 transition cursor-pointer"
               >
                 Cancel
               </button>
               <button
+                type="button"
                 onClick={editingItem ? handleSaveEditProduct : handleSaveNewProduct}
-                className="px-5 py-2 rounded-lg text-xs font-bold bg-indigo-600 hover:bg-indigo-700 text-white shadow-md shadow-indigo-600/20"
+                className="px-5 py-2 rounded-xl text-xs font-bold bg-indigo-600 hover:bg-indigo-700 text-white shadow-md shadow-indigo-600/20 transition cursor-pointer"
               >
                 {editingItem ? 'Save Changes' : 'Create Shop Product'}
               </button>
@@ -1126,22 +1170,48 @@ export const ShopView: React.FC = () => {
 
       {/* MODAL: DELETE CONFIRMATION */}
       {itemToDelete && (
-        <div className="fixed inset-0 z-50 overflow-y-auto bg-black/75 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="bg-[#111827] rounded-xl border border-slate-800 max-w-sm w-full p-5 space-y-3">
-            <h3 className="font-bold text-sm text-white">Delete Product</h3>
-            <p className="text-xs text-slate-400">
-              Are you sure you want to remove <strong>{itemToDelete.name}</strong> from the shop? This cannot be undone.
-            </p>
-            <div className="flex justify-end gap-2 pt-2">
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-black/75 backdrop-blur-xs animate-in fade-in duration-150"
+          onClick={(e) => {
+            if (e.target === e.currentTarget) setItemToDelete(null);
+          }}
+        >
+          <div
+            id="modal-delete-shop-product"
+            className="bg-[#111827] rounded-2xl border border-slate-800 max-w-sm w-full max-h-[92vh] sm:max-h-[88vh] flex flex-col overflow-hidden shadow-2xl animate-in fade-in zoom-in-95 duration-150"
+          >
+            {/* Pinned Header */}
+            <div className="flex-shrink-0 px-5 py-4 border-b border-slate-800 bg-[#111827] flex items-center justify-between z-10">
+              <h3 className="font-bold text-sm text-white">Delete Product</h3>
               <button
+                type="button"
                 onClick={() => setItemToDelete(null)}
-                className="px-3 py-1.5 rounded-lg text-xs text-slate-400 hover:text-white"
+                className="p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition cursor-pointer"
+                title="Close dialog (X)"
+                aria-label="Close"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            {/* Scrollable Body */}
+            <div className="flex-1 overflow-y-auto px-5 py-4 text-xs text-slate-400 leading-relaxed overscroll-contain">
+              Are you sure you want to remove <strong className="text-white font-bold">{itemToDelete.name}</strong> from the shop? This cannot be undone.
+            </div>
+
+            {/* Pinned Footer */}
+            <div className="flex-shrink-0 px-5 py-3.5 border-t border-slate-800 bg-[#111827] flex items-center justify-end gap-2 z-10">
+              <button
+                type="button"
+                onClick={() => setItemToDelete(null)}
+                className="px-3.5 py-1.5 rounded-lg text-xs text-slate-400 hover:text-white hover:bg-slate-800 transition cursor-pointer"
               >
                 Cancel
               </button>
               <button
+                type="button"
                 onClick={handleDeleteProduct}
-                className="px-4 py-1.5 rounded-lg text-xs font-bold bg-rose-600 hover:bg-rose-700 text-white"
+                className="px-4 py-1.5 rounded-lg text-xs font-bold bg-rose-600 hover:bg-rose-700 text-white shadow-md shadow-rose-600/20 transition cursor-pointer"
               >
                 Delete
               </button>
