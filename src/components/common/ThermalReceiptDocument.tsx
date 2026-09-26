@@ -35,6 +35,42 @@ export const ThermalReceiptDocument: React.FC<ThermalReceiptDocumentProps> = ({
   const isPaid = (order.paymentStatus || '').toLowerCase() === 'paid';
   const totalItemQty = order.items.reduce((s, i) => s + (i.quantity || 1), 0);
 
+  // Clean sequential invoice number starting with 0001 (e.g. ORD-0001)
+  const displayInvoiceNumber = (() => {
+    if (order.orderNumber && order.orderNumber.trim()) {
+      return order.orderNumber.trim();
+    }
+    if (order.id && /^ORD-\d+/i.test(order.id)) {
+      return order.id.split('-').slice(0, 2).join('-');
+    }
+    return 'ORD-0001';
+  })();
+
+  // Sanitize order type and staff names (no ADMIN_MANUAL strings on the bill)
+  const rawOrderType = (order.orderType || 'DINE_IN').replace(/_/g, ' ');
+  const displayOrderType = (rawOrderType.includes('MANUAL') || rawOrderType.includes('ADMIN'))
+    ? 'DINE IN'
+    : rawOrderType;
+
+  const rawCaptain = order.waiterName || 'Dilip Chaudhary';
+  const displayCaptain = (rawCaptain.includes('MANUAL') || rawCaptain === 'POS Staff')
+    ? 'Dilip Chaudhary'
+    : rawCaptain;
+
+  const rawCashier = order.cashierName || (order as any).settledBy || (order.createdBy !== 'ADMIN_MANUAL' ? order.createdBy : null) || 'Dilip Chaudhary';
+  const displayCashier = (rawCashier.includes('MANUAL') || rawCashier === 'POS Staff')
+    ? 'Dilip Chaudhary'
+    : (rawCashier.includes('(') ? rawCashier.split('(')[0].trim() : rawCashier);
+
+  // Extract Guest Name & Phone (from order direct props, customer props, or createdBy snapshot)
+  const rawGuestName = (order.guestName || (order as any).customerName || '').trim();
+  const rawGuestPhone = (order.guestPhone || (order as any).customerPhone || '').trim();
+  const fallbackGuestMatch = !rawGuestName && order.createdBy && order.createdBy.includes('(')
+    ? order.createdBy.match(/^([^(]+)\s*\(([^)]+)\)$/)
+    : null;
+  const displayGuestName = rawGuestName || (fallbackGuestMatch ? fallbackGuestMatch[1].trim() : '');
+  const displayGuestPhone = rawGuestPhone || (fallbackGuestMatch && fallbackGuestMatch[2] !== 'Guest' ? fallbackGuestMatch[2].trim() : '');
+
   // Formatted dates
   const orderDate = new Date(order.createdAt || Date.now()).toLocaleDateString([], {
     year: 'numeric',
@@ -101,7 +137,7 @@ export const ThermalReceiptDocument: React.FC<ThermalReceiptDocumentProps> = ({
          ==================================================== */}
       <div className="py-2 border-b border-dashed border-black space-y-1 text-[10px]">
         <div className="flex justify-between items-center">
-          <span>INVOICE: <strong className="font-black text-black">{order.orderNumber || order.id}</strong></span>
+          <span>INVOICE: <strong className="font-black text-black">{displayInvoiceNumber}</strong></span>
           <span className="font-black text-xs pr-1">TABLE: T{order.tableNumber < 10 ? '0' + order.tableNumber : order.tableNumber}</span>
         </div>
         <div className="flex justify-between items-center text-[9.5px]">
@@ -109,21 +145,27 @@ export const ThermalReceiptDocument: React.FC<ThermalReceiptDocumentProps> = ({
           <span className="pr-1 font-medium">TIME: {orderTime}</span>
         </div>
         <div className="flex justify-between items-center text-[9.5px]">
-          <span>TYPE: <strong className="uppercase font-bold">{(order.orderType || 'DINE_IN').replace('_', ' ')}</strong></span>
-          <span className="pr-1">SRC: <strong className="uppercase font-bold">{(order.source || 'POS').replace('_', ' ')}</strong></span>
+          <span>TYPE: <strong className="uppercase font-bold">{displayOrderType}</strong></span>
+          <span className="pr-1 font-bold">{isPaid ? 'PAID INVOICE' : 'TAX INVOICE'}</span>
         </div>
         <div className="flex justify-between items-center text-[9px] text-neutral-800">
-          <span>CAPTAIN: <strong className="font-bold">{order.waiterName || 'Nischal Thapa'}</strong></span>
-          {(order.cashierName || (order as any).settledBy) ? (
-            <span className="pr-1">CASHIER: <strong className="font-bold">{order.cashierName || (order as any).settledBy}</strong></span>
+          <span>CAPTAIN: <strong className="font-bold">{displayCaptain}</strong></span>
+          {displayCashier ? (
+            <span className="pr-1">CASHIER: <strong className="font-bold">{displayCashier}</strong></span>
           ) : order.kotNumber ? (
             <span className="pr-1">KOT: {order.kotNumber}</span>
           ) : null}
         </div>
-        {order.guestName && (
-          <div className="flex justify-between items-center pt-0.5 text-[9px]">
-            <span className="truncate max-w-[130px]">GUEST: {order.guestName}</span>
-            {order.guestPhone && <span className="pr-1">TEL: {order.guestPhone}</span>}
+        {(displayGuestName || displayGuestPhone) && (
+          <div className="flex justify-between items-center pt-1 border-t border-dotted border-black/40 text-[9.5px]">
+            <span className="truncate max-w-[155px]">
+              GUEST: <strong className="font-black text-black">{displayGuestName || 'Valued Guest'}</strong>
+            </span>
+            {displayGuestPhone && (
+              <span className="pr-1 font-black text-black font-mono">
+                MOB: {displayGuestPhone}
+              </span>
+            )}
           </div>
         )}
       </div>
@@ -261,9 +303,9 @@ export const ThermalReceiptDocument: React.FC<ThermalReceiptDocumentProps> = ({
             <span className="font-bold"> ({order.paymentMethod.toUpperCase()})</span>
           )}
         </div>
-        {(order.cashierName || (order as any).settledBy || order.createdBy) && (
+        {displayCashier && (
           <div className="font-bold text-[9px] uppercase tracking-wide">
-            SETTLED BY: <strong>{order.cashierName || (order as any).settledBy || order.createdBy}</strong>
+            SETTLED BY: <strong>{displayCashier}</strong>
           </div>
         )}
         {order.paidAt && (

@@ -80,7 +80,12 @@ export const AdminLayout: React.FC = () => {
   const prevOrdersCount = useRef<number>(orders.length);
 
   const activeOrdersCount = orders.filter(o => o.status !== 'completed' && o.status !== 'cancelled').length;
-  const activeKOTCount = kots.filter(k => k.status === 'pending' || k.status === 'in_progress').length;
+  const activeKOTCount = kots.filter(
+    k => {
+      const s = (k.status || '').toLowerCase();
+      return s === 'pending' || s === 'in_progress' || s === 'preparing';
+    }
+  ).length;
   const pendingServiceCount = serviceRequests.filter(s => s.status === 'pending').length;
   const occupiedTableCount = tables.filter(
     t => ((t.status || '').toUpperCase() === 'OCCUPIED' || (t.status || '').toUpperCase() === 'BILLING') &&

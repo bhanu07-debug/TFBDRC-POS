@@ -754,9 +754,13 @@ export const TablesView: React.FC<TablesViewProps> = ({
             } else if (tableOrders.length > 1) {
               const allItems = tableOrders.flatMap(o => o.items);
               const subtotal = tableOrders.reduce((sum, o) => sum + (o.subtotal ?? o.total ?? 0), 0);
+              const primaryOrder = tableOrders[0];
+              const billOrderNum = primaryOrder?.orderNumber || 'ORD-0001';
+              const resolvedGuestName = primaryOrder?.guestName || tableOrders.find(o => o.guestName)?.guestName;
+              const resolvedGuestPhone = primaryOrder?.guestPhone || tableOrders.find(o => o.guestPhone)?.guestPhone;
               const consolidatedOrder: Order = {
-                id: `BILL-T${settleTable.number}-${Date.now().toString().slice(-4)}`,
-                orderNumber: `INV-T${settleTable.number < 10 ? '0' + settleTable.number : settleTable.number}`,
+                id: `BILL-${billOrderNum}`,
+                orderNumber: billOrderNum,
                 sessionId: settleTable.currentSessionId || `SES-${settleTable.number}`,
                 tableId: settleTable.id || `T${settleTable.number}`,
                 tableNumber: settleTable.number,
@@ -769,9 +773,12 @@ export const TablesView: React.FC<TablesViewProps> = ({
                 status: 'completed',
                 paymentStatus: 'unpaid',
                 orderType: 'dine_in',
-                source: 'ADMIN_MANUAL',
-                createdBy: 'Cashier POS',
-                createdAt: new Date().toISOString(),
+                createdBy: primaryOrder?.createdBy || 'Cashier POS',
+                cashierName: primaryOrder?.cashierName || 'Dilip Chaudhary',
+                waiterName: primaryOrder?.waiterName || 'Dilip Chaudhary',
+                guestName: resolvedGuestName,
+                guestPhone: resolvedGuestPhone,
+                createdAt: primaryOrder?.createdAt || new Date().toISOString(),
                 updatedAt: new Date().toISOString()
               };
               onOpenReceipt?.(consolidatedOrder);

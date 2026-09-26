@@ -64,7 +64,7 @@ export const KOTView: React.FC = () => {
 
   // Local filter states
   const [activeSection, setActiveSection] = useState<'all' | 'kitchen' | 'reception'>('all');
-  const [statusFilter, setStatusFilter] = useState<'active' | 'ready' | 'cancelled' | 'all'>('active');
+  const [statusFilter, setStatusFilter] = useState<'active' | 'preparing' | 'ready' | 'cancelled' | 'all'>('active');
 
   // Cancel dialog state
   const [cancellingTicket, setCancellingTicket] = useState<{
@@ -123,9 +123,16 @@ export const KOTView: React.FC = () => {
   };
 
   // Helper for status matching
+  // 'active' represents newly received orders waiting to be sent to kitchen/bar or printed
   const isTicketActive = (status: string) => {
     const s = (status || '').toLowerCase();
-    return s === 'pending' || s === 'in_progress' || s === 'preparing';
+    return s === 'pending' || s === 'new' || s === 'placed';
+  };
+
+  // 'preparing' represents orders in progress / being prepared in kitchen or barista
+  const isTicketPreparing = (status: string) => {
+    const s = (status || '').toLowerCase();
+    return s === 'preparing' || s === 'in_progress' || s === 'cooking' || s === 'printing' || s === 'printed';
   };
 
   const isTicketReady = (status: string) => {
@@ -169,6 +176,7 @@ export const KOTView: React.FC = () => {
       if (items.length === 0) return false;
 
       if (statusFilter === 'active') return isTicketActive(kot.status);
+      if (statusFilter === 'preparing') return isTicketPreparing(kot.status);
       if (statusFilter === 'ready') return isTicketReady(kot.status);
       if (statusFilter === 'cancelled') return isTicketCancelled(kot.status);
       return true; // 'all'
@@ -186,6 +194,7 @@ export const KOTView: React.FC = () => {
       if (items.length === 0) return false;
 
       if (statusFilter === 'active') return isTicketActive(kot.status);
+      if (statusFilter === 'preparing') return isTicketPreparing(kot.status);
       if (statusFilter === 'ready') return isTicketReady(kot.status);
       if (statusFilter === 'cancelled') return isTicketCancelled(kot.status);
       return true; // 'all'
@@ -203,6 +212,23 @@ export const KOTView: React.FC = () => {
   const activeReceptionCount = kots.filter(
     k => isTicketActive(k.status) && getTicketItemsForSection(k, 'reception').length > 0
   ).length;
+  const totalActiveCount = activeKitchenCount + activeReceptionCount;
+
+  const preparingKitchenCount = kots.filter(
+    k => isTicketPreparing(k.status) && getTicketItemsForSection(k, 'kitchen').length > 0
+  ).length;
+  const preparingReceptionCount = kots.filter(
+    k => isTicketPreparing(k.status) && getTicketItemsForSection(k, 'reception').length > 0
+  ).length;
+  const totalPreparingCount = preparingKitchenCount + preparingReceptionCount;
+
+  const readyKitchenCount = kots.filter(
+    k => isTicketReady(k.status) && getTicketItemsForSection(k, 'kitchen').length > 0
+  ).length;
+  const readyReceptionCount = kots.filter(
+    k => isTicketReady(k.status) && getTicketItemsForSection(k, 'reception').length > 0
+  ).length;
+  const totalReadyCount = readyKitchenCount + readyReceptionCount;
 
   const showToast = (type: 'ready' | 'cancel' | 'print', message: string) => {
     setActionNotice({ type, message });
@@ -212,6 +238,7 @@ export const KOTView: React.FC = () => {
   };
 
   // 1. ACTION: Print KOT for specific location (Kitchen / Reception)
+  // When printed, automatically transitions ticket to 'in_progress' (PREPARING) and clears it from Active
   const handlePrintKOT = async (ticket: StationTicket) => {
     setActivePrintTicket(ticket);
     playPrintSound();
@@ -224,7 +251,7 @@ export const KOTView: React.FC = () => {
     if (!orderToUpdateId && ticket.kotNumber) {
       const matchOrder = orders.find(
         o => (o.kotNumber && o.kotNumber === ticket.kotNumber) ||
-             (o.tableNumber === ticket.tableNumber && o.status === 'placed')
+             (o.tableNumber === ticket.tableNumber && (o.status === 'placed' || o.status === 'confirmed' || o.status === 'NEW'))
       );
       if (matchOrder) orderToUpdateId = matchOrder.id;
     }
@@ -248,13 +275,49 @@ export const KOTView: React.FC = () => {
 
     showToast(
       'print',
-      `Printing & Preparing ${ticket.station === 'kitchen' ? 'Kitchen' : 'Reception'} KOT (${ticket.kotNumber}) for Table ${tableNumStr}...`
+      `Printing KOT (${ticket.kotNumber}) for Table ${tableNumStr} — Moved to Preparing!`
     );
 
     // Give browser small render tick to populate thermal print DOM before window.print()
     setTimeout(() => {
       triggerThermalPrint('80mm');
     }, 100);
+  };
+
+  // ACTION: Move order to Preparing manually without printing
+  const handleMoveToPreparing = async (ticket: StationTicket) => {
+    // Transition ticket to 'in_progress' (PREPARING in POS context)
+    await updateKOTStatus(ticket.id, 'in_progress');
+
+    let orderToUpdateId = ticket.orderId;
+    if (!orderToUpdateId && ticket.kotNumber) {
+      const matchOrder = orders.find(
+        o => (o.kotNumber && o.kotNumber === ticket.kotNumber) ||
+             (o.tableNumber === ticket.tableNumber && (o.status === 'placed' || o.status === 'confirmed' || o.status === 'NEW'))
+      );
+      if (matchOrder) orderToUpdateId = matchOrder.id;
+    }
+    if (orderToUpdateId) {
+      await updateOrderStatus(orderToUpdateId, 'preparing');
+    }
+
+    const tableNumStr = ticket.tableNumber < 10 ? `0${ticket.tableNumber}` : `${ticket.tableNumber}`;
+    const stationLabel = ticket.station === 'kitchen' ? 'Kitchen' : 'Reception / Bar';
+
+    await sendTableNotification({
+      tableNumber: ticket.tableNumber,
+      type: 'order_preparing',
+      title: `Order Preparing: ${stationLabel}`,
+      message: `Your ${stationLabel.toLowerCase()} order (${ticket.kotNumber}) is now being prepared for Table ${tableNumStr}!`,
+      kotId: ticket.id,
+      orderId: ticket.orderId,
+      station: ticket.station
+    });
+
+    showToast(
+      'print',
+      `KOT (${ticket.kotNumber}) for Table ${tableNumStr} moved to Preparing!`
+    );
   };
 
   // 2. ACTION: Mark Ready & notify table number
@@ -381,7 +444,7 @@ export const KOTView: React.FC = () => {
               <span>Kitchen Order Tickets (KOT)</span>
             </h2>
             <span className="px-2.5 py-0.5 rounded-full text-xs font-bold bg-amber-50 text-amber-800 border border-amber-200 font-mono">
-              {activeKitchenCount + activeReceptionCount} Active Orders
+              {totalActiveCount} Active • {totalPreparingCount} Preparing
             </span>
           </div>
           <p className="text-xs text-gray-500 mt-1">
@@ -395,23 +458,71 @@ export const KOTView: React.FC = () => {
           <div className="flex p-1 bg-gray-100 rounded-lg text-xs font-semibold">
             <button
               onClick={() => setStatusFilter('active')}
-              className={`px-3 py-1.5 rounded-md transition ${
+              className={`px-3 py-1.5 rounded-md transition flex items-center gap-1.5 ${
                 statusFilter === 'active'
                   ? 'bg-white text-gray-900 shadow-xs'
                   : 'text-gray-600 hover:text-gray-900'
               }`}
             >
-              Active ({activeKitchenCount + activeReceptionCount})
+              <span>Active</span>
+              {totalActiveCount > 0 && (
+                <span
+                  className={`px-1.5 py-0.2 rounded-full text-[10px] font-mono ${
+                    statusFilter === 'active'
+                      ? 'bg-amber-100 text-amber-900 font-bold'
+                      : 'bg-gray-200 text-gray-700'
+                  }`}
+                >
+                  {totalActiveCount}
+                </span>
+              )}
+            </button>
+            <button
+              onClick={() => setStatusFilter('preparing')}
+              className={`px-3 py-1.5 rounded-md transition flex items-center gap-1.5 ${
+                statusFilter === 'preparing'
+                  ? 'bg-white text-blue-700 shadow-xs font-bold'
+                  : 'text-gray-600 hover:text-gray-900'
+              }`}
+            >
+              <Flame
+                className={`w-3.5 h-3.5 ${
+                  statusFilter === 'preparing' ? 'text-amber-500 animate-pulse' : 'text-amber-500'
+                }`}
+              />
+              <span>Preparing</span>
+              {totalPreparingCount > 0 && (
+                <span
+                  className={`px-1.5 py-0.2 rounded-full text-[10px] font-mono ${
+                    statusFilter === 'preparing'
+                      ? 'bg-blue-100 text-blue-800 font-bold'
+                      : 'bg-gray-200 text-gray-700'
+                  }`}
+                >
+                  {totalPreparingCount}
+                </span>
+              )}
             </button>
             <button
               onClick={() => setStatusFilter('ready')}
-              className={`px-3 py-1.5 rounded-md transition ${
+              className={`px-3 py-1.5 rounded-md transition flex items-center gap-1.5 ${
                 statusFilter === 'ready'
                   ? 'bg-white text-emerald-800 shadow-xs'
                   : 'text-gray-600 hover:text-gray-900'
               }`}
             >
-              Ready
+              <span>Ready</span>
+              {totalReadyCount > 0 && (
+                <span
+                  className={`px-1.5 py-0.2 rounded-full text-[10px] font-mono ${
+                    statusFilter === 'ready'
+                      ? 'bg-emerald-100 text-emerald-800 font-bold'
+                      : 'bg-gray-200 text-gray-700'
+                  }`}
+                >
+                  {totalReadyCount}
+                </span>
+              )}
             </button>
             <button
               onClick={() => setStatusFilter('cancelled')}
@@ -533,16 +644,45 @@ export const KOTView: React.FC = () => {
             {kitchenTickets.length === 0 ? (
               <div className="p-12 bg-white rounded-xl border border-gray-200 text-center text-gray-400 text-xs">
                 <ChefHat className="w-8 h-8 text-gray-300 mx-auto mb-2" />
-                <p className="font-medium text-gray-600">No tickets found for Kitchen Station</p>
-                <p className="text-gray-400 text-[11px] mt-0.5">
-                  Orders placed by guests or staff will route here automatically.
+                <p className="font-medium text-gray-600">
+                  {statusFilter === 'active'
+                    ? 'No new active orders waiting for Kitchen'
+                    : statusFilter === 'preparing'
+                    ? 'No orders currently preparing in Kitchen'
+                    : 'No tickets found for Kitchen Station'}
                 </p>
+                <p className="text-gray-400 text-[11px] mt-0.5">
+                  {statusFilter === 'active' && preparingKitchenCount > 0
+                    ? `${preparingKitchenCount} ticket(s) are actively being prepared in Kitchen.`
+                    : statusFilter === 'preparing' && activeKitchenCount > 0
+                    ? `${activeKitchenCount} new ticket(s) waiting in the Active queue.`
+                    : 'Orders placed by guests or staff will route here automatically.'}
+                </p>
+                {statusFilter === 'active' && preparingKitchenCount > 0 && (
+                  <button
+                    onClick={() => setStatusFilter('preparing')}
+                    className="mt-3 px-3 py-1.5 bg-amber-50 hover:bg-amber-100 text-amber-800 border border-amber-300 rounded-lg text-xs font-bold transition inline-flex items-center gap-1.5"
+                  >
+                    <Flame className="w-3.5 h-3.5 text-amber-600 animate-pulse" />
+                    <span>View Preparing ({preparingKitchenCount})</span>
+                  </button>
+                )}
+                {statusFilter === 'preparing' && activeKitchenCount > 0 && (
+                  <button
+                    onClick={() => setStatusFilter('active')}
+                    className="mt-3 px-3 py-1.5 bg-gray-100 hover:bg-gray-200 text-gray-800 border border-gray-300 rounded-lg text-xs font-bold transition inline-flex items-center gap-1.5"
+                  >
+                    <span>View Active Queue ({activeKitchenCount})</span>
+                  </button>
+                )}
               </div>
             ) : (
               kitchenTickets.map(kot => {
                 const tableNumStr = kot.tableNumber < 10 ? `0${kot.tableNumber}` : `${kot.tableNumber}`;
                 const isReady = isTicketReady(kot.status);
                 const isCancelled = isTicketCancelled(kot.status);
+                const isPreparing = isTicketPreparing(kot.status);
+                const isActive = isTicketActive(kot.status);
 
                 return (
                   <div
@@ -552,6 +692,8 @@ export const KOTView: React.FC = () => {
                         ? 'border-emerald-200 bg-emerald-50/10'
                         : isCancelled
                         ? 'border-rose-200 bg-rose-50/10 opacity-75'
+                        : isPreparing
+                        ? 'border-blue-200 bg-blue-50/5'
                         : 'border-gray-200 hover:border-amber-300'
                     }`}
                   >
@@ -577,17 +719,26 @@ export const KOTView: React.FC = () => {
 
                       <div className="flex flex-col items-end gap-1">
                         <span
-                          className={`text-[10px] font-bold px-2.5 py-0.5 rounded-full capitalize border ${
+                          className={`text-[10px] font-bold px-2.5 py-0.5 rounded-full capitalize border flex items-center gap-1 ${
                             isReady
                               ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
                               : isCancelled
                               ? 'bg-rose-50 text-rose-700 border-rose-200'
-                              : kot.status === 'PREPARING' || kot.status === 'in_progress'
+                              : isPreparing
                               ? 'bg-blue-50 text-blue-700 border-blue-200'
-                              : 'bg-amber-50 text-amber-700 border-amber-200'
+                              : 'bg-amber-50 text-amber-800 border-amber-300 font-bold'
                           }`}
                         >
-                          {kot.status === 'PREPARING' || kot.status === 'in_progress' ? 'Preparing' : kot.status}
+                          {isPreparing && <Flame className="w-3 h-3 text-amber-500 animate-pulse" />}
+                          <span>
+                            {isReady
+                              ? 'Ready'
+                              : isCancelled
+                              ? 'Cancelled'
+                              : isPreparing
+                              ? 'Preparing'
+                              : 'New / Active'}
+                          </span>
                         </span>
                         <span className="text-[10px] font-semibold text-gray-400">
                           {kot.orderSource === 'GUEST_QR' ? 'Guest Self-Order' : 'POS Waiter'}
@@ -668,19 +819,35 @@ export const KOTView: React.FC = () => {
                       </div>
                     )}
 
-                    {/* Three Separate Action Buttons: Print, Ready, and Cancel */}
+                    {/* Action Buttons: Print KOT, Prepare, Ready, and Cancel */}
                     <div className="p-3 bg-gray-50 border-t border-gray-200 flex items-center gap-2 flex-wrap">
-                      {/* 1. PRINT BUTTON */}
+                      {/* 1. PRINT BUTTON (Prints slip and automatically moves ticket to Preparing) */}
                       <button
                         onClick={() => handlePrintKOT(kot)}
-                        className="flex-1 min-w-[90px] py-2 px-3 bg-neutral-900 hover:bg-neutral-800 text-white rounded-lg text-xs font-bold transition flex items-center justify-center gap-1.5 shadow-xs cursor-pointer"
-                        title="Print Kitchen KOT thermal slip"
+                        className="flex-1 min-w-[100px] py-2 px-3 bg-neutral-900 hover:bg-neutral-800 text-white rounded-lg text-xs font-bold transition flex items-center justify-center gap-1.5 shadow-xs cursor-pointer"
+                        title={
+                          isActive
+                            ? 'Print KOT thermal slip & automatically move to Preparing'
+                            : 'Reprint Kitchen KOT thermal slip'
+                        }
                       >
                         <Printer className="w-3.5 h-3.5 text-amber-400" />
-                        <span>Print</span>
+                        <span>{isActive ? 'Print KOT' : 'Reprint KOT'}</span>
                       </button>
 
-                      {/* 2. READY BUTTON */}
+                      {/* 2. MOVE TO PREPARING (for Active/Pending tickets without reprinting) */}
+                      {isActive && (
+                        <button
+                          onClick={() => handleMoveToPreparing(kot)}
+                          className="py-2 px-3 bg-blue-50 hover:bg-blue-100 text-blue-700 border border-blue-200 rounded-lg text-xs font-bold transition flex items-center justify-center gap-1.5 cursor-pointer shadow-2xs"
+                          title="Move ticket to Preparing section"
+                        >
+                          <Flame className="w-3.5 h-3.5 text-amber-500" />
+                          <span>To Preparing</span>
+                        </button>
+                      )}
+
+                      {/* 3. READY BUTTON */}
                       {!isReady && !isCancelled && (
                         <button
                           onClick={() => handleMarkReady(kot)}
@@ -692,7 +859,7 @@ export const KOTView: React.FC = () => {
                         </button>
                       )}
 
-                      {/* 3. CANCEL BUTTON */}
+                      {/* 4. CANCEL BUTTON */}
                       {!isCancelled && (
                         <button
                           onClick={() => handleOpenCancelDialog(kot, 'kitchen')}
@@ -732,16 +899,45 @@ export const KOTView: React.FC = () => {
             {receptionTickets.length === 0 ? (
               <div className="p-12 bg-white rounded-xl border border-gray-200 text-center text-gray-400 text-xs">
                 <Coffee className="w-8 h-8 text-gray-300 mx-auto mb-2" />
-                <p className="font-medium text-gray-600">No tickets found for Reception / Barista</p>
-                <p className="text-gray-400 text-[11px] mt-0.5">
-                  Beverages and cafe orders will appear here automatically.
+                <p className="font-medium text-gray-600">
+                  {statusFilter === 'active'
+                    ? 'No new active orders waiting for Reception'
+                    : statusFilter === 'preparing'
+                    ? 'No orders currently preparing at Reception / Barista'
+                    : 'No tickets found for Reception / Barista'}
                 </p>
+                <p className="text-gray-400 text-[11px] mt-0.5">
+                  {statusFilter === 'active' && preparingReceptionCount > 0
+                    ? `${preparingReceptionCount} ticket(s) are actively being prepared at Reception / Bar.`
+                    : statusFilter === 'preparing' && activeReceptionCount > 0
+                    ? `${activeReceptionCount} new ticket(s) waiting in the Active queue.`
+                    : 'Beverages and cafe orders will appear here automatically.'}
+                </p>
+                {statusFilter === 'active' && preparingReceptionCount > 0 && (
+                  <button
+                    onClick={() => setStatusFilter('preparing')}
+                    className="mt-3 px-3 py-1.5 bg-purple-50 hover:bg-purple-100 text-purple-800 border border-purple-300 rounded-lg text-xs font-bold transition inline-flex items-center gap-1.5"
+                  >
+                    <Flame className="w-3.5 h-3.5 text-purple-600 animate-pulse" />
+                    <span>View Preparing ({preparingReceptionCount})</span>
+                  </button>
+                )}
+                {statusFilter === 'preparing' && activeReceptionCount > 0 && (
+                  <button
+                    onClick={() => setStatusFilter('active')}
+                    className="mt-3 px-3 py-1.5 bg-gray-100 hover:bg-gray-200 text-gray-800 border border-gray-300 rounded-lg text-xs font-bold transition inline-flex items-center gap-1.5"
+                  >
+                    <span>View Active Queue ({activeReceptionCount})</span>
+                  </button>
+                )}
               </div>
             ) : (
               receptionTickets.map(kot => {
                 const tableNumStr = kot.tableNumber < 10 ? `0${kot.tableNumber}` : `${kot.tableNumber}`;
                 const isReady = isTicketReady(kot.status);
                 const isCancelled = isTicketCancelled(kot.status);
+                const isPreparing = isTicketPreparing(kot.status);
+                const isActive = isTicketActive(kot.status);
 
                 return (
                   <div
@@ -751,6 +947,8 @@ export const KOTView: React.FC = () => {
                         ? 'border-emerald-200 bg-emerald-50/10'
                         : isCancelled
                         ? 'border-rose-200 bg-rose-50/10 opacity-75'
+                        : isPreparing
+                        ? 'border-purple-200 bg-purple-50/5'
                         : 'border-gray-200 hover:border-purple-300'
                     }`}
                   >
@@ -776,17 +974,26 @@ export const KOTView: React.FC = () => {
 
                       <div className="flex flex-col items-end gap-1">
                         <span
-                          className={`text-[10px] font-bold px-2.5 py-0.5 rounded-full capitalize border ${
+                          className={`text-[10px] font-bold px-2.5 py-0.5 rounded-full capitalize border flex items-center gap-1 ${
                             isReady
                               ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
                               : isCancelled
                               ? 'bg-rose-50 text-rose-700 border-rose-200'
-                              : kot.status === 'PREPARING' || kot.status === 'in_progress'
+                              : isPreparing
                               ? 'bg-blue-50 text-blue-700 border-blue-200'
-                              : 'bg-purple-50 text-purple-700 border-purple-200'
+                              : 'bg-purple-50 text-purple-700 border-purple-200 font-bold'
                           }`}
                         >
-                          {kot.status === 'PREPARING' || kot.status === 'in_progress' ? 'Preparing' : kot.status}
+                          {isPreparing && <Flame className="w-3 h-3 text-amber-500 animate-pulse" />}
+                          <span>
+                            {isReady
+                              ? 'Ready'
+                              : isCancelled
+                              ? 'Cancelled'
+                              : isPreparing
+                              ? 'Preparing'
+                              : 'New / Active'}
+                          </span>
                         </span>
                         <span className="text-[10px] font-semibold text-gray-400">
                           {kot.orderSource === 'GUEST_QR' ? 'Guest Self-Order' : 'POS Waiter'}
@@ -881,19 +1088,35 @@ export const KOTView: React.FC = () => {
                       </div>
                     )}
 
-                    {/* Three Separate Action Buttons: Print, Ready, and Cancel */}
+                    {/* Action Buttons: Print KOT, Prepare, Ready, and Cancel */}
                     <div className="p-3 bg-gray-50 border-t border-gray-200 flex items-center gap-2 flex-wrap">
-                      {/* 1. PRINT BUTTON */}
+                      {/* 1. PRINT BUTTON (Prints slip and automatically moves ticket to Preparing) */}
                       <button
                         onClick={() => handlePrintKOT(kot)}
-                        className="flex-1 min-w-[90px] py-2 px-3 bg-neutral-900 hover:bg-neutral-800 text-white rounded-lg text-xs font-bold transition flex items-center justify-center gap-1.5 shadow-xs cursor-pointer"
-                        title="Print Reception KOT thermal slip"
+                        className="flex-1 min-w-[100px] py-2 px-3 bg-neutral-900 hover:bg-neutral-800 text-white rounded-lg text-xs font-bold transition flex items-center justify-center gap-1.5 shadow-xs cursor-pointer"
+                        title={
+                          isActive
+                            ? 'Print KOT thermal slip & automatically move to Preparing'
+                            : 'Reprint Reception KOT thermal slip'
+                        }
                       >
                         <Printer className="w-3.5 h-3.5 text-purple-300" />
-                        <span>Print</span>
+                        <span>{isActive ? 'Print KOT' : 'Reprint KOT'}</span>
                       </button>
 
-                      {/* 2. READY BUTTON */}
+                      {/* 2. MOVE TO PREPARING (for Active/Pending tickets without reprinting) */}
+                      {isActive && (
+                        <button
+                          onClick={() => handleMoveToPreparing(kot)}
+                          className="py-2 px-3 bg-purple-50 hover:bg-purple-100 text-purple-700 border border-purple-200 rounded-lg text-xs font-bold transition flex items-center justify-center gap-1.5 cursor-pointer shadow-2xs"
+                          title="Move ticket to Preparing section"
+                        >
+                          <Flame className="w-3.5 h-3.5 text-purple-600" />
+                          <span>To Preparing</span>
+                        </button>
+                      )}
+
+                      {/* 3. READY BUTTON */}
                       {!isReady && !isCancelled && (
                         <button
                           onClick={() => handleMarkReady(kot)}
@@ -905,7 +1128,7 @@ export const KOTView: React.FC = () => {
                         </button>
                       )}
 
-                      {/* 3. CANCEL BUTTON */}
+                      {/* 4. CANCEL BUTTON */}
                       {!isCancelled && (
                         <button
                           onClick={() => handleOpenCancelDialog(kot, 'reception')}

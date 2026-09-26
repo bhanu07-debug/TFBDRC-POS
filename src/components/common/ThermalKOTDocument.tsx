@@ -138,7 +138,7 @@ export const ThermalKOTDocument: React.FC<ThermalKOTDocumentProps> = ({
 
         <div className="flex justify-between items-center text-[10px]">
           <span>ORDER TYPE: <strong className="font-black uppercase">{orderType}</strong></span>
-          <span className="pr-0.5">SRC: <strong className="font-bold">{orderSourceLabel}</strong></span>
+          <span className="pr-0.5 font-mono text-[9px] text-neutral-800">TBL #{ticket.tableNumber}</span>
         </div>
 
         {/* Server / Captain Name (Crucial detail for Kitchen) */}

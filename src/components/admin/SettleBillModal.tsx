@@ -36,11 +36,13 @@ export const SettleBillModal: React.FC<SettleBillModalProps> = ({
   onReceiptOpen,
   onSettled
 }) => {
-  const { settleTableBill, getTableOrders, settings } = usePOS();
+  const { settleTableBill, getTableOrders, settings, generateNextOrderNumber } = usePOS();
 
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>('cash');
   const [discountPercent, setDiscountPercent] = useState<number>(0);
-  const [cashierName, setCashierName] = useState(() => localStorage.getItem('last_cashier_name') || 'Nischal Thapa');
+  const [cashierName, setCashierName] = useState(() => localStorage.getItem('last_cashier_name') || 'Dilip Chaudhary');
+  const [guestName, setGuestName] = useState('');
+  const [guestPhone, setGuestPhone] = useState('');
   const [notes, setNotes] = useState('');
   const [isSettled, setIsSettled] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
@@ -50,14 +52,28 @@ export const SettleBillModal: React.FC<SettleBillModalProps> = ({
     finalPayable: number;
     paymentMethod: string;
     cashierName: string;
+    guestName?: string;
+    guestPhone?: string;
     itemCount: number;
   } | null>(null);
   const [isPrintTriggered, setIsPrintTriggered] = useState(false);
 
+  const tableOrders = table ? getTableOrders(table.number) : [];
+
+  // Sync existing guest details when modal opens
+  React.useEffect(() => {
+    if (isOpen && table) {
+      const currentOrders = getTableOrders(table.number);
+      const existingName = currentOrders.find(o => o.guestName)?.guestName || '';
+      const existingPhone = currentOrders.find(o => o.guestPhone)?.guestPhone || '';
+      setGuestName(existingName);
+      setGuestPhone(existingPhone);
+    }
+  }, [isOpen, table?.number]);
+
   if (!isOpen || !table) return null;
 
   const isCashierValid = Boolean(cashierName && cashierName.trim().length > 0);
-  const tableOrders = getTableOrders(table.number);
 
   const rawSubtotal = tableOrders.reduce((ordSum, o) => {
     const itemsSum = (o.items || []).reduce((itSum, it) => {
@@ -110,12 +126,15 @@ export const SettleBillModal: React.FC<SettleBillModalProps> = ({
       // Snapshot complete bill order details for thermal receipt printing before clearing table
       const allItems = tableOrders.flatMap(o => o.items || []);
       const currentPayable = finalPayable;
-      const currentOrderNumber = tableOrders.length === 1 && tableOrders[0].orderNumber
+      const currentOrderNumber = tableOrders.length > 0 && tableOrders[0].orderNumber
         ? tableOrders[0].orderNumber
-        : `INV-T${table.number < 10 ? '0' + table.number : table.number}-${Date.now().toString().slice(-4)}`;
+        : generateNextOrderNumber();
+
+      const finalGuestName = guestName.trim() || tableOrders.find(o => o.guestName)?.guestName || undefined;
+      const finalGuestPhone = guestPhone.trim() || tableOrders.find(o => o.guestPhone)?.guestPhone || undefined;
 
       const consolidatedOrder: Order = {
-        id: `BILL-T${table.number}-${Date.now().toString().slice(-4)}`,
+        id: `BILL-${currentOrderNumber}`,
         orderNumber: currentOrderNumber,
         sessionId: table.currentSessionId || `SES-${table.number}`,
         tableId: table.id || `T${table.number}`,
@@ -131,10 +150,11 @@ export const SettleBillModal: React.FC<SettleBillModalProps> = ({
         paymentStatus: 'paid',
         paymentMethod: paymentMethod,
         orderType: 'dine_in',
-        source: 'ADMIN_MANUAL',
         cashierName: cleanCashier,
         waiterName: cleanCashier,
         createdBy: cleanCashier,
+        guestName: finalGuestName,
+        guestPhone: finalGuestPhone,
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString()
       };
@@ -144,10 +164,20 @@ export const SettleBillModal: React.FC<SettleBillModalProps> = ({
         finalPayable: currentPayable,
         paymentMethod: paymentMethod,
         cashierName: cleanCashier,
+        guestName: finalGuestName,
+        guestPhone: finalGuestPhone,
         itemCount: allItems.length
       });
 
-      await settleTableBill(table.number, paymentMethod, cleanCashier, discountAmount, notes || undefined);
+      await settleTableBill(
+        table.number,
+        paymentMethod,
+        cleanCashier,
+        discountAmount,
+        notes || undefined,
+        finalGuestName,
+        finalGuestPhone
+      );
       setIsSettled(true);
       setIsProcessing(false);
 
@@ -236,8 +266,17 @@ export const SettleBillModal: React.FC<SettleBillModalProps> = ({
               <div className="w-full bg-gray-50 border border-gray-200 rounded-xl p-4 text-xs space-y-2 text-left">
                 <div className="flex justify-between items-center pb-2 border-b border-gray-200 font-mono">
                   <span className="text-gray-500 font-sans font-medium">Invoice / Bill #</span>
-                  <span className="font-bold text-gray-900">{settledSummary?.orderNumber || settledOrder?.orderNumber || `INV-T${table.number}`}</span>
+                  <span className="font-bold text-gray-900">{settledSummary?.orderNumber || settledOrder?.orderNumber || (tableOrders[0]?.orderNumber || 'ORD-0001')}</span>
                 </div>
+                {(settledSummary?.guestName || settledSummary?.guestPhone || settledOrder?.guestName || settledOrder?.guestPhone) && (
+                  <div className="flex justify-between items-center text-gray-600">
+                    <span>Guest Details:</span>
+                    <span className="font-bold text-gray-900">
+                      {settledSummary?.guestName || settledOrder?.guestName || 'Guest'}
+                      {(settledSummary?.guestPhone || settledOrder?.guestPhone) ? ` (${settledSummary?.guestPhone || settledOrder?.guestPhone})` : ''}
+                    </span>
+                  </div>
+                )}
                 <div className="flex justify-between items-center text-gray-600">
                   <span>Amount Collected:</span>
                   <span className="font-bold text-emerald-700 font-mono text-sm">
@@ -374,6 +413,37 @@ export const SettleBillModal: React.FC<SettleBillModalProps> = ({
               </div>
             )}
 
+            {/* Guest Details for Bill (Optional / Auto-filled from Guest QR) */}
+            <div className="space-y-2 p-3.5 rounded-xl bg-gray-50 border border-gray-200">
+              <div className="flex items-center justify-between">
+                <label className="flex items-center gap-1.5 text-xs font-bold text-gray-800 uppercase tracking-wider">
+                  <User className="w-4 h-4 text-amber-600" />
+                  <span>Guest Details for Bill (Optional)</span>
+                </label>
+                {(guestName || guestPhone) && (
+                  <span className="text-[10px] font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-md border border-emerald-200">
+                    Printed on Bill
+                  </span>
+                )}
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                <input
+                  type="text"
+                  value={guestName}
+                  onChange={e => setGuestName(e.target.value)}
+                  placeholder="Guest Name (e.g. Ram Sharma)"
+                  className="w-full px-3 py-2 bg-white rounded-lg text-xs font-medium text-gray-900 border border-gray-300 placeholder-gray-400 focus:outline-none focus:border-amber-500"
+                />
+                <input
+                  type="tel"
+                  value={guestPhone}
+                  onChange={e => setGuestPhone(e.target.value)}
+                  placeholder="Guest Mobile / Phone Number"
+                  className="w-full px-3 py-2 bg-white rounded-lg text-xs font-medium text-gray-900 border border-gray-300 placeholder-gray-400 focus:outline-none focus:border-amber-500"
+                />
+              </div>
+            </div>
+
             {/* Cashier Name (Mandatory for settlement) */}
             <div className="space-y-2 p-3.5 rounded-xl bg-amber-50/70 border border-amber-200">
               <div className="flex items-center justify-between">
@@ -496,7 +566,36 @@ export const SettleBillModal: React.FC<SettleBillModalProps> = ({
               {onReceiptOpen && tableOrders.length > 0 && (
                 <button
                   type="button"
-                  onClick={() => onReceiptOpen()}
+                  onClick={() => {
+                    const billOrderNum = tableOrders[0]?.orderNumber || generateNextOrderNumber();
+                    const finalGuestName = guestName.trim() || tableOrders.find(o => o.guestName)?.guestName || undefined;
+                    const finalGuestPhone = guestPhone.trim() || tableOrders.find(o => o.guestPhone)?.guestPhone || undefined;
+                    const preSettleOrder: Order = {
+                      id: `BILL-${billOrderNum}`,
+                      orderNumber: billOrderNum,
+                      sessionId: table.currentSessionId || `SES-${table.number}`,
+                      tableId: table.id || `T${table.number}`,
+                      tableNumber: table.number,
+                      items: allBillItems,
+                      subtotal: rawSubtotal,
+                      discount: discountAmount,
+                      serviceCharge: serviceCharge,
+                      vat: vatAmount,
+                      total: finalPayable,
+                      finalAmount: finalPayable,
+                      status: 'placed',
+                      paymentStatus: 'unpaid',
+                      orderType: 'dine_in',
+                      cashierName: cashierName.trim() || 'Dilip Chaudhary',
+                      waiterName: cashierName.trim() || 'Dilip Chaudhary',
+                      createdBy: cashierName.trim() || 'POS Staff',
+                      guestName: finalGuestName,
+                      guestPhone: finalGuestPhone,
+                      createdAt: new Date().toISOString(),
+                      updatedAt: new Date().toISOString()
+                    };
+                    onReceiptOpen(preSettleOrder);
+                  }}
                   className="px-4 py-3 rounded-xl bg-gray-100 hover:bg-gray-200 text-gray-800 font-bold text-xs transition flex items-center justify-center gap-1.5 border border-gray-300"
                   title="Preview & Print Thermal Bill"
                 >

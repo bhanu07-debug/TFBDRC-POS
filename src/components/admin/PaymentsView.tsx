@@ -815,11 +815,10 @@ export const PaymentsView: React.FC<PaymentsViewProps> = ({ onOpenReceipt }) => 
                               const effectiveCashier = p.cashierName || (p as any).settledBy || p.createdBy || 'Cashier';
                               const synthOrder: Order = {
                                 id: p.id,
-                                orderNumber: p.orderNumber || p.id,
+                                orderNumber: p.orderNumber || (p.id.startsWith('ORD-') ? p.id : 'ORD-0001'),
                                 sessionId: p.sessionId || '',
                                 tableId: `T${tableNum || 1}`,
                                 tableNumber: tableNum || 1,
-                                source: 'ADMIN_MANUAL',
                                 status: 'completed',
                                 subtotal: p.amount || 0,
                                 discount: 0,
@@ -831,6 +830,8 @@ export const PaymentsView: React.FC<PaymentsViewProps> = ({ onOpenReceipt }) => 
                                 createdBy: effectiveCashier,
                                 cashierName: effectiveCashier,
                                 settledBy: effectiveCashier,
+                                guestName: p.customerName || (p as any).guestName,
+                                guestPhone: p.customerPhone || (p as any).guestPhone,
                                 paymentStatus: 'paid',
                                 paymentMethod: p.method as any,
                                 paidAt: p.timestamp || p.createdAt,

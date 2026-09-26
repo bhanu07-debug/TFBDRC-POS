@@ -703,6 +703,39 @@ export const deleteShopProductFromDb = async (id: string): Promise<void> => {
 // ====================================================
 // 5. ORDERS & KOT SPLIT CREATION
 // ====================================================
+
+/**
+ * Sequential Order / Invoice Number Generator.
+ * On a fresh slate (0 orders in Firestore), returns 'ORD-0001'.
+ * Otherwise finds the highest numeric sequence and increments by 1.
+ */
+export const getNextOrderNumber = async (): Promise<string> => {
+  try {
+    const ordersSnap = await getDocs(collection(db, 'orders'));
+    if (ordersSnap.empty) {
+      return 'ORD-0001';
+    }
+    let maxSeq = 0;
+    ordersSnap.forEach(d => {
+      const data = d.data();
+      const numStr = (data.orderNumber || '').toString().trim();
+      const match = numStr.match(/^ORD-(\d+)$/i) || numStr.match(/^(\d+)$/);
+      if (match) {
+        const seq = parseInt(match[1], 10);
+        if (!isNaN(seq) && seq < 1000000 && seq > maxSeq) {
+          maxSeq = seq;
+        }
+      }
+    });
+
+    const nextSeq = maxSeq + 1;
+    return `ORD-${nextSeq.toString().padStart(4, '0')}`;
+  } catch (err) {
+    console.warn("Could not query orders count for sequence, falling back:", err);
+    return 'ORD-0001';
+  }
+};
+
 export const createOrderWithKOTs = async (
   params: {
     tableId: string;
@@ -733,6 +766,7 @@ export const createOrderWithKOTs = async (
     serviceChargeEnabled?: boolean;
     serviceChargePercent?: number;
     orderType?: OrderType;
+    orderNumber?: string;
   }
 ): Promise<{ order: Order; kots: KOTTicket[] }> => {
   const path = 'orders';
@@ -746,8 +780,8 @@ export const createOrderWithKOTs = async (
       console.warn("Could not query menu_items collection, using item snapshot fallbacks:", err);
     }
 
-    const orderId = `ORD-${Date.now().toString(36).toUpperCase()}-${Math.floor(1000 + Math.random() * 9000)}`;
-    const orderNumber = `ORD-${Math.floor(1000 + Math.random() * 9000)}`;
+    const orderNumber = params.orderNumber || (await getNextOrderNumber());
+    const orderId = `${orderNumber}-${Date.now().toString(36).toUpperCase()}`;
 
     let subtotal = 0;
     const orderItemSnapshots: OrderItemSnapshot[] = [];

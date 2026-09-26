@@ -155,10 +155,11 @@ interface POSContextType {
   cancelOrderItem: (orderId: string, itemId: string, cancellationReason?: string) => Promise<void>;
   updateKOTStatus: (
     kotId: string,
-    status: 'pending' | 'in_progress' | 'ready' | 'completed' | 'cancelled' | 'bumped',
+    status: 'pending' | 'in_progress' | 'preparing' | 'ready' | 'completed' | 'cancelled' | 'bumped',
     cancellationReason?: string
   ) => Promise<void>;
   markOrderPaid: (orderId: string, paymentMethod?: PaymentMethod, cashierName?: string) => Promise<void>;
+  generateNextOrderNumber: () => string;
 
   // Table notifications
   tableNotifications: TableNotification[];
@@ -171,7 +172,9 @@ interface POSContextType {
     paymentMethod: PaymentMethod,
     cashierName?: string,
     discountAmount?: number,
-    notes?: string
+    notes?: string,
+    guestName?: string,
+    guestPhone?: string
   ) => Promise<void>;
   occupyTable: (tableNumber: number, guestCount: number, waiterName?: string) => Promise<void>;
   setTableStatus: (tableNumber: number, status: Table['status'], notes?: string) => Promise<void>;
@@ -695,6 +698,29 @@ export const POSProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     setCart([]);
   };
 
+  /**
+   * Generates next sequential orderNumber based on currently tracked orders.
+   * Starts at 'ORD-0001' on fresh state (or when 0 orders exist).
+   */
+  const generateNextOrderNumber = (): string => {
+    if (!orders || orders.length === 0) {
+      return 'ORD-0001';
+    }
+    let maxSeq = 0;
+    for (const o of orders) {
+      const numStr = (o.orderNumber || '').toString().trim();
+      const match = numStr.match(/^ORD-(\d+)$/i) || numStr.match(/^(\d+)$/);
+      if (match) {
+        const seq = parseInt(match[1], 10);
+        if (!isNaN(seq) && seq < 1000000 && seq > maxSeq) {
+          maxSeq = seq;
+        }
+      }
+    }
+    const nextSeq = maxSeq + 1;
+    return `ORD-${nextSeq.toString().padStart(4, '0')}`;
+  };
+
   // Place guest QR order
   const placeGuestOrder = async (
     guestName?: string,
@@ -715,7 +741,10 @@ export const POSProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       sessionId = session.id;
     }
 
+    const nextOrderNumber = generateNextOrderNumber();
+
     const { order, kots: newKots } = await createOrderWithKOTs({
+      orderNumber: nextOrderNumber,
       tableId,
       tableNumber: tblNum,
       sessionId,
@@ -799,7 +828,10 @@ export const POSProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       sessionId = session.id;
     }
 
+    const nextOrderNumber = generateNextOrderNumber();
+
     const { order, kots: newKots } = await createOrderWithKOTs({
+      orderNumber: nextOrderNumber,
       tableId,
       tableNumber,
       sessionId,
@@ -1114,7 +1146,7 @@ export const POSProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
 
   const updateKOTStatus = async (
     kotId: string,
-    status: 'pending' | 'in_progress' | 'ready' | 'completed' | 'cancelled' | 'bumped',
+    status: 'pending' | 'in_progress' | 'preparing' | 'ready' | 'completed' | 'cancelled' | 'bumped',
     cancellationReason?: string
   ) => {
     const path = `kots/${kotId}`;
@@ -1122,7 +1154,7 @@ export const POSProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     const mappedStatus =
       status === 'pending'
         ? 'PENDING'
-        : status === 'in_progress'
+        : status === 'in_progress' || status === 'preparing'
         ? 'PREPARING'
         : status === 'ready' || status === 'completed' || status === 'bumped'
         ? 'READY'
@@ -1161,7 +1193,7 @@ export const POSProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
             { status: 'ready', updatedAt: nowIso },
             { merge: true }
           );
-        } else if (status === 'in_progress') {
+        } else if (status === 'in_progress' || status === 'preparing') {
           // Update linked order state to 'preparing'
           setOrders(prev =>
             prev.map(o => (o.id === targetKot.orderId && o.status !== 'ready' && o.status !== 'served' && o.status !== 'completed' ? { ...o, status: 'preparing', updatedAt: nowIso } : o))
@@ -1220,7 +1252,9 @@ export const POSProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     paymentMethod: PaymentMethod,
     cashierName: string = 'Cashier',
     discountAmount: number = 0,
-    notes?: string
+    notes?: string,
+    guestName?: string,
+    guestPhone?: string
   ) => {
     const numStr = tableNumber < 10 ? `0${tableNumber}` : `${tableNumber}`;
     const tableId = `T${numStr}`;
@@ -1252,7 +1286,9 @@ export const POSProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     const txRef = `TX-${Math.floor(100000 + Math.random() * 900000)}`;
     const billId = `BILL-${Date.now().toString(36).toUpperCase()}`;
     const primaryOrder = tableOrders[0];
-    const ordNumber = primaryOrder?.orderNumber || `T${tableNumber < 10 ? '0' + tableNumber : tableNumber}`;
+    const ordNumber = primaryOrder?.orderNumber || generateNextOrderNumber();
+    const resolvedGuestName = guestName?.trim() || primaryOrder?.guestName || tableOrders.find(o => o.guestName)?.guestName;
+    const resolvedGuestPhone = guestPhone?.trim() || primaryOrder?.guestPhone || tableOrders.find(o => o.guestPhone)?.guestPhone;
 
     // 1. Record payment in Firestore
     try {
@@ -1271,7 +1307,9 @@ export const POSProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         createdAt: nowIso,
         timestamp: nowIso,
         paidAt: nowIso,
-        cashierName: cashierName || 'Cashier'
+        cashierName: cashierName || 'Cashier',
+        customerName: resolvedGuestName,
+        customerPhone: resolvedGuestPhone
       });
       setPayments(prev => [rec, ...prev.filter(p => p.id !== rec.id)]);
     } catch (err) {
@@ -1289,6 +1327,8 @@ export const POSProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         paidAt: nowIso,
         cashierName: effectiveCashier,
         settledBy: effectiveCashier,
+        ...(resolvedGuestName ? { guestName: resolvedGuestName } : {}),
+        ...(resolvedGuestPhone ? { guestPhone: resolvedGuestPhone } : {}),
         updatedAt: nowIso
       });
     });
@@ -1325,6 +1365,8 @@ export const POSProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
           paidAt: nowIso,
           cashierName: effectiveCashier,
           settledBy: effectiveCashier,
+          ...(resolvedGuestName ? { guestName: resolvedGuestName } : {}),
+          ...(resolvedGuestPhone ? { guestPhone: resolvedGuestPhone } : {}),
           updatedAt: nowIso
         }).catch(console.error);
       }
@@ -1340,9 +1382,11 @@ export const POSProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
             status: 'completed',
             paymentStatus: 'paid',
             paymentMethod,
-            paidAt: nowIso,
             cashierName: effectiveCashier,
             settledBy: effectiveCashier,
+            paidAt: nowIso,
+            ...(resolvedGuestName ? { guestName: resolvedGuestName } : {}),
+            ...(resolvedGuestPhone ? { guestPhone: resolvedGuestPhone } : {}),
             updatedAt: nowIso
           };
         }
@@ -1854,6 +1898,10 @@ export const POSProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   const resetToDemoData = async () => {
     await clearAllTestDataAndResetTables();
     await syncOfficialRestaurantMenu(true);
+    setOrders([]);
+    setKots([]);
+    setPayments([]);
+    setServiceRequests([]);
     setMenuItems(OFFICIAL_MENU_ITEMS);
     setCategories(OFFICIAL_CATEGORIES);
   };
@@ -1934,6 +1982,7 @@ export const POSProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         cancelOrderItem,
         updateKOTStatus,
         markOrderPaid,
+        generateNextOrderNumber,
 
         tableNotifications,
         sendTableNotification,

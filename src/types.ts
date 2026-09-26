@@ -218,7 +218,7 @@ export interface Order {
   sessionId: string;
   tableId: string;
   tableNumber: number;
-  source: OrderSource;
+  source?: OrderSource;
   status: OrderStatus;
   subtotal: number;
   discount: number;
@@ -369,6 +369,7 @@ export interface PaymentRecord {
   paymentMethod?: PaymentMethod;
   orderType?: OrderType;
   customerName?: string;
+  customerPhone?: string;
   timestamp?: string;
   paidAt?: string;
   cashierName?: string;
