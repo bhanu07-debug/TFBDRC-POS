@@ -22,6 +22,7 @@ import {
 import { SettleBillModal } from './SettleBillModal';
 import { TableTransferModal } from './TableTransferModal';
 import { TableQRModal } from '../guest/TableQRModal';
+import { OrderElapsedTimer } from '../common/OrderElapsedTimer';
 
 interface TablesViewProps {
   onPunchOrder: (tableNumber: number) => void;
@@ -592,16 +593,34 @@ export const TablesView: React.FC<TablesViewProps> = ({
                               </span>
                             )}
                           </div>
-                          <span className={`text-[10px] px-2 py-0.5 rounded-full font-bold border capitalize ${
-                            isServed
-                              ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
-                              : isConfirmed
-                              ? 'bg-blue-50 text-blue-700 border-blue-200'
-                              : 'bg-amber-50 text-amber-800 border-amber-200'
-                          }`}>
-                            {isServed ? 'Served' : isConfirmed ? 'Confirmed' : 'Placed'}
-                          </span>
+                          <div className="flex items-center gap-1.5">
+                            {!isServed && (
+                              <OrderElapsedTimer
+                                receivedAt={ord.createdAt}
+                                status={isConfirmed ? 'preparing' : 'active'}
+                                variant="badge"
+                              />
+                            )}
+                            <span className={`text-[10px] px-2 py-0.5 rounded-full font-bold border capitalize ${
+                              isServed
+                                ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                                : isConfirmed
+                                ? 'bg-blue-50 text-blue-700 border-blue-200'
+                                : 'bg-amber-50 text-amber-800 border-amber-200'
+                            }`}>
+                              {isServed ? 'Served' : isConfirmed ? 'Confirmed' : 'Placed'}
+                            </span>
+                          </div>
                         </div>
+
+                        {!isServed && (
+                          <OrderElapsedTimer
+                            receivedAt={ord.createdAt}
+                            status={isConfirmed ? 'preparing' : 'active'}
+                            variant="banner"
+                            className="rounded-lg border my-1"
+                          />
+                        )}
 
                         {/* Order Status Controller buttons for this specific order */}
                         <div className="grid grid-cols-3 gap-1 p-0.5 bg-gray-100 rounded-lg">

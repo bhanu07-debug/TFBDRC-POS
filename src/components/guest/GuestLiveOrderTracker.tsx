@@ -15,6 +15,7 @@ import {
   XCircle,
   AlertTriangle
 } from 'lucide-react';
+import { OrderElapsedTimer } from '../common/OrderElapsedTimer';
 
 interface GuestLiveOrderTrackerProps {
   isOpen: boolean;
@@ -312,7 +313,13 @@ export const GuestLiveOrderTracker: React.FC<GuestLiveOrderTrackerProps> = ({
                         )}
                       </div>
                       <div className="flex items-center gap-2">
-                        <span className="text-[11px] text-gray-400">{order.createdAt}</span>
+                        {(step === 1 || step === 2) && (
+                          <OrderElapsedTimer
+                            receivedAt={order.createdAt}
+                            status={step === 2 ? 'preparing' : 'active'}
+                            variant="badge"
+                          />
+                        )}
                         <span
                           className={`text-[10px] uppercase tracking-wider font-bold px-2.5 py-0.5 rounded-full ${
                             effectiveStatus === 'cancelled'

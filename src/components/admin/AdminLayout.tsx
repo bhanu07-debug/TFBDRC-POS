@@ -27,6 +27,7 @@ import {
   Wifi,
   ChevronRight,
   Volume2,
+  VolumeX,
   Clock,
   ShoppingBag
 } from 'lucide-react';
@@ -57,6 +58,7 @@ export const AdminLayout: React.FC = () => {
     kots,
     tables,
     settings,
+    updateSettings,
     logoutAdminPortal,
     adminSessionRemainingSeconds
   } = usePOS();
@@ -115,22 +117,42 @@ export const AdminLayout: React.FC = () => {
     prevPendingServiceCount.current = pendingServiceCount;
   }, [pendingServiceCount, serviceRequests]);
 
-  // Watch for new orders from Guest QR
+  // Watch for new orders placed by customers
+  const knownOrderIds = useRef<Set<string>>(new Set());
+  const isOrdersInitialized = useRef(false);
+
   useEffect(() => {
-    if (orders.length > prevOrdersCount.current && prevOrdersCount.current > 0) {
-      const newestOrder = orders[0];
-      if (newestOrder && newestOrder.source === 'GUEST_QR') {
-        playAlertChime();
-        setToastNotification({
-          id: newestOrder.id,
-          tableNumber: newestOrder.tableNumber,
-          text: `New Guest Order #${newestOrder.orderNumber} placed from Table ${newestOrder.tableNumber}`,
-          type: 'order'
-        });
-      }
+    if (!orders || orders.length === 0) return;
+
+    if (!isOrdersInitialized.current) {
+      // First snapshot: seed the set with existing database orders so we don't alert old orders on login
+      knownOrderIds.current = new Set(orders.map(o => o.id));
+      isOrdersInitialized.current = true;
+      return;
     }
-    prevOrdersCount.current = orders.length;
-  }, [orders.length]);
+
+    // Find any new orders not previously seen in this session
+    const newlyArrived = orders.filter(o => !knownOrderIds.current.has(o.id));
+    if (newlyArrived.length > 0) {
+      newlyArrived.forEach(o => knownOrderIds.current.add(o.id));
+
+      const freshestOrder = newlyArrived[0];
+      const tableNumStr = freshestOrder.tableNumber < 10 ? `0${freshestOrder.tableNumber}` : `${freshestOrder.tableNumber}`;
+      const guestNameStr = freshestOrder.guestName ? ` by ${freshestOrder.guestName}` : '';
+      const amountStr = freshestOrder.total ? ` • Rs. ${freshestOrder.total.toLocaleString()}` : '';
+
+      // Play audio alert chime (respects settings.soundAlerts)
+      playAlertChime();
+
+      // Show prominent floating toast notification on admin
+      setToastNotification({
+        id: freshestOrder.id,
+        tableNumber: freshestOrder.tableNumber,
+        text: `New customer order #${freshestOrder.orderNumber}${guestNameStr} placed for Table ${tableNumStr}${amountStr} (${freshestOrder.items.length} items)`,
+        type: 'order'
+      });
+    }
+  }, [orders, settings.soundAlerts]);
 
   const navItems: {
     id: AdminTab;
@@ -359,6 +381,37 @@ export const AdminLayout: React.FC = () => {
               <QrCode className="w-4 h-4" />
             </button>
 
+            {/* Quick Audio Alerts Toggle in Admin Topbar */}
+            <button
+              id="btn-admin-topbar-audio-toggle"
+              onClick={async () => {
+                const nextState = settings.soundAlerts === false;
+                await updateSettings({ soundAlerts: nextState });
+              }}
+              className={`p-2 rounded-xl border transition flex items-center gap-1.5 text-xs font-semibold ${
+                settings.soundAlerts !== false
+                  ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/30 hover:bg-emerald-500/20'
+                  : 'text-slate-400 hover:bg-slate-800 border-slate-700'
+              }`}
+              title={
+                settings.soundAlerts !== false
+                  ? 'Audio alerts are ACTIVE for new orders. Click to Mute sound.'
+                  : 'Audio alerts are MUTED. Click to Enable sound for incoming orders.'
+              }
+            >
+              {settings.soundAlerts !== false ? (
+                <>
+                  <Volume2 className="w-4 h-4 text-emerald-400" />
+                  <span className="hidden xl:inline text-[11px] font-bold">Sound On</span>
+                </>
+              ) : (
+                <>
+                  <VolumeX className="w-4 h-4 text-slate-500" />
+                  <span className="hidden xl:inline text-[11px] text-slate-400">Muted</span>
+                </>
+              )}
+            </button>
+
             {/* Notification Service Bell */}
             <button
               id="btn-service-notifications"
@@ -556,32 +609,53 @@ export const AdminLayout: React.FC = () => {
             </button>
           </div>
           <div className="mt-3 flex items-center gap-2">
-            {toastNotification.type !== 'order' && (
-              <button
-                onClick={() => {
-                  resolveServiceRequest(toastNotification.id);
-                  setToastNotification(null);
-                }}
-                className="flex-1 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-bold transition flex items-center justify-center gap-1 shadow-md shadow-emerald-600/20"
-              >
-                <CheckCircle2 className="w-3.5 h-3.5" />
-                <span>Mark Attended</span>
-              </button>
+            {toastNotification.type === 'order' ? (
+              <>
+                <button
+                  onClick={() => {
+                    setAdminActiveTab('kot');
+                    setToastNotification(null);
+                  }}
+                  className="flex-1 py-1.5 bg-amber-500 hover:bg-amber-600 text-white rounded-lg text-xs font-bold transition flex items-center justify-center gap-1 shadow-md shadow-amber-500/20"
+                >
+                  <ChefHat className="w-3.5 h-3.5" />
+                  <span>View in KOT</span>
+                </button>
+                <button
+                  onClick={() => {
+                    setAdminActiveTab('orders');
+                    setToastNotification(null);
+                  }}
+                  className="flex-1 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 hover:text-white rounded-lg text-xs font-bold transition flex items-center justify-center gap-1 border border-slate-700"
+                >
+                  <Receipt className="w-3.5 h-3.5" />
+                  <span>Orders</span>
+                </button>
+              </>
+            ) : (
+              <>
+                <button
+                  onClick={() => {
+                    resolveServiceRequest(toastNotification.id);
+                    setToastNotification(null);
+                  }}
+                  className="flex-1 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-bold transition flex items-center justify-center gap-1 shadow-md shadow-emerald-600/20"
+                >
+                  <CheckCircle2 className="w-3.5 h-3.5" />
+                  <span>Mark Attended</span>
+                </button>
+                <button
+                  onClick={() => {
+                    setIsServiceDrawerOpen(true);
+                    setToastNotification(null);
+                  }}
+                  className="flex-1 py-1.5 bg-amber-500 hover:bg-amber-600 text-white rounded-lg text-xs font-bold transition flex items-center justify-center gap-1 shadow-md shadow-amber-500/20"
+                >
+                  <span>View Calls</span>
+                  <ChevronRight className="w-3.5 h-3.5" />
+                </button>
+              </>
             )}
-            <button
-              onClick={() => {
-                if (toastNotification.type === 'order') {
-                  setAdminActiveTab('orders');
-                } else {
-                  setIsServiceDrawerOpen(true);
-                }
-                setToastNotification(null);
-              }}
-              className="flex-1 py-1.5 bg-amber-500 hover:bg-amber-600 text-white rounded-lg text-xs font-bold transition flex items-center justify-center gap-1 shadow-md shadow-amber-500/20"
-            >
-              <span>View Details</span>
-              <ChevronRight className="w-3.5 h-3.5" />
-            </button>
           </div>
         </div>
       )}

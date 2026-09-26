@@ -526,7 +526,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
               <div className="flex items-center gap-2">
                 <div className="w-2 h-2 rounded-full bg-amber-400" />
                 <h2 className="text-sm font-bold text-white uppercase tracking-wider">
-                  KOT Summary
+                  Live KOT Activity Stream
                 </h2>
               </div>
               <button
@@ -534,7 +534,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                 onClick={() => onNavigateTab('kot')}
                 className="text-xs font-bold text-amber-400 hover:text-amber-300 transition"
               >
-                View KOT
+                View Stream
               </button>
             </div>
 

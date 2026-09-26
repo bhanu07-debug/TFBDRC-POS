@@ -1884,6 +1884,7 @@ export const POSProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
 
   // Settings
   const updateSettings = async (newSettings: Partial<RestaurantSettings>) => {
+    setSettings(prev => ({ ...prev, ...newSettings }));
     const path = 'settings/restaurant_config';
     try {
       await setDoc(doc(db, 'settings', 'restaurant_config'), cleanFirestoreData({

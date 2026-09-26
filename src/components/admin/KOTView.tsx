@@ -1,4 +1,4 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { usePOS } from '../../context/POSContext';
 import { KOTTicket, KOTItem } from '../../types';
 import {
@@ -18,7 +18,8 @@ import {
   Send,
   X,
   RefreshCw,
-  BellRing
+  BellRing,
+  Timer
 } from 'lucide-react';
 import {
   playReadySound,
@@ -29,6 +30,7 @@ import {
 import { ThermalKOTDocument } from '../common/ThermalKOTDocument';
 import { ThermalPrintPortal } from '../common/ThermalPrintPortal';
 import { triggerThermalPrint } from '../../utils/printUtils';
+import { OrderElapsedTimer } from '../common/OrderElapsedTimer';
 
 interface StationTicket extends KOTTicket {
   station: 'kitchen' | 'reception';
@@ -80,6 +82,38 @@ export const KOTView: React.FC = () => {
     type: 'ready' | 'cancel' | 'print';
     message: string;
   } | null>(null);
+
+  // Track newly arrived KOT tickets in Live KOT Activity Stream for real-time alert and audio chime
+  const knownKotIds = useRef<Set<string>>(new Set());
+  const isKotsInitialized = useRef(false);
+
+  useEffect(() => {
+    if (!kots || kots.length === 0) return;
+
+    if (!isKotsInitialized.current) {
+      knownKotIds.current = new Set(kots.map(k => k.id));
+      isKotsInitialized.current = true;
+      return;
+    }
+
+    const newArrivals = kots.filter(k => !knownKotIds.current.has(k.id));
+    if (newArrivals.length > 0) {
+      newArrivals.forEach(k => knownKotIds.current.add(k.id));
+      const freshest = newArrivals[0];
+      const tableNumStr = freshest.tableNumber < 10 ? `0${freshest.tableNumber}` : `${freshest.tableNumber}`;
+
+      // Play chime if audio alerts are enabled
+      if (settings.soundAlerts !== false) {
+        playNewOrderSound();
+      }
+
+      const stationName = freshest.destination === 'RECEPTION' ? 'Reception / Barista' : 'Kitchen';
+      setActionNotice({
+        type: 'print',
+        message: `🔔 New Order Ticket #${freshest.kotNumber} received for Table ${tableNumStr}! Routed to ${stationName}.`
+      });
+    }
+  }, [kots, settings.soundAlerts]);
 
   // Helper to determine if an item belongs to Reception/Cafe or Kitchen
   const isReceptionItem = (item: any) => {
@@ -435,25 +469,78 @@ export const KOTView: React.FC = () => {
         </div>
       )}
 
-      {/* KOT Top Bar & Filtering */}
+      {/* Live KOT Activity Stream Header & Quick-Access Controls */}
       <div className="bg-white p-5 rounded-xl border border-gray-200 shadow-xs flex flex-col lg:flex-row lg:items-center justify-between gap-4">
         <div>
           <div className="flex items-center gap-2.5 flex-wrap">
             <h2 className="text-lg font-bold text-gray-900 tracking-tight flex items-center gap-2">
               <ChefHat className="w-5 h-5 text-amber-600" />
-              <span>Kitchen Order Tickets (KOT)</span>
+              <span>Live KOT Activity Stream</span>
             </h2>
             <span className="px-2.5 py-0.5 rounded-full text-xs font-bold bg-amber-50 text-amber-800 border border-amber-200 font-mono">
               {totalActiveCount} Active • {totalPreparingCount} Preparing
             </span>
           </div>
           <p className="text-xs text-gray-500 mt-1">
-            Dispatch, print thermal slips, signal table readiness, and notify guests in real-time.
+            Real-time Kitchen Order Tickets dispatch, station routing, and kitchen audio alert controls.
           </p>
         </div>
 
         {/* Action Controls & Sound Settings */}
         <div className="flex items-center flex-wrap gap-2.5">
+          {/* Quick-Access Audio Alerts Toggle for Live KOT Activity Stream */}
+          <div className="flex items-center gap-1.5 bg-gray-50 border border-gray-200 p-1.5 rounded-xl shadow-2xs">
+            <button
+              id="btn-toggle-kot-sound-alerts"
+              type="button"
+              onClick={async () => {
+                const nextState = settings.soundAlerts === false;
+                await updateSettings({ soundAlerts: nextState });
+                if (nextState) {
+                  playNewOrderSound();
+                  showToast('print', 'Audio alerts ENABLED: Chime will sound when new orders are placed.');
+                } else {
+                  showToast('cancel', 'Audio alerts MUTED: Staff can manage quiet kitchen noise levels.');
+                }
+              }}
+              className={`px-3 py-1.5 rounded-lg text-xs font-bold flex items-center gap-2 transition-all ${
+                settings.soundAlerts !== false
+                  ? 'bg-emerald-600 hover:bg-emerald-700 text-white shadow-xs'
+                  : 'bg-white hover:bg-gray-100 text-gray-600 border border-gray-300'
+              }`}
+              title={
+                settings.soundAlerts !== false
+                  ? 'Audio alerts are ACTIVE for new orders. Click to Mute sound.'
+                  : 'Audio alerts are MUTED. Click to Enable sound for incoming orders.'
+              }
+            >
+              {settings.soundAlerts !== false ? (
+                <>
+                  <Volume2 className="w-4 h-4 text-emerald-100" />
+                  <span>Audio Alerts: ON</span>
+                  <span className="w-2 h-2 rounded-full bg-emerald-300 animate-ping" />
+                </>
+              ) : (
+                <>
+                  <VolumeX className="w-4 h-4 text-gray-400" />
+                  <span>Audio Alerts: OFF</span>
+                  <span className="text-[10px] text-gray-400 font-normal">(Muted)</span>
+                </>
+              )}
+            </button>
+
+            <button
+              id="btn-test-chime"
+              type="button"
+              onClick={handleTestChime}
+              className="px-2.5 py-1.5 text-xs text-gray-700 hover:text-gray-900 hover:bg-gray-200 rounded-lg transition flex items-center gap-1.5 font-semibold"
+              title="Test notification chime on your speakers"
+            >
+              <BellRing className="w-3.5 h-3.5 text-amber-600" />
+              <span className="hidden sm:inline">Test Chime</span>
+            </button>
+          </div>
+
           {/* Status Filter Buttons */}
           <div className="flex p-1 bg-gray-100 rounded-lg text-xs font-semibold">
             <button
@@ -543,31 +630,6 @@ export const KOTView: React.FC = () => {
               }`}
             >
               All
-            </button>
-          </div>
-
-          {/* Sound alert toggle & test */}
-          <div className="flex items-center gap-1 bg-gray-50 border border-gray-200 p-1 rounded-lg">
-            <button
-              onClick={() => updateSettings({ soundAlerts: !settings.soundAlerts })}
-              className={`px-2.5 py-1 rounded-md text-xs font-semibold flex items-center gap-1.5 transition ${
-                settings.soundAlerts
-                  ? 'bg-amber-100 text-amber-900'
-                  : 'bg-transparent text-gray-400'
-              }`}
-              title={settings.soundAlerts ? 'Sound Alerts: Enabled' : 'Sound Alerts: Muted'}
-            >
-              {settings.soundAlerts ? <Volume2 className="w-3.5 h-3.5" /> : <VolumeX className="w-3.5 h-3.5" />}
-              <span>{settings.soundAlerts ? 'Sound On' : 'Muted'}</span>
-            </button>
-
-            <button
-              onClick={handleTestChime}
-              className="px-2 py-1 text-xs text-gray-600 hover:text-gray-900 hover:bg-gray-200 rounded transition flex items-center gap-1"
-              title="Test audio chime on your speakers"
-            >
-              <BellRing className="w-3.5 h-3.5 text-amber-600" />
-              <span>Test Chime</span>
             </button>
           </div>
         </div>
@@ -684,6 +746,12 @@ export const KOTView: React.FC = () => {
                 const isPreparing = isTicketPreparing(kot.status);
                 const isActive = isTicketActive(kot.status);
 
+                const linkedOrder = orders.find(
+                  o => o.id === kot.orderId || (kot.orderNumber && o.orderNumber === kot.orderNumber)
+                );
+                const orderReceivedTime = linkedOrder?.createdAt || kot.createdAt;
+                const showTimer = isActive || isPreparing;
+
                 return (
                   <div
                     key={`kitchen-${kot.id}`}
@@ -712,39 +780,57 @@ export const KOTView: React.FC = () => {
                           <Clock className="w-3 h-3 text-gray-400" />
                           <span>Order #{kot.orderNumber}</span>
                           <span>•</span>
-                          <span>{getTimeElapsed(kot.createdAt)}</span>
-                          <span>({new Date(kot.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })})</span>
+                          <span>{getTimeElapsed(orderReceivedTime)}</span>
+                          <span>({new Date(orderReceivedTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })})</span>
                         </p>
                       </div>
 
                       <div className="flex flex-col items-end gap-1">
-                        <span
-                          className={`text-[10px] font-bold px-2.5 py-0.5 rounded-full capitalize border flex items-center gap-1 ${
-                            isReady
-                              ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
-                              : isCancelled
-                              ? 'bg-rose-50 text-rose-700 border-rose-200'
-                              : isPreparing
-                              ? 'bg-blue-50 text-blue-700 border-blue-200'
-                              : 'bg-amber-50 text-amber-800 border-amber-300 font-bold'
-                          }`}
-                        >
-                          {isPreparing && <Flame className="w-3 h-3 text-amber-500 animate-pulse" />}
-                          <span>
-                            {isReady
-                              ? 'Ready'
-                              : isCancelled
-                              ? 'Cancelled'
-                              : isPreparing
-                              ? 'Preparing'
-                              : 'New / Active'}
+                        <div className="flex items-center gap-1.5">
+                          {showTimer && (
+                            <OrderElapsedTimer
+                              receivedAt={orderReceivedTime}
+                              status={isPreparing ? 'preparing' : 'active'}
+                              variant="badge"
+                            />
+                          )}
+                          <span
+                            className={`text-[10px] font-bold px-2.5 py-0.5 rounded-full capitalize border flex items-center gap-1 ${
+                              isReady
+                                ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                                : isCancelled
+                                ? 'bg-rose-50 text-rose-700 border-rose-200'
+                                : isPreparing
+                                ? 'bg-blue-50 text-blue-700 border-blue-200'
+                                : 'bg-amber-50 text-amber-800 border-amber-300 font-bold'
+                            }`}
+                          >
+                            {isPreparing && <Flame className="w-3 h-3 text-amber-500 animate-pulse" />}
+                            <span>
+                              {isReady
+                                ? 'Ready'
+                                : isCancelled
+                                ? 'Cancelled'
+                                : isPreparing
+                                ? 'Preparing'
+                                : 'New / Active'}
+                            </span>
                           </span>
-                        </span>
+                        </div>
                         <span className="text-[10px] font-semibold text-gray-400">
                           {kot.orderSource === 'GUEST_QR' ? 'Guest Self-Order' : 'POS Waiter'}
                         </span>
                       </div>
                     </div>
+
+                    {/* Prominent Timer Banner for Preparing and Active order cards */}
+                    {showTimer && (
+                      <OrderElapsedTimer
+                        receivedAt={orderReceivedTime}
+                        status={isPreparing ? 'preparing' : 'active'}
+                        variant="banner"
+                      />
+                    )}
 
                     {/* Cancellation alert banner if any items were cancelled */}
                     {kot.filteredItems.some(i => i.cancelled) && (
@@ -939,6 +1025,12 @@ export const KOTView: React.FC = () => {
                 const isPreparing = isTicketPreparing(kot.status);
                 const isActive = isTicketActive(kot.status);
 
+                const linkedOrder = orders.find(
+                  o => o.id === kot.orderId || (kot.orderNumber && o.orderNumber === kot.orderNumber)
+                );
+                const orderReceivedTime = linkedOrder?.createdAt || kot.createdAt;
+                const showTimer = isActive || isPreparing;
+
                 return (
                   <div
                     key={`reception-${kot.id}`}
@@ -967,39 +1059,57 @@ export const KOTView: React.FC = () => {
                           <Clock className="w-3 h-3 text-gray-400" />
                           <span>Order #{kot.orderNumber}</span>
                           <span>•</span>
-                          <span>{getTimeElapsed(kot.createdAt)}</span>
-                          <span>({new Date(kot.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })})</span>
+                          <span>{getTimeElapsed(orderReceivedTime)}</span>
+                          <span>({new Date(orderReceivedTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })})</span>
                         </p>
                       </div>
 
                       <div className="flex flex-col items-end gap-1">
-                        <span
-                          className={`text-[10px] font-bold px-2.5 py-0.5 rounded-full capitalize border flex items-center gap-1 ${
-                            isReady
-                              ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
-                              : isCancelled
-                              ? 'bg-rose-50 text-rose-700 border-rose-200'
-                              : isPreparing
-                              ? 'bg-blue-50 text-blue-700 border-blue-200'
-                              : 'bg-purple-50 text-purple-700 border-purple-200 font-bold'
-                          }`}
-                        >
-                          {isPreparing && <Flame className="w-3 h-3 text-amber-500 animate-pulse" />}
-                          <span>
-                            {isReady
-                              ? 'Ready'
-                              : isCancelled
-                              ? 'Cancelled'
-                              : isPreparing
-                              ? 'Preparing'
-                              : 'New / Active'}
+                        <div className="flex items-center gap-1.5">
+                          {showTimer && (
+                            <OrderElapsedTimer
+                              receivedAt={orderReceivedTime}
+                              status={isPreparing ? 'preparing' : 'active'}
+                              variant="badge"
+                            />
+                          )}
+                          <span
+                            className={`text-[10px] font-bold px-2.5 py-0.5 rounded-full capitalize border flex items-center gap-1 ${
+                              isReady
+                                ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                                : isCancelled
+                                ? 'bg-rose-50 text-rose-700 border-rose-200'
+                                : isPreparing
+                                ? 'bg-blue-50 text-blue-700 border-blue-200'
+                                : 'bg-purple-50 text-purple-700 border-purple-200 font-bold'
+                            }`}
+                          >
+                            {isPreparing && <Flame className="w-3 h-3 text-amber-500 animate-pulse" />}
+                            <span>
+                              {isReady
+                                ? 'Ready'
+                                : isCancelled
+                                ? 'Cancelled'
+                                : isPreparing
+                                ? 'Preparing'
+                                : 'New / Active'}
+                            </span>
                           </span>
-                        </span>
+                        </div>
                         <span className="text-[10px] font-semibold text-gray-400">
                           {kot.orderSource === 'GUEST_QR' ? 'Guest Self-Order' : 'POS Waiter'}
                         </span>
                       </div>
                     </div>
+
+                    {/* Prominent Timer Banner for Preparing and Active order cards */}
+                    {showTimer && (
+                      <OrderElapsedTimer
+                        receivedAt={orderReceivedTime}
+                        status={isPreparing ? 'preparing' : 'active'}
+                        variant="banner"
+                      />
+                    )}
 
                     {/* Cancellation alert banner if any items were cancelled */}
                     {kot.filteredItems.some(i => i.cancelled) && (
