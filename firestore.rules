@@ -82,6 +82,7 @@ service cloud.firestore {
         data.tableNumber is number && data.tableNumber >= 0 && data.tableNumber <= 100 &&
         data.source in ['GUEST_QR', 'ADMIN_MANUAL', 'guest_qr', 'pos_manual'] &&
         data.status in ['NEW', 'CONFIRMED', 'PREPARING', 'READY', 'SERVED', 'COMPLETED', 'CANCELLED', 'placed', 'confirmed', 'preparing', 'ready', 'served', 'completed', 'cancelled'] &&
+        (!('priority' in data) || data.priority in ['HIGH', 'STANDARD', 'high', 'standard']) &&
         data.subtotal is number && data.subtotal >= 0 &&
         data.total is number && data.total >= 0 &&
         data.items is list && data.items.size() > 0 && data.items.size() <= 100;
@@ -95,7 +96,8 @@ service cloud.firestore {
         data.tableId is string && data.tableId.size() <= 128 &&
         data.tableNumber is number && data.tableNumber >= 0 && data.tableNumber <= 100 &&
         data.destination in ['KITCHEN', 'RECEPTION', 'kitchen', 'reception'] &&
-        data.status in ['PENDING', 'PRINTING', 'PRINTED', 'PREPARING', 'READY', 'CANCELLED', 'IN_PROGRESS', 'COMPLETED', 'BUMPED', 'pending', 'printing', 'printed', 'preparing', 'ready', 'cancelled', 'in_progress', 'completed', 'bumped'] &&
+        data.status in ['PENDING', 'PRINTING', 'PRINTED', 'PREPARING', 'READY', 'SERVED', 'CANCELLED', 'IN_PROGRESS', 'COMPLETED', 'BUMPED', 'pending', 'printing', 'printed', 'preparing', 'ready', 'served', 'cancelled', 'in_progress', 'completed', 'bumped'] &&
+        (!('priority' in data) || data.priority in ['HIGH', 'STANDARD', 'high', 'standard']) &&
         data.items is list && data.items.size() > 0 && data.items.size() <= 100;
     }
 

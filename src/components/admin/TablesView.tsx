@@ -17,7 +17,8 @@ import {
   X,
   ChefHat,
   UtensilsCrossed,
-  CreditCard
+  CreditCard,
+  Flame
 } from 'lucide-react';
 import { SettleBillModal } from './SettleBillModal';
 import { TableTransferModal } from './TableTransferModal';
@@ -55,18 +56,37 @@ export const TablesView: React.FC<TablesViewProps> = ({
   const [qrModalTableNum, setQrModalTableNum] = useState<number | null>(null);
   const [inspectTable, setInspectTable] = useState<Table | null>(null);
 
-  const getEffectiveTableOrderStatus = (activeOrders: Order[]): 'placed' | 'confirmed' | 'served' => {
-    if (activeOrders.length === 0) return 'placed';
+  const getEffectiveTableOrderStatus = (activeOrders: Order[], tableNumber?: number): 'placed' | 'confirmed' | 'served' => {
+    const tableKots = tableNumber !== undefined ? kots.filter(
+      k => (Number(k.tableNumber) === Number(tableNumber) || k.tableId === `T${tableNumber < 10 ? '0' + tableNumber : tableNumber}`) &&
+           (k.status || '').toLowerCase() !== 'cancelled'
+    ) : [];
+
+    if (activeOrders.length === 0 && tableKots.length === 0) return 'placed';
     const nonCancelled = activeOrders.filter(o => (o.status || '').toLowerCase() !== 'cancelled');
-    if (nonCancelled.length === 0) return 'placed';
-    const allServed = nonCancelled.every(o => {
+
+    // Check if orders are all served
+    const allOrdersServed = nonCancelled.length > 0 && nonCancelled.every(o => {
       const s = (o.status || '').toLowerCase();
       return s === 'served' || s === 'completed';
     });
-    if (allServed) return 'served';
+
+    // Check if KOTs are all served
+    const allKotsServed = tableKots.length > 0 && tableKots.every(k => {
+      const s = (k.status || '').toLowerCase();
+      return s === 'served' || s === 'ready' || s === 'completed';
+    });
+
+    if ((allOrdersServed && (allKotsServed || tableKots.length === 0)) || (allKotsServed && nonCancelled.length === 0)) {
+      return 'served';
+    }
+
     const anyConfirmed = nonCancelled.some(o => {
       const s = (o.status || '').toLowerCase();
       return s === 'confirmed' || s === 'preparing' || s === 'cooking' || s === 'ready';
+    }) || tableKots.some(k => {
+      const s = (k.status || '').toLowerCase();
+      return s === 'in_progress' || s === 'preparing' || s === 'cooking';
     });
     if (anyConfirmed) return 'confirmed';
     return 'placed';
@@ -150,7 +170,11 @@ export const TablesView: React.FC<TablesViewProps> = ({
   };
 
   const getTableActiveKots = (tableNum: number) => {
-    return kots.filter(k => k.tableNumber === tableNum && (k.status === 'pending' || k.status === 'in_progress'));
+    return kots.filter(k => {
+      if (k.tableNumber !== tableNum) return false;
+      const s = (k.status || '').toLowerCase();
+      return s === 'pending' || s === 'in_progress' || s === 'preparing' || s === 'cooking' || s === 'printing';
+    });
   };
 
   return (
@@ -255,13 +279,19 @@ export const TablesView: React.FC<TablesViewProps> = ({
           const meta = getTableStatusMeta(table.status, isOccupied);
           const tableOrders = getTableOrders(table.number);
           const activeKots = getTableActiveKots(table.number);
-          const effectiveOrderStatus = getEffectiveTableOrderStatus(tableOrders);
+          const effectiveOrderStatus = getEffectiveTableOrderStatus(tableOrders, table.number);
+          const hasHighPriority = activeKots.some(k => k.priority === 'HIGH' || k.items?.some(i => i.priority === 'HIGH')) ||
+            tableOrders.some(o => o.priority === 'HIGH' || o.items?.some(i => i.priority === 'HIGH'));
 
           return (
             <div
               key={table.id}
               onClick={() => setInspectTable(table)}
-              className={`bg-white rounded-xl border p-4 transition-all duration-200 cursor-pointer hover:shadow-md flex flex-col justify-between ${meta.border}`}
+              className={`bg-white rounded-xl border p-4 transition-all duration-200 cursor-pointer hover:shadow-md flex flex-col justify-between ${
+                hasHighPriority
+                  ? 'border-2 border-rose-500 shadow-md shadow-rose-500/10 ring-2 ring-rose-500/20'
+                  : meta.border
+              }`}
             >
               {/* Top Row: Table Name & Status Badge */}
               <div>
@@ -270,6 +300,12 @@ export const TablesView: React.FC<TablesViewProps> = ({
                     <span className="text-base font-bold text-gray-900">
                       Table {table.number < 10 ? `0${table.number}` : table.number}
                     </span>
+                    {hasHighPriority && (
+                      <span className="inline-flex items-center gap-0.5 text-[9px] font-black uppercase bg-rose-600 text-white px-1.5 py-0.2 rounded-full shadow-2xs animate-pulse">
+                        <Flame className="w-2.5 h-2.5 fill-current" />
+                        <span>RUSH</span>
+                      </span>
+                    )}
                     <span className={`w-2.5 h-2.5 rounded-full ${meta.dot}`} />
                   </div>
                   <span className={`text-[10px] px-2 py-0.5 rounded-full font-bold border ${meta.badge}`}>
@@ -365,18 +401,19 @@ export const TablesView: React.FC<TablesViewProps> = ({
 
                   <button
                     type="button"
-                    disabled={!isOccupied && tableOrders.length === 0}
+                    disabled={!isOccupied && tableOrders.length === 0 && activeKots.length === 0}
                     onClick={(e) => handleSetTableOrderStatus(table.number, 'served', e)}
-                    className={`py-1 rounded-md text-[10px] font-bold transition flex items-center justify-center gap-1 ${
-                      isOccupied && effectiveOrderStatus === 'served'
-                        ? 'bg-emerald-600 text-white shadow-xs'
-                        : isOccupied
-                        ? 'text-gray-700 hover:bg-gray-200'
+                    className={`py-1 rounded-md text-[10px] font-bold transition flex items-center justify-center gap-1 cursor-pointer ${
+                      effectiveOrderStatus === 'served'
+                        ? 'bg-emerald-600 text-white shadow-xs font-bold'
+                        : isOccupied || tableOrders.length > 0 || activeKots.length > 0
+                        ? 'text-gray-700 hover:bg-gray-200 hover:text-emerald-700'
                         : 'text-gray-400 opacity-40 cursor-not-allowed'
                     }`}
-                    title="Mark all active orders on Table as Served"
+                    title="Mark all active orders on Table as Served (syncs with KOT section)"
                   >
-                    Served
+                    {effectiveOrderStatus === 'served' && <CheckCircle2 className="w-3 h-3 text-white" />}
+                    <span>Served</span>
                   </button>
                 </div>
 
@@ -508,13 +545,13 @@ export const TablesView: React.FC<TablesViewProps> = ({
                     </p>
                   </div>
                   <span className={`text-[10px] font-bold uppercase px-2 py-0.5 rounded-full border ${
-                    getEffectiveTableOrderStatus(getTableOrders(inspectTable.number)) === 'served'
+                    getEffectiveTableOrderStatus(getTableOrders(inspectTable.number), inspectTable.number) === 'served'
                       ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
-                      : getEffectiveTableOrderStatus(getTableOrders(inspectTable.number)) === 'confirmed'
+                      : getEffectiveTableOrderStatus(getTableOrders(inspectTable.number), inspectTable.number) === 'confirmed'
                       ? 'bg-blue-50 text-blue-700 border-blue-200'
                       : 'bg-amber-50 text-amber-800 border-amber-200'
                   }`}>
-                    {getEffectiveTableOrderStatus(getTableOrders(inspectTable.number))}
+                    {getEffectiveTableOrderStatus(getTableOrders(inspectTable.number), inspectTable.number)}
                   </span>
                 </div>
 
@@ -522,8 +559,8 @@ export const TablesView: React.FC<TablesViewProps> = ({
                   <button
                     type="button"
                     onClick={() => handleSetTableOrderStatus(inspectTable.number, 'placed')}
-                    className={`py-2 px-3 rounded-lg text-xs font-bold transition flex items-center justify-center gap-1.5 ${
-                      getEffectiveTableOrderStatus(getTableOrders(inspectTable.number)) === 'placed'
+                    className={`py-2 px-3 rounded-lg text-xs font-bold transition flex items-center justify-center gap-1.5 cursor-pointer ${
+                      getEffectiveTableOrderStatus(getTableOrders(inspectTable.number), inspectTable.number) === 'placed'
                         ? 'bg-amber-500 text-white shadow-sm'
                         : 'text-gray-700 hover:bg-gray-200'
                     }`}
@@ -534,8 +571,8 @@ export const TablesView: React.FC<TablesViewProps> = ({
                   <button
                     type="button"
                     onClick={() => handleSetTableOrderStatus(inspectTable.number, 'confirmed')}
-                    className={`py-2 px-3 rounded-lg text-xs font-bold transition flex items-center justify-center gap-1.5 ${
-                      getEffectiveTableOrderStatus(getTableOrders(inspectTable.number)) === 'confirmed'
+                    className={`py-2 px-3 rounded-lg text-xs font-bold transition flex items-center justify-center gap-1.5 cursor-pointer ${
+                      getEffectiveTableOrderStatus(getTableOrders(inspectTable.number), inspectTable.number) === 'confirmed'
                         ? 'bg-blue-600 text-white shadow-sm'
                         : 'text-gray-700 hover:bg-gray-200'
                     }`}
@@ -546,12 +583,15 @@ export const TablesView: React.FC<TablesViewProps> = ({
                   <button
                     type="button"
                     onClick={() => handleSetTableOrderStatus(inspectTable.number, 'served')}
-                    className={`py-2 px-3 rounded-lg text-xs font-bold transition flex items-center justify-center gap-1.5 ${
-                      getEffectiveTableOrderStatus(getTableOrders(inspectTable.number)) === 'served'
+                    className={`py-2 px-3 rounded-lg text-xs font-bold transition flex items-center justify-center gap-1.5 cursor-pointer ${
+                      getEffectiveTableOrderStatus(getTableOrders(inspectTable.number), inspectTable.number) === 'served'
                         ? 'bg-emerald-600 text-white shadow-sm'
-                        : 'text-gray-700 hover:bg-gray-200'
+                        : 'text-gray-700 hover:bg-gray-200 hover:text-emerald-700'
                     }`}
                   >
+                    {getEffectiveTableOrderStatus(getTableOrders(inspectTable.number), inspectTable.number) === 'served' && (
+                      <CheckCircle2 className="w-3.5 h-3.5 text-white" />
+                    )}
                     <span>3. Served</span>
                   </button>
                 </div>
@@ -627,35 +667,39 @@ export const TablesView: React.FC<TablesViewProps> = ({
                           <button
                             type="button"
                             onClick={(e) => handleSetIndividualOrderStatus(ord.id, 'placed', e)}
-                            className={`py-1 rounded text-[10px] font-bold transition ${
+                            className={`py-1 rounded text-[10px] font-bold transition flex items-center justify-center gap-1 cursor-pointer ${
                               isPlaced
                                 ? 'bg-amber-500 text-white shadow-xs'
                                 : 'text-gray-600 hover:bg-gray-200'
                             }`}
+                            title="Set order status to Placed"
                           >
-                            Placed
+                            <span>Placed</span>
                           </button>
                           <button
                             type="button"
                             onClick={(e) => handleSetIndividualOrderStatus(ord.id, 'confirmed', e)}
-                            className={`py-1 rounded text-[10px] font-bold transition ${
+                            className={`py-1 rounded text-[10px] font-bold transition flex items-center justify-center gap-1 cursor-pointer ${
                               isConfirmed
                                 ? 'bg-blue-600 text-white shadow-xs'
                                 : 'text-gray-600 hover:bg-gray-200'
                             }`}
+                            title="Set order status to Confirmed / Preparing"
                           >
-                            Confirmed
+                            <span>Confirmed</span>
                           </button>
                           <button
                             type="button"
                             onClick={(e) => handleSetIndividualOrderStatus(ord.id, 'served', e)}
-                            className={`py-1 rounded text-[10px] font-bold transition ${
+                            className={`py-1 rounded text-[10px] font-bold transition flex items-center justify-center gap-1 cursor-pointer ${
                               isServed
                                 ? 'bg-emerald-600 text-white shadow-xs'
-                                : 'text-gray-600 hover:bg-gray-200'
+                                : 'text-gray-600 hover:bg-gray-200 hover:text-emerald-700'
                             }`}
+                            title="Mark order as Served (synchronizes with KOT ticket)"
                           >
-                            Served
+                            {isServed && <CheckCircle2 className="w-3 h-3 text-white" />}
+                            <span>Served</span>
                           </button>
                         </div>
 

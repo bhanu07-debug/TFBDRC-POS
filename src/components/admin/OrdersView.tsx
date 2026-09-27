@@ -14,7 +14,9 @@ import {
   X,
   Sparkles,
   UserCheck,
-  User
+  User,
+  Flame,
+  Zap
 } from 'lucide-react';
 
 interface OrdersViewProps {
@@ -53,6 +55,10 @@ export const OrdersView: React.FC<OrdersViewProps> = ({ onOpenReceipt }) => {
       const f = statusFilter.toLowerCase();
       if (f === 'placed' && (s === 'placed' || s === 'new')) {
         // Match placed/new
+      } else if (f === 'preparing' && (s === 'preparing' || s === 'confirmed' || s === 'in_progress' || s === 'cooking' || s === 'printing')) {
+        // Match preparing / in_progress / confirmed
+      } else if (f === 'served' && (s === 'served' || s === 'ready' || s === 'completed')) {
+        // Match served / ready
       } else if (s !== f) {
         return false;
       }
@@ -277,15 +283,28 @@ export const OrdersView: React.FC<OrdersViewProps> = ({ onOpenReceipt }) => {
                 filteredOrders.map(order => {
                   const isPaid = (order.paymentStatus || '').toLowerCase() === 'paid';
                   const payMethodStr = order.paymentMethod ? order.paymentMethod.toUpperCase() : '';
+                  const isHighPriority = order.priority === 'HIGH' || order.items.some(i => i.priority === 'HIGH');
 
                   return (
                     <tr
                       key={order.id}
                       onClick={() => setInspectOrder(order)}
-                      className="hover:bg-gray-50/80 transition cursor-pointer"
+                      className={`transition cursor-pointer ${
+                        isHighPriority
+                          ? 'bg-rose-50/40 hover:bg-rose-50/80 border-l-4 border-l-rose-500'
+                          : 'hover:bg-gray-50/80'
+                      }`}
                     >
                       <td className="p-3.5 font-mono font-bold text-gray-900 text-xs">
-                        {order.orderNumber}
+                        <div className="flex items-center gap-1.5 flex-wrap">
+                          <span>{order.orderNumber}</span>
+                          {isHighPriority && (
+                            <span className="inline-flex items-center gap-0.5 text-[9px] font-black uppercase bg-rose-600 text-white px-1.5 py-0.2 rounded-full shadow-2xs animate-pulse">
+                              <Flame className="w-2.5 h-2.5 fill-current" />
+                              <span>RUSH</span>
+                            </span>
+                          )}
+                        </div>
                       </td>
 
                       <td className="p-3.5 font-bold text-gray-800">
@@ -383,9 +402,17 @@ export const OrdersView: React.FC<OrdersViewProps> = ({ onOpenReceipt }) => {
           <div className="relative w-full max-w-md bg-white h-full shadow-2xl z-10 flex flex-col border-l border-gray-200">
             <div className="p-5 border-b border-gray-200 flex items-center justify-between bg-gray-50">
               <div>
-                <h3 className="font-bold text-base text-gray-900 font-mono">
-                  {inspectOrder.orderNumber}
-                </h3>
+                <div className="flex items-center gap-2">
+                  <h3 className="font-bold text-base text-gray-900 font-mono">
+                    {inspectOrder.orderNumber}
+                  </h3>
+                  {(inspectOrder.priority === 'HIGH' || inspectOrder.items.some(i => i.priority === 'HIGH')) && (
+                    <span className="inline-flex items-center gap-1 text-[10px] font-black uppercase bg-rose-600 text-white px-2 py-0.5 rounded-full shadow-2xs animate-pulse">
+                      <Flame className="w-3 h-3 fill-current" />
+                      <span>HIGH PRIORITY</span>
+                    </span>
+                  )}
+                </div>
                 <p className="text-xs text-gray-500">
                   Table {inspectOrder.tableNumber < 10 ? `0${inspectOrder.tableNumber}` : inspectOrder.tableNumber} • {inspectOrder.orderType}
                 </p>
@@ -397,6 +424,18 @@ export const OrdersView: React.FC<OrdersViewProps> = ({ onOpenReceipt }) => {
                 <X className="w-5 h-5" />
               </button>
             </div>
+
+            {(inspectOrder.priority === 'HIGH' || inspectOrder.items.some(i => i.priority === 'HIGH')) && (
+              <div className="bg-gradient-to-r from-rose-600 to-amber-600 text-white px-4 py-2 flex items-center justify-between text-xs font-black uppercase shadow-xs">
+                <div className="flex items-center gap-1.5">
+                  <Flame className="w-4 h-4 text-amber-200 fill-amber-300 animate-bounce" />
+                  <span>⚡ HIGH PRIORITY / RUSH ORDER</span>
+                </div>
+                <span className="bg-white/20 text-white text-[10px] px-2 py-0.5 rounded-full font-bold">
+                  EXPEDITE
+                </span>
+              </div>
+            )}
 
             <div className="flex-1 overflow-y-auto p-5 space-y-4">
               {/* Payment Status Card & Quick Settlement */}
@@ -562,9 +601,15 @@ export const OrdersView: React.FC<OrdersViewProps> = ({ onOpenReceipt }) => {
                     <div key={item.id} className="py-2 first:pt-0 last:pb-0 flex items-start justify-between">
                       <div>
                         <div className="flex items-center gap-1.5 flex-wrap">
-                          <p className="font-bold text-gray-900">
+                          <p className={`font-bold ${item.priority === 'HIGH' ? 'text-rose-950 font-black' : 'text-gray-900'}`}>
                             {item.quantity}x {item.name}
                           </p>
+                          {item.priority === 'HIGH' && (
+                            <span className="text-[9px] font-black px-1.5 py-0.2 rounded bg-rose-600 text-white flex items-center gap-0.5 shadow-2xs">
+                              <Flame className="w-2.5 h-2.5 fill-current" />
+                              <span>HIGH PRIORITY</span>
+                            </span>
+                          )}
                           {item.department === 'SHOP' && (
                             <span className="text-[9px] font-bold px-1.5 py-0.2 rounded bg-indigo-100 text-indigo-800 border border-indigo-200">
                               SHOP

@@ -198,6 +198,7 @@ export interface OrderItemSnapshot {
   variantId?: string;
   variantName?: string;
   status: 'PENDING' | 'COOKING' | 'DONE' | 'CANCELLED';
+  priority?: KOTPriority;
   cancelled: boolean;
   cancelledBy: string | null;
   cancelledAt: string | null;
@@ -220,6 +221,7 @@ export interface Order {
   tableNumber: number;
   source?: OrderSource;
   status: OrderStatus;
+  priority?: KOTPriority;
   subtotal: number;
   discount: number;
   vat: number;
@@ -248,17 +250,21 @@ export interface Order {
 // ==========================================
 // 6. KOT (KITCHEN ORDER TICKET)
 // ==========================================
+export type KOTPriority = 'HIGH' | 'STANDARD';
+
 export type KOTStatus =
   | 'PENDING'
   | 'PRINTING'
   | 'PRINTED'
   | 'PREPARING'
   | 'READY'
+  | 'SERVED'
   | 'CANCELLED'
   | 'in_progress'
   | 'completed'
   | 'bumped'
   | 'ready'
+  | 'served'
   | 'cancelled';
 
 export interface KOTItem {
@@ -269,6 +275,7 @@ export interface KOTItem {
   quantity: number;
   notes?: string;
   status: 'PENDING' | 'COOKING' | 'DONE';
+  priority?: KOTPriority;
 
   // Compatibility
   name?: string;
@@ -287,6 +294,7 @@ export interface KOTTicket {
   destination: KOTDestination;
   status: KOTStatus;
   items: KOTItem[];
+  priority?: KOTPriority;
   createdAt: string;
   updatedAt: string;
 

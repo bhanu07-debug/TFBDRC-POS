@@ -155,8 +155,17 @@ interface POSContextType {
   cancelOrderItem: (orderId: string, itemId: string, cancellationReason?: string) => Promise<void>;
   updateKOTStatus: (
     kotId: string,
-    status: 'pending' | 'in_progress' | 'preparing' | 'ready' | 'completed' | 'cancelled' | 'bumped',
+    status: 'pending' | 'in_progress' | 'preparing' | 'ready' | 'completed' | 'cancelled' | 'bumped' | 'served',
     cancellationReason?: string
+  ) => Promise<void>;
+  updateKOTItemPriority: (
+    kotId: string,
+    itemId: string,
+    priority: 'HIGH' | 'STANDARD'
+  ) => Promise<void>;
+  updateKOTPriority: (
+    kotId: string,
+    priority: 'HIGH' | 'STANDARD'
   ) => Promise<void>;
   markOrderPaid: (orderId: string, paymentMethod?: PaymentMethod, cashierName?: string) => Promise<void>;
   generateNextOrderNumber: () => string;
@@ -896,15 +905,115 @@ export const POSProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   const updateOrderStatus = async (orderId: string, status: OrderStatus) => {
     const path = `orders/${orderId}`;
     const nowIso = new Date().toISOString();
-    // Optimistic update
+    // 1. Optimistic update of order
     setOrders(prev => prev.map(o => o.id === orderId ? { ...o, status, updatedAt: nowIso } : o));
+
+    const targetOrder = orders.find(o => o.id === orderId);
+
+    // Map order status to matching KOT status for 100% two-way synchronization
+    const statusLower = (status || '').toLowerCase().trim();
+    const targetKotStatus =
+      statusLower === 'served' || statusLower === 'ready' || statusLower === 'completed'
+        ? 'SERVED'
+        : statusLower === 'preparing' || statusLower === 'cooking' || statusLower === 'confirmed' || statusLower === 'in_progress' || statusLower === 'in_preparation' || statusLower === 'in preparing'
+        ? 'PREPARING'
+        : statusLower === 'cancelled'
+        ? 'CANCELLED'
+        : 'PENDING';
+
+    // 2. Find and optimistically update all linked KOT tickets for this order
+    const linkedKots = kots.filter(
+      k =>
+        k.orderId === orderId ||
+        (targetOrder &&
+          ((targetOrder.orderNumber && k.orderNumber === targetOrder.orderNumber) ||
+            (targetOrder.kotNumber && k.kotNumber === targetOrder.kotNumber) ||
+            (Number(k.tableNumber) === Number(targetOrder.tableNumber) &&
+              (k.status || '').toLowerCase() !== 'cancelled' &&
+              (k.status || '').toLowerCase() !== 'served')))
+    );
+
+    if (linkedKots.length > 0) {
+      setKots(prev =>
+        prev.map(k =>
+          linkedKots.some(lk => lk.id === k.id)
+            ? { ...k, status: targetKotStatus as any, updatedAt: nowIso }
+            : k
+        )
+      );
+    } else if (targetOrder && targetOrder.items && targetOrder.items.length > 0) {
+      // Auto-generate KOT ticket so it immediately appears in KOTView Preparing section
+      const tableNum = targetOrder.tableNumber || 1;
+      const numStr = tableNum < 10 ? `0${tableNum}` : `${tableNum}`;
+      const newKotId = `KOT-${(targetOrder.orderNumber || 'ORD').replace(/[^a-zA-Z0-9]/g, '')}-${Date.now().toString(36).toUpperCase()}`;
+      const newKotNum = targetOrder.kotNumber || `KOT-${Math.floor(100 + Math.random() * 900)}`;
+
+      // Resolve destination based on items
+      const isAllDrinksOrShop = targetOrder.items.every(i => {
+        const cat = (i.category || '').toLowerCase();
+        const nm = (i.name || '').toLowerCase();
+        return i.department === 'SHOP' || (i as any).kotDestination === 'RECEPTION' ||
+          cat.includes('cafe') || cat.includes('drink') || cat.includes('beverage') || cat.includes('barista') || cat.includes('dessert') ||
+          nm.includes('coffee') || nm.includes('shake') || nm.includes('tea') || nm.includes('lassi');
+      });
+
+      const newKot: KOTTicket = {
+        id: newKotId,
+        kotNumber: newKotNum,
+        orderId: targetOrder.id,
+        orderNumber: targetOrder.orderNumber,
+        sessionId: targetOrder.sessionId || `SES-${tableNum}`,
+        tableId: targetOrder.tableId || `T${numStr}`,
+        tableNumber: tableNum,
+        destination: isAllDrinksOrShop ? 'RECEPTION' : 'KITCHEN',
+        status: targetKotStatus as any,
+        priority: targetOrder.priority || 'STANDARD',
+        items: targetOrder.items.map((it, idx) => ({
+          id: `kot-it-${it.id || idx}`,
+          orderItemId: it.id,
+          menuItemId: it.menuItemId,
+          nameSnapshot: it.name || (it as any).nameSnapshot || 'Dish',
+          name: it.name || (it as any).nameSnapshot || 'Dish',
+          quantity: it.quantity || 1,
+          notes: it.instructions || (it as any).notes || '',
+          status: 'PENDING',
+          category: it.category,
+          priority: it.priority || 'STANDARD'
+        })),
+        createdAt: targetOrder.createdAt || nowIso,
+        updatedAt: nowIso,
+        tableLabel: `Table T${numStr}`
+      };
+
+      setKots(prev => [newKot, ...prev.filter(k => k.id !== newKotId)]);
+      setDoc(doc(db, 'kots', newKotId), cleanFirestoreData(newKot), { merge: true }).catch(err =>
+        console.warn('Auto-generate KOT error:', err)
+      );
+    }
+
+    // 3. Persist order update and KOT updates to Firestore
     try {
       await updateDoc(doc(db, 'orders', orderId), {
         status,
         updatedAt: nowIso
+      }).catch(async () => {
+        await setDoc(doc(db, 'orders', orderId), { status, updatedAt: nowIso }, { merge: true });
       });
+
+      if (linkedKots.length > 0) {
+        for (const lk of linkedKots) {
+          await setDoc(
+            doc(db, 'kots', lk.id),
+            {
+              status: targetKotStatus,
+              updatedAt: nowIso
+            },
+            { merge: true }
+          ).catch(err => console.warn(`Error syncing KOT ${lk.id} to ${targetKotStatus}:`, err));
+        }
+      }
     } catch (error) {
-      handleFirestoreError(error, OperationType.UPDATE, path);
+      console.warn("Order status update notice:", error);
     }
   };
 
@@ -914,42 +1023,89 @@ export const POSProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     
     // Find all active non-cancelled, non-paid orders for this table
     const tableOrders = orders.filter(
-      o => (o.tableNumber === tableNumber || o.tableId === tableId) &&
+      o => (Number(o.tableNumber) === Number(tableNumber) || o.tableId === tableId || o.tableId === `T${tableNumber}`) &&
            (o.status || '').toLowerCase() !== 'cancelled'
     );
 
-    if (tableOrders.length === 0) return;
-
     const nowIso = new Date().toISOString();
+
+    const targetKotStatus =
+      status === 'served'
+        ? 'SERVED'
+        : status === 'confirmed'
+        ? 'PREPARING'
+        : 'PENDING';
 
     // Optimistically update React orders state
     setOrders(prev =>
       prev.map(ord => {
-        if (tableOrders.some(to => to.id === ord.id)) {
-          return { ...ord, status, updatedAt: nowIso };
+        if (
+          tableOrders.some(to => to.id === ord.id) ||
+          Number(ord.tableNumber) === Number(tableNumber) ||
+          ord.tableId === tableId ||
+          ord.tableId === `T${tableNumber}`
+        ) {
+          if ((ord.status || '').toLowerCase() !== 'cancelled') {
+            return { ...ord, status, updatedAt: nowIso };
+          }
         }
         return ord;
       })
     );
 
+    // Find all active KOT tickets for this table
+    const tableKots = kots.filter(
+      k =>
+        (Number(k.tableNumber) === Number(tableNumber) ||
+         k.tableId === tableId ||
+         k.tableId === `T${tableNumber}` ||
+         tableOrders.some(to => to.id === k.orderId || (to.orderNumber && to.orderNumber === k.orderNumber))) &&
+        (k.status || '').toLowerCase() !== 'cancelled'
+    );
+
+    // Optimistically update all active KOT tickets for this table
+    setKots(prev =>
+      prev.map(k => {
+        if (
+          (Number(k.tableNumber) === Number(tableNumber) ||
+           k.tableId === tableId ||
+           k.tableId === `T${tableNumber}` ||
+           tableOrders.some(to => to.id === k.orderId || (to.orderNumber && to.orderNumber === k.orderNumber))) &&
+          (k.status || '').toLowerCase() !== 'cancelled'
+        ) {
+          return { ...k, status: targetKotStatus as any, updatedAt: nowIso };
+        }
+        return k;
+      })
+    );
+
     // Update in Firestore
     try {
-      const batch = writeBatch(db);
-      tableOrders.forEach(ord => {
-        batch.update(doc(db, 'orders', ord.id), {
-          status,
-          updatedAt: nowIso
-        });
-      });
-      await batch.commit();
-    } catch (error) {
-      console.warn("Batch table order status update fallback:", error);
       for (const ord of tableOrders) {
         await updateDoc(doc(db, 'orders', ord.id), {
           status,
           updatedAt: nowIso
-        }).catch(err => console.error("Error updating order status:", err));
+        }).catch(err => console.warn("Error updating order status:", ord.id, err));
       }
+
+      for (const k of tableKots) {
+        await setDoc(
+          doc(db, 'kots', k.id),
+          { status: targetKotStatus, updatedAt: nowIso },
+          { merge: true }
+        ).catch(e => console.warn('Error syncing table KOT to', targetKotStatus, e));
+      }
+    } catch (error) {
+      console.warn("Table order status update fallback:", error);
+    }
+
+    if (status === 'served') {
+      await sendTableNotification({
+        tableNumber,
+        type: 'order_ready',
+        title: 'Order Served!',
+        message: `Your food and drinks have been served to Table ${numStr}! Enjoy your meal.`,
+      }).catch(err => console.warn('Notification error:', err));
     }
   };
 
@@ -1146,7 +1302,7 @@ export const POSProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
 
   const updateKOTStatus = async (
     kotId: string,
-    status: 'pending' | 'in_progress' | 'preparing' | 'ready' | 'completed' | 'cancelled' | 'bumped',
+    status: 'pending' | 'in_progress' | 'preparing' | 'ready' | 'completed' | 'cancelled' | 'bumped' | 'served',
     cancellationReason?: string
   ) => {
     const path = `kots/${kotId}`;
@@ -1156,23 +1312,77 @@ export const POSProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         ? 'PENDING'
         : status === 'in_progress' || status === 'preparing'
         ? 'PREPARING'
-        : status === 'ready' || status === 'completed' || status === 'bumped'
-        ? 'READY'
+        : status === 'served' || status === 'ready' || status === 'completed' || status === 'bumped'
+        ? 'SERVED'
         : status === 'cancelled'
         ? 'CANCELLED'
         : 'PENDING';
 
-    // 1. Optimistic state update for instant UI feedback
-    setKots(prev =>
-      prev.map(k => (k.id === kotId ? { ...k, status: mappedStatus as any, updatedAt: nowIso } : k))
-    );
+    // 1. Resolve target KOT from state or synthesize/persist if from sync id
+    let targetKot = kots.find(k => k.id === kotId);
+    let syncOrder: Order | undefined;
 
-    const targetKot = kots.find(k => k.id === kotId);
+    if (!targetKot) {
+      const candidateOrderId = kotId.replace('kot-sync-', '');
+      syncOrder = orders.find(o => o.id === candidateOrderId || o.orderNumber === candidateOrderId || o.id === kotId);
+      if (syncOrder) {
+        const tableNum = syncOrder.tableNumber || 1;
+        const numStr = tableNum < 10 ? `0${tableNum}` : `${tableNum}`;
+        const newKotId = kotId.startsWith('kot-sync-')
+          ? `KOT-${(syncOrder.orderNumber || 'ORD').replace(/[^a-zA-Z0-9]/g, '')}-${Date.now().toString(36).toUpperCase()}`
+          : kotId;
+
+        const isAllDrinksOrShop = syncOrder.items.every(i => {
+          const cat = (i.category || '').toLowerCase();
+          const nm = (i.name || '').toLowerCase();
+          return i.department === 'SHOP' || (i as any).kotDestination === 'RECEPTION' ||
+            cat.includes('cafe') || cat.includes('drink') || cat.includes('beverage') || cat.includes('barista') || cat.includes('dessert') ||
+            nm.includes('coffee') || nm.includes('shake') || nm.includes('tea') || nm.includes('lassi');
+        });
+
+        targetKot = {
+          id: newKotId,
+          kotNumber: (syncOrder as any).kotNumber || `KOT-${Math.floor(100 + Math.random() * 900)}`,
+          orderId: syncOrder.id,
+          orderNumber: syncOrder.orderNumber,
+          sessionId: syncOrder.sessionId || `SES-${tableNum}`,
+          tableId: syncOrder.tableId || `T${numStr}`,
+          tableNumber: tableNum,
+          destination: isAllDrinksOrShop ? 'RECEPTION' : 'KITCHEN',
+          status: mappedStatus as any,
+          priority: syncOrder.priority || 'STANDARD',
+          items: syncOrder.items.map((it, idx) => ({
+            id: `kot-it-${it.id || idx}`,
+            orderItemId: it.id,
+            menuItemId: it.menuItemId,
+            nameSnapshot: it.name || (it as any).nameSnapshot || 'Dish',
+            name: it.name || (it as any).nameSnapshot || 'Dish',
+            quantity: it.quantity || 1,
+            notes: it.instructions || (it as any).notes || '',
+            status: 'PENDING',
+            category: it.category,
+            priority: it.priority || 'STANDARD'
+          })),
+          createdAt: syncOrder.createdAt || nowIso,
+          updatedAt: nowIso,
+          tableLabel: `Table T${numStr}`
+        };
+
+        setKots(prev => [targetKot!, ...prev.filter(k => k.id !== targetKot!.id && k.id !== kotId)]);
+        setDoc(doc(db, 'kots', newKotId), cleanFirestoreData(targetKot), { merge: true }).catch(console.warn);
+      }
+    } else {
+      // Optimistic state update for instant UI feedback
+      setKots(prev =>
+        prev.map(k => (k.id === kotId ? { ...k, status: mappedStatus as any, updatedAt: nowIso } : k))
+      );
+    }
 
     // 2. Persist to Firestore
     try {
+      const persistId = targetKot?.id || kotId;
       await setDoc(
-        doc(db, 'kots', kotId),
+        doc(db, 'kots', persistId),
         cleanFirestoreData({
           status: mappedStatus,
           updatedAt: nowIso,
@@ -1182,42 +1392,60 @@ export const POSProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       );
 
       // 3. Keep linked order in sync
-      if (targetKot && targetKot.orderId) {
-        if (status === 'ready' || status === 'completed' || status === 'bumped') {
-          // Update linked order state to 'ready'
+      const linkedOrderId = targetKot?.orderId || syncOrder?.id;
+      const matchedOrder = orders.find(
+        o => (linkedOrderId && o.id === linkedOrderId) ||
+             (targetKot?.orderNumber && o.orderNumber === targetKot.orderNumber) ||
+             (targetKot?.kotNumber && (o as any).kotNumber === targetKot.kotNumber) ||
+             (targetKot?.tableNumber && Number(o.tableNumber) === Number(targetKot.tableNumber) &&
+               (o.status || '').toLowerCase() !== 'cancelled' &&
+               (o.status || '').toLowerCase() !== 'paid' &&
+               (o.status || '').toLowerCase() !== 'served' &&
+               (o.status || '').toLowerCase() !== 'completed')
+      );
+      const resolvedOrderId = matchedOrder?.id || linkedOrderId;
+
+      if (resolvedOrderId) {
+        if (status === 'served' || status === 'ready' || status === 'completed' || status === 'bumped') {
+          // If this ticket is marked served/ready, synchronize order status to 'served'
+          const nextOrderStatus = 'served';
+
           setOrders(prev =>
-            prev.map(o => (o.id === targetKot.orderId ? { ...o, status: 'ready', updatedAt: nowIso } : o))
+            prev.map(o => (o.id === resolvedOrderId ? { ...o, status: nextOrderStatus, updatedAt: nowIso } : o))
           );
           await setDoc(
-            doc(db, 'orders', targetKot.orderId),
-            { status: 'ready', updatedAt: nowIso },
+            doc(db, 'orders', resolvedOrderId),
+            { status: nextOrderStatus, updatedAt: nowIso },
             { merge: true }
-          );
+          ).catch(err => console.warn("Error updating order to served:", err));
         } else if (status === 'in_progress' || status === 'preparing') {
           // Update linked order state to 'preparing'
           setOrders(prev =>
-            prev.map(o => (o.id === targetKot.orderId && o.status !== 'ready' && o.status !== 'served' && o.status !== 'completed' ? { ...o, status: 'preparing', updatedAt: nowIso } : o))
+            prev.map(o => (o.id === resolvedOrderId && o.status !== 'ready' && o.status !== 'served' && o.status !== 'completed' ? { ...o, status: 'preparing', updatedAt: nowIso } : o))
           );
           await setDoc(
-            doc(db, 'orders', targetKot.orderId),
+            doc(db, 'orders', resolvedOrderId),
             { status: 'preparing', updatedAt: nowIso },
             { merge: true }
-          );
+          ).catch(err => console.warn("Error updating order to preparing:", err));
         } else if (status === 'cancelled') {
           // Check if other active KOTs exist for this order
           const otherKots = kots.filter(
-            k => k.orderId === targetKot.orderId && k.id !== kotId && (k.status || '').toLowerCase() !== 'cancelled'
+            k =>
+              (k.orderId === resolvedOrderId || (targetKot?.orderNumber && k.orderNumber === targetKot.orderNumber)) &&
+              k.id !== kotId &&
+              (k.status || '').toLowerCase() !== 'cancelled'
           );
           if (otherKots.length === 0) {
             setOrders(prev =>
               prev.map(o =>
-                o.id === targetKot.orderId
+                o.id === resolvedOrderId
                   ? { ...o, status: 'cancelled', updatedAt: nowIso, notes: cancellationReason ? `Cancelled: ${cancellationReason}` : o.notes }
                   : o
               )
             );
             await setDoc(
-              doc(db, 'orders', targetKot.orderId),
+              doc(db, 'orders', resolvedOrderId),
               {
                 status: 'cancelled',
                 updatedAt: nowIso,
@@ -1230,6 +1458,169 @@ export const POSProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       }
     } catch (error) {
       handleFirestoreError(error, OperationType.UPDATE, path);
+    }
+  };
+
+  const updateKOTItemPriority = async (
+    kotId: string,
+    itemId: string,
+    priority: 'HIGH' | 'STANDARD'
+  ) => {
+    const nowIso = new Date().toISOString();
+    const targetKot = kots.find(k => k.id === kotId);
+    if (!targetKot) return;
+
+    // 1. Update items in KOT ticket
+    const updatedItems = (targetKot.items || []).map(item => {
+      const match = item.id === itemId || item.orderItemId === itemId || (item as any).name === itemId || item.nameSnapshot === itemId;
+      if (match) {
+        return { ...item, priority };
+      }
+      return item;
+    });
+
+    const hasAnyHighPriority = updatedItems.some(i => i.priority === 'HIGH');
+    const newKotPriority: 'HIGH' | 'STANDARD' = hasAnyHighPriority ? 'HIGH' : 'STANDARD';
+
+    // 2. Optimistic update in kots state
+    setKots(prev =>
+      prev.map(k =>
+        k.id === kotId
+          ? { ...k, items: updatedItems, priority: newKotPriority, updatedAt: nowIso }
+          : k
+      )
+    );
+
+    // 3. Persist KOT updates to Firestore
+    try {
+      await setDoc(
+        doc(db, 'kots', kotId),
+        cleanFirestoreData({
+          items: updatedItems,
+          priority: newKotPriority,
+          updatedAt: nowIso
+        }),
+        { merge: true }
+      );
+    } catch (err) {
+      console.warn('Error persisting KOT priority:', err);
+    }
+
+    // 4. Update linked order items & order priority if linked
+    const resolvedOrderId = targetKot.orderId || orders.find(o =>
+      (targetKot.orderNumber && o.orderNumber === targetKot.orderNumber) ||
+      (targetKot.tableNumber && o.tableNumber === targetKot.tableNumber && (o.status || '').toLowerCase() !== 'cancelled')
+    )?.id;
+
+    if (resolvedOrderId) {
+      const targetOrder = orders.find(o => o.id === resolvedOrderId);
+      if (targetOrder) {
+        const updatedOrderItems = (targetOrder.items || []).map(it => {
+          const match = it.id === itemId || (it as any).orderItemId === itemId || it.nameSnapshot === itemId || it.name === itemId;
+          if (match) {
+            return { ...it, priority };
+          }
+          return it;
+        });
+
+        const orderHasHigh = updatedOrderItems.some(i => i.priority === 'HIGH') || hasAnyHighPriority;
+        const newOrderPriority: 'HIGH' | 'STANDARD' = orderHasHigh ? 'HIGH' : 'STANDARD';
+
+        setOrders(prev =>
+          prev.map(o =>
+            o.id === resolvedOrderId
+              ? { ...o, items: updatedOrderItems, priority: newOrderPriority, updatedAt: nowIso }
+              : o
+          )
+        );
+
+        try {
+          await setDoc(
+            doc(db, 'orders', resolvedOrderId),
+            cleanFirestoreData({
+              items: updatedOrderItems,
+              priority: newOrderPriority,
+              updatedAt: nowIso
+            }),
+            { merge: true }
+          );
+        } catch (err) {
+          console.warn('Error persisting Order priority:', err);
+        }
+      }
+    }
+  };
+
+  const updateKOTPriority = async (
+    kotId: string,
+    priority: 'HIGH' | 'STANDARD'
+  ) => {
+    const nowIso = new Date().toISOString();
+    const targetKot = kots.find(k => k.id === kotId);
+    if (!targetKot) return;
+
+    // Update all items in this KOT ticket to match the chosen priority
+    const updatedItems = (targetKot.items || []).map(item => ({
+      ...item,
+      priority
+    }));
+
+    setKots(prev =>
+      prev.map(k =>
+        k.id === kotId
+          ? { ...k, items: updatedItems, priority, updatedAt: nowIso }
+          : k
+      )
+    );
+
+    try {
+      await setDoc(
+        doc(db, 'kots', kotId),
+        cleanFirestoreData({
+          items: updatedItems,
+          priority,
+          updatedAt: nowIso
+        }),
+        { merge: true }
+      );
+    } catch (err) {
+      console.warn('Error persisting KOT priority:', err);
+    }
+
+    const resolvedOrderId = targetKot.orderId || orders.find(o =>
+      (targetKot.orderNumber && o.orderNumber === targetKot.orderNumber) ||
+      (targetKot.tableNumber && o.tableNumber === targetKot.tableNumber && (o.status || '').toLowerCase() !== 'cancelled')
+    )?.id;
+
+    if (resolvedOrderId) {
+      setOrders(prev =>
+        prev.map(o =>
+          o.id === resolvedOrderId
+            ? {
+                ...o,
+                priority,
+                items: (o.items || []).map(it => {
+                  const matchInKot = updatedItems.some(ui => ui.id === it.id || ui.orderItemId === it.id || ui.nameSnapshot === it.nameSnapshot || (ui as any).name === it.name);
+                  return matchInKot ? { ...it, priority } : it;
+                }),
+                updatedAt: nowIso
+              }
+            : o
+        )
+      );
+
+      try {
+        await setDoc(
+          doc(db, 'orders', resolvedOrderId),
+          cleanFirestoreData({
+            priority,
+            updatedAt: nowIso
+          }),
+          { merge: true }
+        );
+      } catch (err) {
+        console.warn('Error persisting Order priority:', err);
+      }
     }
   };
 
@@ -1982,6 +2373,8 @@ export const POSProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         updateOrderItemStatus,
         cancelOrderItem,
         updateKOTStatus,
+        updateKOTItemPriority,
+        updateKOTPriority,
         markOrderPaid,
         generateNextOrderNumber,
 

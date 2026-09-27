@@ -194,3 +194,42 @@ export const playNewOrderSound = () => {
 export const playChimeSound = () => {
   playNewOrderSound();
 };
+
+/**
+ * 6. High Priority / Rush Chime
+ * Used when staff marks an item or KOT ticket as High Priority
+ */
+export const playPrioritySound = () => {
+  const ctx = getAudioContext();
+  if (!ctx) return;
+
+  try {
+    const now = ctx.currentTime;
+    
+    // Urgent energetic rising chime (A5 -> D6 -> F#6)
+    const tones = [
+      { freq: 880.00, time: 0, dur: 0.12, vol: 0.3 },
+      { freq: 1174.66, time: 0.08, dur: 0.16, vol: 0.35 },
+      { freq: 1479.98, time: 0.18, dur: 0.35, vol: 0.4 }
+    ];
+
+    tones.forEach(t => {
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.type = 'triangle';
+      osc.frequency.setValueAtTime(t.freq, now + t.time);
+
+      gain.gain.setValueAtTime(0.001, now + t.time);
+      gain.gain.linearRampToValueAtTime(t.vol, now + t.time + 0.02);
+      gain.gain.exponentialRampToValueAtTime(0.0001, now + t.time + t.dur);
+
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+
+      osc.start(now + t.time);
+      osc.stop(now + t.time + t.dur);
+    });
+  } catch (e) {
+    console.warn('Audio playback error:', e);
+  }
+};

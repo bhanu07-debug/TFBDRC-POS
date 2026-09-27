@@ -13,6 +13,7 @@ interface ThermalKOTItem {
   instructions?: string;
   category?: string;
   status?: string;
+  priority?: 'HIGH' | 'STANDARD';
   cancelled?: boolean;
   cancellationReason?: string;
 }
@@ -26,6 +27,7 @@ interface ThermalKOTDocumentProps {
     orderSource?: string;
     waiterName?: string;
     notes?: string;
+    priority?: 'HIGH' | 'STANDARD';
     createdAt?: string;
     filteredItems?: ThermalKOTItem[];
     items?: any[];
@@ -58,10 +60,12 @@ export const ThermalKOTDocument: React.FC<ThermalKOTDocumentProps> = ({
     instructions: item.instructions,
     category: item.category,
     status: item.status,
+    priority: item.priority || (ticket.priority === 'HIGH' ? 'HIGH' : 'STANDARD'),
     cancelled: item.cancelled === true || item.status === 'CANCELLED',
     cancellationReason: item.cancellationReason
   }));
 
+  const isHighPriorityTicket = ticket.priority === 'HIGH' || items.some(i => i.priority === 'HIGH');
   const totalQuantity = items.reduce((sum, item) => sum + (item.quantity || 1), 0);
 
   // Station Label
@@ -112,6 +116,11 @@ export const ThermalKOTDocument: React.FC<ThermalKOTDocumentProps> = ({
         <div className="mt-2 py-1 px-3 border-2 border-black font-black text-xs uppercase tracking-wider inline-block">
           {stationTitle}
         </div>
+        {isHighPriorityTicket && (
+          <div className="mt-2 py-1 px-2 border-2 border-black bg-black text-white font-black text-center text-xs tracking-widest uppercase">
+            ⚡ HIGH PRIORITY / RUSH ⚡
+          </div>
+        )}
       </div>
 
       {/* ====================================================
@@ -183,6 +192,11 @@ export const ThermalKOTDocument: React.FC<ThermalKOTDocumentProps> = ({
                 <div className="flex-1 text-left px-1">
                   <div className="font-black text-[11.5px] leading-tight text-black break-words">
                     {item.name}
+                    {!item.cancelled && item.priority === 'HIGH' && (
+                      <span className="ml-1 font-mono text-[9px] uppercase font-black bg-black text-white px-1 py-0.2 rounded-xs">
+                        [⚡ HIGH PRIORITY]
+                      </span>
+                    )}
                     {item.cancelled && (
                       <span className="ml-1 font-mono text-[9.5px] uppercase font-bold text-red-600">
                         [CANCELLED]
