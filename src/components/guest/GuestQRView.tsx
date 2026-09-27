@@ -25,7 +25,8 @@ import {
   BellRing,
   AlertTriangle,
   X,
-  UtensilsCrossed
+  UtensilsCrossed,
+  Radio
 } from 'lucide-react';
 import {
   playReadySound,
@@ -35,6 +36,7 @@ import { MenuItemCustomizerModal } from './MenuItemCustomizerModal';
 import { GuestCartDrawer } from './GuestCartDrawer';
 import { GuestLiveOrderTracker } from './GuestLiveOrderTracker';
 import { CallServiceModal } from './CallServiceModal';
+import { GuestWalkieTalkieModal } from './GuestWalkieTalkieModal';
 import { TableQRModal } from './TableQRModal';
 import { WifiQRModal } from './WifiQRModal';
 import { FatBuddhaLogo } from '../common/FatBuddhaLogo';
@@ -71,6 +73,7 @@ export const GuestQRView: React.FC = () => {
   const [isServiceModalOpen, setIsServiceModalOpen] = useState(false);
   const [isQRModalOpen, setIsQRModalOpen] = useState(false);
   const [isWifiModalOpen, setIsWifiModalOpen] = useState(false);
+  const [isWalkieModalOpen, setIsWalkieModalOpen] = useState(false);
 
   const currentTable = getCurrentTable();
   const activeOrders = getTableOrders(currentGuestTableNumber);
@@ -250,6 +253,25 @@ export const GuestQRView: React.FC = () => {
 
             {/* Quick Action Chips */}
             <div className="flex items-center gap-2 mt-4 overflow-x-auto pb-1 text-xs">
+              {/* Direct Walkie-Talkie Voice & Call Link to Cashier & Staff */}
+              <button
+                id="guest-walkie-talkie-chip"
+                onClick={() => setIsWalkieModalOpen(true)}
+                className="flex items-center gap-2 px-3.5 py-1.5 rounded-xl bg-gradient-to-r from-red-600 via-rose-600 to-amber-600 hover:from-red-500 hover:to-amber-500 text-white font-bold shadow-md shadow-rose-950/40 border border-rose-400/50 transition-all duration-150 flex-shrink-0 cursor-pointer active:scale-95 group animate-pulse"
+                title="Walkie Talkie - Direct Call & Voice link to Cashier & Staff"
+              >
+                <div className="relative flex items-center justify-center">
+                  <span className="animate-ping absolute inline-flex h-2.5 w-2.5 rounded-full bg-rose-300 opacity-75"></span>
+                  <Radio className="w-3.5 h-3.5 text-white" />
+                </div>
+                <span className="text-[11px] font-bold text-white tracking-wide">
+                  Walkie Talkie
+                </span>
+                <span className="text-[9px] font-black uppercase tracking-wider bg-black/40 text-amber-200 px-1.5 py-0.5 rounded shadow-xs ml-0.5">
+                  CALL STAFF
+                </span>
+              </button>
+
               <button
                 onClick={() => setIsServiceModalOpen(true)}
                 className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-white/10 hover:bg-white/20 text-amber-300 border border-white/20 transition flex-shrink-0"
@@ -775,6 +797,11 @@ export const GuestQRView: React.FC = () => {
         <CallServiceModal
           isOpen={isServiceModalOpen}
           onClose={() => setIsServiceModalOpen(false)}
+        />
+
+        <GuestWalkieTalkieModal
+          isOpen={isWalkieModalOpen}
+          onClose={() => setIsWalkieModalOpen(false)}
         />
 
         <TableQRModal

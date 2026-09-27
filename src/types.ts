@@ -525,3 +525,20 @@ export interface TableNotification {
   createdAt: string;
   read: boolean;
 }
+
+// Walkie-Talkie Direct Voice Call & Radio Transmission
+export interface WalkieTalkieMessage {
+  id: string;
+  tableNumber: number;
+  tableName?: string;
+  tableSection?: string;
+  guestName?: string;
+  sender: 'guest' | 'admin' | 'cashier' | 'staff';
+  senderName?: string;
+  audioDataUrl?: string; // Base64 audio/webm or audio/ogg
+  audioDuration?: number; // Duration in seconds
+  text?: string; // Voice transcript, message text, or radio preset
+  type: 'voice' | 'call_ring' | 'roger';
+  createdAt: string;
+  status: 'unread' | 'listened' | 'resolved';
+}

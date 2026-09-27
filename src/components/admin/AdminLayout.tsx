@@ -29,7 +29,8 @@ import {
   Volume2,
   VolumeX,
   Clock,
-  ShoppingBag
+  ShoppingBag,
+  Radio
 } from 'lucide-react';
 import { DashboardView } from './DashboardView';
 import { TablesView } from './TablesView';
@@ -44,8 +45,9 @@ import { ReportsView } from './ReportsView';
 import { SettingsView } from './SettingsView';
 import { ReceiptModal } from './ReceiptModal';
 import { TableQRModal } from '../guest/TableQRModal';
+import { WalkieTalkieAdminModal } from './WalkieTalkieAdminModal';
 import { Order, AdminTab } from '../../types';
-import { playNewOrderSound } from '../../utils/sound';
+import { playNewOrderSound, playWalkieTalkieChirp, playWalkieCallRing } from '../../utils/sound';
 
 export const AdminLayout: React.FC = () => {
   const {
@@ -60,7 +62,13 @@ export const AdminLayout: React.FC = () => {
     settings,
     updateSettings,
     logoutAdminPortal,
-    adminSessionRemainingSeconds
+    adminSessionRemainingSeconds,
+    walkieTalkieMessages,
+    isWalkieTalkieAdminOpen,
+    setIsWalkieTalkieAdminOpen,
+    selectedWalkieTable,
+    setSelectedWalkieTable,
+    markWalkieTalkieStatus
   } = usePOS();
 
   const formatRemainingTime = (seconds: number) => {
@@ -94,11 +102,55 @@ export const AdminLayout: React.FC = () => {
          Boolean((t.activeOrdersCount && t.activeOrdersCount > 0) || (t.totalBill && t.totalBill > 0))
   ).length;
 
+  const unreadWalkieMessages = (walkieTalkieMessages || []).filter(
+    m => m.sender === 'guest' && m.status === 'unread'
+  );
+  const unreadWalkieCount = unreadWalkieMessages.length;
+
   // Real-time Web Audio Synthesizer Chime
   const playAlertChime = () => {
     if (settings.soundAlerts === false) return;
     playNewOrderSound();
   };
+
+  // Watch for incoming Walkie-Talkie transmissions & direct calls from guests
+  const knownWalkieIds = useRef<Set<string>>(new Set());
+  const isWalkieInitialized = useRef(false);
+
+  useEffect(() => {
+    if (!walkieTalkieMessages || walkieTalkieMessages.length === 0) return;
+
+    if (!isWalkieInitialized.current) {
+      knownWalkieIds.current = new Set(walkieTalkieMessages.map(m => m.id));
+      isWalkieInitialized.current = true;
+      return;
+    }
+
+    const newWalkies = walkieTalkieMessages.filter(
+      m => !knownWalkieIds.current.has(m.id) && m.sender === 'guest'
+    );
+
+    if (newWalkies.length > 0) {
+      newWalkies.forEach(m => knownWalkieIds.current.add(m.id));
+      const latest = newWalkies[0];
+      const tblStr = latest.tableNumber < 10 ? `0${latest.tableNumber}` : `${latest.tableNumber}`;
+
+      if (settings.soundAlerts !== false) {
+        if (latest.type === 'call_ring') {
+          playWalkieCallRing();
+        } else {
+          playWalkieTalkieChirp();
+        }
+      }
+
+      setToastNotification({
+        id: latest.id,
+        tableNumber: latest.tableNumber,
+        text: latest.text || (latest.audioDataUrl ? `Voice transmission from Table ${tblStr}` : `Walkie-Talkie call from Table ${tblStr}`),
+        type: 'walkie_talkie'
+      });
+    }
+  }, [walkieTalkieMessages, settings.soundAlerts]);
 
   // Watch for new incoming service requests
   useEffect(() => {
@@ -412,6 +464,29 @@ export const AdminLayout: React.FC = () => {
               )}
             </button>
 
+            {/* Walkie-Talkie Console Trigger */}
+            <button
+              id="btn-admin-walkie-talkie"
+              onClick={() => {
+                setSelectedWalkieTable(null);
+                setIsWalkieTalkieAdminOpen(true);
+              }}
+              className={`p-2 rounded-xl border relative transition flex items-center gap-1.5 cursor-pointer ${
+                unreadWalkieCount > 0
+                  ? 'bg-gradient-to-r from-red-600/30 to-rose-600/30 text-rose-300 border-rose-500/50 shadow-md shadow-rose-950/40 animate-pulse'
+                  : 'text-slate-400 hover:text-amber-400 hover:bg-slate-800 border-slate-700'
+              }`}
+              title="Walkie-Talkie Two-Way Radio to Guest Tables"
+            >
+              <Radio className={`w-4 h-4 ${unreadWalkieCount > 0 ? 'text-rose-400 animate-bounce' : 'text-amber-400'}`} />
+              <span className="hidden xl:inline text-[11px] font-bold">Walkie-Talkie</span>
+              {unreadWalkieCount > 0 && (
+                <span className="absolute -top-1 -right-1 px-1.5 py-0.2 rounded-full bg-rose-500 text-white text-[9px] font-black flex items-center justify-center animate-bounce shadow">
+                  {unreadWalkieCount}
+                </span>
+              )}
+            </button>
+
             {/* Notification Service Bell */}
             <button
               id="btn-service-notifications"
@@ -584,13 +659,19 @@ export const AdminLayout: React.FC = () => {
         <div className="fixed bottom-6 right-6 z-50 max-w-sm w-full bg-[#1F2937] border-2 border-amber-500 rounded-2xl shadow-2xl p-4 text-white animate-in slide-in-from-bottom-5 duration-300">
           <div className="flex items-start justify-between gap-3">
             <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-xl bg-amber-500 text-white flex items-center justify-center flex-shrink-0 animate-bounce">
-                <Bell className="w-5 h-5" />
+              <div className={`w-10 h-10 rounded-xl text-white flex items-center justify-center flex-shrink-0 animate-bounce ${
+                toastNotification.type === 'walkie_talkie' ? 'bg-gradient-to-br from-red-600 to-rose-600 shadow-lg shadow-rose-950/50' : 'bg-amber-500'
+              }`}>
+                {toastNotification.type === 'walkie_talkie' ? <Radio className="w-5 h-5 text-white" /> : <Bell className="w-5 h-5" />}
               </div>
               <div>
                 <div className="flex items-center gap-2">
                   <span className="text-xs font-black uppercase tracking-wider text-amber-400">
-                    {toastNotification.type === 'order' ? 'New Guest Order' : 'Service Bell Alert'}
+                    {toastNotification.type === 'walkie_talkie'
+                      ? 'Walkie-Talkie Calling'
+                      : toastNotification.type === 'order'
+                      ? 'New Guest Order'
+                      : 'Service Bell Alert'}
                   </span>
                   <span className="text-[10px] px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-300 font-mono font-bold">
                     Table T{toastNotification.tableNumber < 10 ? '0' + toastNotification.tableNumber : toastNotification.tableNumber}
@@ -609,7 +690,31 @@ export const AdminLayout: React.FC = () => {
             </button>
           </div>
           <div className="mt-3 flex items-center gap-2">
-            {toastNotification.type === 'order' ? (
+            {toastNotification.type === 'walkie_talkie' ? (
+              <>
+                <button
+                  onClick={() => {
+                    setSelectedWalkieTable(toastNotification.tableNumber);
+                    setIsWalkieTalkieAdminOpen(true);
+                    markWalkieTalkieStatus(toastNotification.id, 'listened');
+                    setToastNotification(null);
+                  }}
+                  className="flex-1 py-1.5 bg-gradient-to-r from-red-600 to-rose-600 hover:from-red-500 hover:to-rose-500 text-white rounded-lg text-xs font-bold transition flex items-center justify-center gap-1.5 shadow-md shadow-rose-950/40"
+                >
+                  <Radio className="w-3.5 h-3.5 animate-pulse" />
+                  <span>Listen & Reply (Walkie)</span>
+                </button>
+                <button
+                  onClick={() => {
+                    markWalkieTalkieStatus(toastNotification.id, 'resolved');
+                    setToastNotification(null);
+                  }}
+                  className="py-1.5 px-3 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-lg text-xs font-bold transition border border-slate-700"
+                >
+                  Dismiss
+                </button>
+              </>
+            ) : toastNotification.type === 'order' ? (
               <>
                 <button
                   onClick={() => {
@@ -678,6 +783,13 @@ export const AdminLayout: React.FC = () => {
           onClose={() => setIsBatchQrModalOpen(false)}
         />
       )}
+
+      {/* Walkie-Talkie Two-Way Radio Console */}
+      <WalkieTalkieAdminModal
+        isOpen={isWalkieTalkieAdminOpen}
+        onClose={() => setIsWalkieTalkieAdminOpen(false)}
+        defaultTableNumber={selectedWalkieTable}
+      />
 
       {/* In-App Logout Confirmation Modal (works 100% reliably in sandboxed iframes) */}
       {isLogoutModalOpen && (

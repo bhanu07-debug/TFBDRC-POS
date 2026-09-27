@@ -233,3 +233,107 @@ export const playPrioritySound = () => {
     console.warn('Audio playback error:', e);
   }
 };
+
+/**
+ * 7. Authentic Walkie-Talkie Push-to-Talk Mic Chirp (Start of transmission)
+ * Classic Motorola / VHF radio squelch chirp
+ */
+export const playWalkieTalkieChirp = () => {
+  const ctx = getAudioContext();
+  if (!ctx) return;
+
+  try {
+    const now = ctx.currentTime;
+    
+    // Quick dual-tone chirp (2470Hz -> 1860Hz)
+    const tones = [
+      { freq: 2470, time: 0, dur: 0.045, vol: 0.28 },
+      { freq: 1860, time: 0.045, dur: 0.05, vol: 0.3 }
+    ];
+
+    tones.forEach(t => {
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.type = 'sawtooth';
+      osc.frequency.setValueAtTime(t.freq, now + t.time);
+
+      gain.gain.setValueAtTime(0.001, now + t.time);
+      gain.gain.linearRampToValueAtTime(t.vol, now + t.time + 0.008);
+      gain.gain.exponentialRampToValueAtTime(0.0001, now + t.time + t.dur);
+
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+
+      osc.start(now + t.time);
+      osc.stop(now + t.time + t.dur);
+    });
+  } catch (e) {
+    console.warn('Walkie chirp error:', e);
+  }
+};
+
+/**
+ * 8. Walkie-Talkie Roger Beep (End of transmission)
+ * Squelch tail / Roger beep indicating transmission released
+ */
+export const playWalkieRogerBeep = () => {
+  const ctx = getAudioContext();
+  if (!ctx) return;
+
+  try {
+    const now = ctx.currentTime;
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+
+    osc.type = 'sine';
+    osc.frequency.setValueAtTime(1750, now); // Classic 1750Hz repeater tone
+
+    gain.gain.setValueAtTime(0.001, now);
+    gain.gain.linearRampToValueAtTime(0.25, now + 0.006);
+    gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.09);
+
+    osc.connect(gain);
+    gain.connect(ctx.destination);
+
+    osc.start(now);
+    osc.stop(now + 0.09);
+  } catch (e) {
+    console.warn('Walkie Roger beep error:', e);
+  }
+};
+
+/**
+ * 9. Walkie-Talkie Direct Call / Ring Tone
+ * Alerting cashier or guest to an incoming voice call
+ */
+export const playWalkieCallRing = () => {
+  const ctx = getAudioContext();
+  if (!ctx) return;
+
+  try {
+    const now = ctx.currentTime;
+    
+    // 3 quick pulsing radio attention beeps
+    for (let i = 0; i < 3; i++) {
+      const startTime = now + (i * 0.16);
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+
+      osc.type = 'square';
+      osc.frequency.setValueAtTime(1046.5, startTime); // C6 tone
+
+      gain.gain.setValueAtTime(0.001, startTime);
+      gain.gain.linearRampToValueAtTime(0.28, startTime + 0.01);
+      gain.gain.exponentialRampToValueAtTime(0.0001, startTime + 0.1);
+
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+
+      osc.start(startTime);
+      osc.stop(startTime + 0.1);
+    }
+  } catch (e) {
+    console.warn('Walkie call ring error:', e);
+  }
+};
+

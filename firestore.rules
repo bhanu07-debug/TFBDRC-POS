@@ -273,6 +273,13 @@ service cloud.firestore {
       allow delete: if isValidId(notificationId);
     }
 
+    // Walkie Talkie Voice Transmissions & Direct Calls (Guest <-> Cashier/Staff)
+    match /walkie_talkie/{transmissionId} {
+      allow read: if true;
+      allow create, update: if isValidId(transmissionId);
+      allow delete: if isValidId(transmissionId);
+    }
+
     // Health / probe document
     match /test/{docId} {
       allow read, write: if true;

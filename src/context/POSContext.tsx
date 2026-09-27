@@ -33,6 +33,7 @@ import {
   Category,
   TableSession,
   TableNotification,
+  WalkieTalkieMessage,
   KOTDestination,
   AdminSession,
   Department
@@ -52,6 +53,10 @@ import {
   listenSettings,
   listenServiceRequests,
   listenTableNotifications,
+  listenWalkieTalkieMessages,
+  sendWalkieTalkieMessage as dbSendWalkieTalkie,
+  updateWalkieTalkieStatus as dbUpdateWalkieTalkieStatus,
+  deleteWalkieTalkieMessage as dbDeleteWalkieTalkieMessage,
   createTableNotification,
   markTableNotificationAsRead,
   createOrderWithKOTs,
@@ -77,7 +82,10 @@ import {
   playNewOrderSound,
   playReadySound,
   playCancelSound,
-  playPrintSound
+  playPrintSound,
+  playWalkieTalkieChirp,
+  playWalkieRogerBeep,
+  playWalkieCallRing
 } from '../utils/sound';
 
 interface POSContextType {
@@ -175,6 +183,17 @@ interface POSContextType {
   sendTableNotification: (notification: Omit<TableNotification, 'id' | 'createdAt' | 'read'>) => Promise<TableNotification>;
   markTableNotificationRead: (id: string) => Promise<void>;
 
+  // Walkie Talkie Direct Calling & Voice Radio
+  walkieTalkieMessages: WalkieTalkieMessage[];
+  sendWalkieTalkieMessage: (msg: Omit<WalkieTalkieMessage, 'id' | 'createdAt' | 'status'>) => Promise<WalkieTalkieMessage>;
+  markWalkieTalkieStatus: (id: string, status: 'unread' | 'listened' | 'resolved') => Promise<void>;
+  deleteWalkieTalkieMessage: (id: string) => Promise<void>;
+  isWalkieTalkieAdminOpen: boolean;
+  setIsWalkieTalkieAdminOpen: (open: boolean) => void;
+  selectedWalkieTable: number | null;
+  setSelectedWalkieTable: (table: number | null) => void;
+
+
   // Table management
   settleTableBill: (
     tableNumber: number,
@@ -247,6 +266,9 @@ export const POSProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   const [payments, setPayments] = useState<PaymentRecord[]>([]);
   const [serviceRequests, setServiceRequests] = useState<ServiceRequest[]>([]);
   const [tableNotifications, setTableNotifications] = useState<TableNotification[]>([]);
+  const [walkieTalkieMessages, setWalkieTalkieMessages] = useState<WalkieTalkieMessage[]>([]);
+  const [isWalkieTalkieAdminOpen, setIsWalkieTalkieAdminOpen] = useState(false);
+  const [selectedWalkieTable, setSelectedWalkieTable] = useState<number | null>(null);
   const [settings, setSettings] = useState<RestaurantSettings>(DEFAULT_SETTINGS);
   const [currentUser, setCurrentUser] = useState<User | null>(null);
 
@@ -432,6 +454,7 @@ export const POSProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     let unsubscribeSettings: () => void = () => {};
     let unsubscribeService: () => void = () => {};
     let unsubscribeNotifications: () => void = () => {};
+    let unsubscribeWalkie: () => void = () => {};
     let unsubscribeAuth: () => void = () => {};
 
     const initialize = async () => {
@@ -503,6 +526,11 @@ export const POSProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         setTableNotifications(liveNotifs);
       });
 
+      // Walkie Talkie listener (Guest <-> Cashier/Staff voice radio)
+      unsubscribeWalkie = listenWalkieTalkieMessages(liveWalkies => {
+        setWalkieTalkieMessages(liveWalkies);
+      });
+
       // Settings listener
       unsubscribeSettings = listenSettings(liveSettings => {
         if (liveSettings) {
@@ -527,6 +555,7 @@ export const POSProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       unsubscribeInventory();
       unsubscribeService();
       unsubscribeNotifications();
+      unsubscribeWalkie();
       unsubscribeSettings();
       unsubscribeAuth();
     };
@@ -1637,6 +1666,32 @@ export const POSProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     await markTableNotificationAsRead(id);
   };
 
+  // Walkie Talkie Direct Voice & Call Handlers
+  const sendWalkieTalkieMessage = async (
+    payload: Omit<WalkieTalkieMessage, 'id' | 'createdAt' | 'status'>
+  ): Promise<WalkieTalkieMessage> => {
+    try {
+      playWalkieRogerBeep();
+    } catch (_) {}
+    const msg = await dbSendWalkieTalkie(payload);
+    setWalkieTalkieMessages(prev => [msg, ...prev.filter(m => m.id !== msg.id)]);
+    return msg;
+  };
+
+  const markWalkieTalkieStatus = async (
+    id: string,
+    status: 'unread' | 'listened' | 'resolved'
+  ) => {
+    setWalkieTalkieMessages(prev => prev.map(m => (m.id === id ? { ...m, status } : m)));
+    await dbUpdateWalkieTalkieStatus(id, status);
+  };
+
+  const deleteWalkieTalkieMessage = async (id: string) => {
+    setWalkieTalkieMessages(prev => prev.filter(m => m.id !== id));
+    await dbDeleteWalkieTalkieMessage(id);
+  };
+
+
   // Table status and bill settlement
   const settleTableBill = async (
     tableNumber: number,
@@ -2381,6 +2436,15 @@ export const POSProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         tableNotifications,
         sendTableNotification,
         markTableNotificationRead,
+
+        walkieTalkieMessages,
+        sendWalkieTalkieMessage,
+        markWalkieTalkieStatus,
+        deleteWalkieTalkieMessage,
+        isWalkieTalkieAdminOpen,
+        setIsWalkieTalkieAdminOpen,
+        selectedWalkieTable,
+        setSelectedWalkieTable,
 
         settleTableBill,
         occupyTable,

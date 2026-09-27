@@ -61,7 +61,8 @@ import {
   AuditLog,
   RestaurantSettings,
   ServiceRequest,
-  TableNotification
+  TableNotification,
+  WalkieTalkieMessage
 } from '../types';
 import { OFFICIAL_CATEGORIES, OFFICIAL_MENU_ITEMS } from '../data/restaurantMenu';
 
@@ -1562,4 +1563,72 @@ export const markTableNotificationAsRead = async (id: string) => {
     handleFirestoreError(error, OperationType.UPDATE, path);
   }
 };
+
+// ====================================================
+// 11. WALKIE-TALKIE DIRECT CALL & RADIO TRANSMISSIONS
+// ====================================================
+export const listenWalkieTalkieMessages = (
+  onSuccess: (messages: WalkieTalkieMessage[]) => void,
+  onError?: (err: any) => void
+) => {
+  const path = 'walkie_talkie';
+  return onSnapshot(
+    collection(db, path),
+    snapshot => {
+      const list: WalkieTalkieMessage[] = [];
+      snapshot.forEach(docSnap => {
+        list.push({ ...docSnap.data(), id: docSnap.id } as WalkieTalkieMessage);
+      });
+      list.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+      onSuccess(list);
+    },
+    error => {
+      handleFirestoreError(error, OperationType.LIST, path);
+      if (onError) onError(error);
+    }
+  );
+};
+
+export const sendWalkieTalkieMessage = async (
+  payload: Omit<WalkieTalkieMessage, 'id' | 'createdAt' | 'status'>
+): Promise<WalkieTalkieMessage> => {
+  const path = 'walkie_talkie';
+  const id = `WT-${Date.now()}-${Math.floor(100 + Math.random() * 900)}`;
+  const message: WalkieTalkieMessage = {
+    ...payload,
+    id,
+    createdAt: new Date().toISOString(),
+    status: 'unread'
+  };
+
+  try {
+    await setDoc(doc(db, path, id), cleanFirestoreData(message));
+    return message;
+  } catch (error) {
+    handleFirestoreError(error, OperationType.CREATE, path);
+    return message;
+  }
+};
+
+export const updateWalkieTalkieStatus = async (
+  id: string,
+  status: 'unread' | 'listened' | 'resolved'
+) => {
+  const path = `walkie_talkie/${id}`;
+  try {
+    await updateDoc(doc(db, 'walkie_talkie', id), { status });
+  } catch (error) {
+    handleFirestoreError(error, OperationType.UPDATE, path);
+  }
+};
+
+export const deleteWalkieTalkieMessage = async (id: string) => {
+  const path = `walkie_talkie/${id}`;
+  try {
+    await deleteDoc(doc(db, 'walkie_talkie', id));
+  } catch (error) {
+    handleFirestoreError(error, OperationType.DELETE, path);
+  }
+};
+
 
