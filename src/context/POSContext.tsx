@@ -57,6 +57,9 @@ import {
   sendWalkieTalkieMessage as dbSendWalkieTalkie,
   updateWalkieTalkieStatus as dbUpdateWalkieTalkieStatus,
   deleteWalkieTalkieMessage as dbDeleteWalkieTalkieMessage,
+  clearTableWalkieTalkieMessages as dbClearTableWalkieTalkie,
+  clearTableServiceRequests as dbClearTableServiceRequests,
+  clearTableNotifications as dbClearTableNotifications,
   createTableNotification,
   markTableNotificationAsRead,
   createOrderWithKOTs,
@@ -188,6 +191,7 @@ interface POSContextType {
   sendWalkieTalkieMessage: (msg: Omit<WalkieTalkieMessage, 'id' | 'createdAt' | 'status'>) => Promise<WalkieTalkieMessage>;
   markWalkieTalkieStatus: (id: string, status: 'unread' | 'listened' | 'resolved') => Promise<void>;
   deleteWalkieTalkieMessage: (id: string) => Promise<void>;
+  clearTableWalkieTalkie: (tableNumber: number) => Promise<void>;
   isWalkieTalkieAdminOpen: boolean;
   setIsWalkieTalkieAdminOpen: (open: boolean) => void;
   selectedWalkieTable: number | null;
@@ -1691,6 +1695,13 @@ export const POSProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     await dbDeleteWalkieTalkieMessage(id);
   };
 
+  const clearTableWalkieTalkie = async (tableNumber: number) => {
+    // Immediately clear local state
+    setWalkieTalkieMessages(prev => prev.filter(m => m.tableNumber !== tableNumber));
+    // Persist batch deletion in Firestore
+    await dbClearTableWalkieTalkie(tableNumber);
+  };
+
 
   // Table status and bill settlement
   const settleTableBill = async (
@@ -1855,6 +1866,20 @@ export const POSProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         return t;
       })
     );
+
+    // 6. Clear Walkie-Talkie radio chat, guest call bells, and table alerts so the table is completely fresh for the next guest
+    try {
+      await dbClearTableWalkieTalkie(tableNumber);
+      await dbClearTableServiceRequests(tableNumber);
+      await dbClearTableNotifications(tableNumber);
+    } catch (err) {
+      console.warn('Error clearing table communications on bill settlement:', err);
+    }
+
+    // Immediately clear local states for this table
+    setWalkieTalkieMessages(prev => prev.filter(m => m.tableNumber !== tableNumber));
+    setServiceRequests(prev => prev.filter(r => r.tableNumber !== tableNumber));
+    setTableNotifications(prev => prev.filter(n => n.tableNumber !== tableNumber));
   };
 
   const markOrderPaid = async (
@@ -1945,6 +1970,15 @@ export const POSProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     const tableId = `T${numStr}`;
     const mappedStatus = status.toUpperCase() as Table['status'];
     await updateDbTableStatus(tableId, mappedStatus, mappedStatus === 'AVAILABLE' ? null : undefined);
+
+    if (mappedStatus === 'AVAILABLE') {
+      dbClearTableWalkieTalkie(tableNumber).catch(console.warn);
+      dbClearTableServiceRequests(tableNumber).catch(console.warn);
+      dbClearTableNotifications(tableNumber).catch(console.warn);
+      setWalkieTalkieMessages(prev => prev.filter(m => m.tableNumber !== tableNumber));
+      setServiceRequests(prev => prev.filter(r => r.tableNumber !== tableNumber));
+      setTableNotifications(prev => prev.filter(n => n.tableNumber !== tableNumber));
+    }
   };
 
   const transferTable = async (fromTableNumber: number, toTableNumber: number): Promise<boolean> => {
@@ -2441,6 +2475,7 @@ export const POSProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         sendWalkieTalkieMessage,
         markWalkieTalkieStatus,
         deleteWalkieTalkieMessage,
+        clearTableWalkieTalkie,
         isWalkieTalkieAdminOpen,
         setIsWalkieTalkieAdminOpen,
         selectedWalkieTable,

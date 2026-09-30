@@ -1631,4 +1631,59 @@ export const deleteWalkieTalkieMessage = async (id: string) => {
   }
 };
 
+/**
+ * Clear all walkie-talkie transmissions and chat for a specific table
+ * (used after bill settlement or table reset so the next guest has a fresh session)
+ */
+export const clearTableWalkieTalkieMessages = async (tableNumber: number): Promise<void> => {
+  const path = 'walkie_talkie';
+  try {
+    const q = query(collection(db, path), where('tableNumber', '==', tableNumber));
+    const snap = await getDocs(q);
+    if (!snap.empty) {
+      const batch = writeBatch(db);
+      snap.docs.forEach(d => batch.delete(d.ref));
+      await batch.commit();
+    }
+  } catch (error) {
+    handleFirestoreError(error, OperationType.DELETE, path);
+  }
+};
+
+/**
+ * Clear all guest service bell requests for a specific table upon bill settlement
+ */
+export const clearTableServiceRequests = async (tableNumber: number): Promise<void> => {
+  const path = 'service_requests';
+  try {
+    const q = query(collection(db, path), where('tableNumber', '==', tableNumber));
+    const snap = await getDocs(q);
+    if (!snap.empty) {
+      const batch = writeBatch(db);
+      snap.docs.forEach(d => batch.delete(d.ref));
+      await batch.commit();
+    }
+  } catch (error) {
+    handleFirestoreError(error, OperationType.DELETE, path);
+  }
+};
+
+/**
+ * Clear all table notifications dispatched to a specific table upon bill settlement
+ */
+export const clearTableNotifications = async (tableNumber: number): Promise<void> => {
+  const path = 'table_notifications';
+  try {
+    const q = query(collection(db, path), where('tableNumber', '==', tableNumber));
+    const snap = await getDocs(q);
+    if (!snap.empty) {
+      const batch = writeBatch(db);
+      snap.docs.forEach(d => batch.delete(d.ref));
+      await batch.commit();
+    }
+  } catch (error) {
+    handleFirestoreError(error, OperationType.DELETE, path);
+  }
+};
+
 

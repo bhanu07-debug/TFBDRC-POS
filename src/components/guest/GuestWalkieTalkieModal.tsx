@@ -19,7 +19,8 @@ import {
   ShieldCheck,
   Signal,
   HelpCircle,
-  MessageSquare
+  MessageSquare,
+  RotateCcw
 } from 'lucide-react';
 import {
   playWalkieTalkieChirp,
@@ -41,7 +42,8 @@ export const GuestWalkieTalkieModal: React.FC<GuestWalkieTalkieModalProps> = ({
     currentGuestTableNumber,
     getCurrentTable,
     walkieTalkieMessages,
-    sendWalkieTalkieMessage
+    sendWalkieTalkieMessage,
+    clearTableWalkieTalkie
   } = usePOS();
 
   const currentTable = getCurrentTable();
@@ -295,6 +297,21 @@ export const GuestWalkieTalkieModal: React.FC<GuestWalkieTalkieModalProps> = ({
     }
   };
 
+  // Clear my table chat manually
+  const handleClearMyTableChat = async () => {
+    setIsSubmitting(true);
+    try {
+      await clearTableWalkieTalkie(currentGuestTableNumber);
+      playWalkieRogerBeep();
+      setInfoNotice(`Table ${tableNumStr} radio history cleared!`);
+      setTimeout(() => setInfoNotice(null), 3000);
+    } catch (err) {
+      console.warn(err);
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
   // Play audio transmission
   const handlePlayAudio = (msgId: string, audioUrl?: string) => {
     if (!audioUrl) return;
@@ -533,14 +550,37 @@ export const GuestWalkieTalkieModal: React.FC<GuestWalkieTalkieModalProps> = ({
                 <MessageSquare className="w-3 h-3 text-amber-400" />
                 <span>Radio Log (Table {tableNumStr})</span>
               </h4>
-              <span className="text-[10px] text-slate-400">
-                {tableMessages.length} transmissions
-              </span>
+              <div className="flex items-center gap-2">
+                {tableMessages.length > 0 && (
+                  <button
+                    type="button"
+                    onClick={handleClearMyTableChat}
+                    disabled={isSubmitting}
+                    className="text-[10px] text-rose-400 hover:text-rose-300 font-bold transition flex items-center gap-1 cursor-pointer"
+                    title="Clear radio chat for this table"
+                  >
+                    <RotateCcw className="w-2.5 h-2.5" />
+                    <span>Clear Chat</span>
+                  </button>
+                )}
+                <span className="text-[10px] text-slate-400">
+                  {tableMessages.length} transmissions
+                </span>
+              </div>
             </div>
 
             {tableMessages.length === 0 ? (
-              <div className="p-4 rounded-xl bg-slate-900/60 border border-slate-800/80 text-center text-xs text-slate-400">
-                No transmissions yet. Hold the button above to speak or tap "Direct Call Cashier".
+              <div className="p-4 rounded-xl bg-slate-900/60 border border-slate-800/80 text-center text-xs text-slate-400 space-y-1.5">
+                <div className="flex items-center justify-center gap-1 text-emerald-400 font-semibold">
+                  <CheckCircle2 className="w-3.5 h-3.5" />
+                  <span>Fresh Session • Radio Channel Clean</span>
+                </div>
+                <p className="text-[11px] text-slate-400">
+                  All past radio chat and voice calls automatically clear upon bill settlement so each guest has a fresh session.
+                </p>
+                <p className="text-[10px] text-slate-500">
+                  Hold the button above to speak or tap "Direct Call Cashier".
+                </p>
               </div>
             ) : (
               <div className="space-y-2 max-h-48 overflow-y-auto pr-1">
@@ -598,7 +638,10 @@ export const GuestWalkieTalkieModal: React.FC<GuestWalkieTalkieModalProps> = ({
 
         {/* Footer info note */}
         <div className="bg-slate-950 px-4 py-2 border-t border-slate-800 text-[10px] text-slate-400 flex items-center justify-between">
-          <span>Speaker: Automatic via device audio</span>
+          <span className="flex items-center gap-1 text-emerald-400 font-medium">
+            <Sparkles className="w-3 h-3" />
+            Auto-clears on bill settlement
+          </span>
           <span className="text-amber-400">Fat Buddha Walkie-Talkie v2</span>
         </div>
 

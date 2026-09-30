@@ -46,6 +46,7 @@ export const WalkieTalkieAdminModal: React.FC<WalkieTalkieAdminModalProps> = ({
     sendWalkieTalkieMessage,
     markWalkieTalkieStatus,
     deleteWalkieTalkieMessage,
+    clearTableWalkieTalkie,
     setAdminActiveTab,
     currentUser
   } = usePOS();
@@ -331,6 +332,22 @@ export const WalkieTalkieAdminModal: React.FC<WalkieTalkieAdminModalProps> = ({
     }
   };
 
+  // Clear / Reset table radio channel (chats, voice recordings, and alerts)
+  const handleResetTableChannel = async (tblNum: number) => {
+    const numStr = tblNum < 10 ? `0${tblNum}` : `${tblNum}`;
+    setIsSubmitting(true);
+    try {
+      await clearTableWalkieTalkie(tblNum);
+      playWalkieRogerBeep();
+      setInfoNotice(`Table ${numStr} radio chat & transmissions cleared! Fresh session for new guests.`);
+      setTimeout(() => setInfoNotice(null), 3500);
+    } catch (err) {
+      console.warn('Error clearing table channel:', err);
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-5 bg-black/80 backdrop-blur-md animate-in fade-in duration-200">
       <div className="bg-[#0B0F17] border-2 border-amber-500/50 rounded-3xl w-full max-w-4xl overflow-hidden shadow-2xl flex flex-col max-h-[92vh] text-slate-100">
@@ -454,13 +471,30 @@ export const WalkieTalkieAdminModal: React.FC<WalkieTalkieAdminModalProps> = ({
                   </span>
                 </div>
 
+                <div className="pt-2 border-t border-slate-800 flex items-center justify-between text-[11px]">
+                  <span className="flex items-center gap-1 text-emerald-400 font-semibold">
+                    <Sparkles className="w-3 h-3 text-emerald-400" />
+                    Auto-clears on bill settle
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => handleResetTableChannel(selectedTable)}
+                    disabled={isSubmitting}
+                    className="text-rose-400 hover:text-rose-300 font-bold flex items-center gap-1 transition cursor-pointer"
+                    title="Clear all chat & reset channel fresh for next guest"
+                  >
+                    <RotateCcw className="w-3 h-3" />
+                    <span>Reset Chat</span>
+                  </button>
+                </div>
+
                 {activeTableOrders.length > 0 && (
                   <button
                     onClick={() => {
                       onClose();
                       setAdminActiveTab('orders');
                     }}
-                    className="w-full mt-2 py-1.5 px-3 rounded-xl bg-slate-800 hover:bg-slate-700 text-amber-300 text-xs font-bold transition flex items-center justify-center gap-1.5"
+                    className="w-full mt-1 py-1.5 px-3 rounded-xl bg-slate-800 hover:bg-slate-700 text-amber-300 text-xs font-bold transition flex items-center justify-center gap-1.5"
                   >
                     <Receipt className="w-3.5 h-3.5 text-amber-400" />
                     <span>View Orders Management</span>
@@ -481,9 +515,23 @@ export const WalkieTalkieAdminModal: React.FC<WalkieTalkieAdminModalProps> = ({
                   {selectedTable ? `Channel: Table ${selectedTable < 10 ? '0' + selectedTable : selectedTable}` : 'Channel: All Tables Stream'}
                 </span>
               </div>
-              <span className="text-xs text-slate-400 font-mono">
-                {filteredMessages.length} transmissions logged
-              </span>
+              <div className="flex items-center gap-3">
+                {selectedTable && (
+                  <button
+                    type="button"
+                    onClick={() => handleResetTableChannel(selectedTable)}
+                    disabled={isSubmitting}
+                    className="flex items-center gap-1 px-2.5 py-1 rounded-lg bg-rose-500/20 hover:bg-rose-500/30 text-rose-300 border border-rose-500/30 text-[11px] font-bold transition active:scale-95 cursor-pointer"
+                    title="Clear all chat & voice messages for this table so it is clean for the next guest"
+                  >
+                    <Trash2 className="w-3 h-3 text-rose-400" />
+                    <span>Clear Table Chat</span>
+                  </button>
+                )}
+                <span className="text-xs text-slate-400 font-mono">
+                  {filteredMessages.length} transmissions logged
+                </span>
+              </div>
             </div>
 
             {/* Transmissions Message Feed */}
@@ -491,9 +539,13 @@ export const WalkieTalkieAdminModal: React.FC<WalkieTalkieAdminModalProps> = ({
               {filteredMessages.length === 0 ? (
                 <div className="h-full flex flex-col items-center justify-center text-center p-8 text-slate-500 space-y-2">
                   <Radio className="w-10 h-10 text-slate-600 animate-pulse" />
-                  <p className="text-xs">
+                  <div className="flex items-center gap-1 text-emerald-400 text-xs font-semibold">
+                    <CheckCircle2 className="w-3.5 h-3.5" />
+                    <span>Channel is Fresh & Clean</span>
+                  </div>
+                  <p className="text-xs text-slate-400">
                     {selectedTable
-                      ? `No walkie-talkie transmissions from Table ${selectedTable} yet.`
+                      ? `No transmissions from Table ${selectedTable < 10 ? '0' + selectedTable : selectedTable}. All past chats automatically clear upon bill settlement.`
                       : 'No walkie-talkie transmissions received from any table yet.'}
                   </p>
                   <p className="text-[11px] text-slate-600 max-w-sm">
