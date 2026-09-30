@@ -236,7 +236,7 @@ export const SettleBillModal: React.FC<SettleBillModalProps> = ({
                   {isSettled ? 'Settlement Completed' : 'Settle Check & Bill'}
                 </h3>
                 <p className="text-[11px] text-gray-500">
-                  Table {table.number < 10 ? '0' + table.number : table.number} • {table.section}
+                  Table {table.number < 10 ? '0' + table.number : table.number} • Final Settlement
                 </p>
               </div>
             </div>

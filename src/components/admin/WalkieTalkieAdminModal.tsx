@@ -437,8 +437,8 @@ export const WalkieTalkieAdminModal: React.FC<WalkieTalkieAdminModalProps> = ({
                         </span>
                       )}
                     </div>
-                    <span className="text-[10px] text-slate-400 mt-1 truncate">
-                      {tbl.section || 'Indoor AC'}
+                    <span className="text-[10px] text-slate-400 mt-1 truncate capitalize">
+                      {tbl.status ? tbl.status.toLowerCase() : 'available'}
                     </span>
                   </button>
                 );
@@ -453,8 +453,8 @@ export const WalkieTalkieAdminModal: React.FC<WalkieTalkieAdminModalProps> = ({
                     <span className="px-2 py-0.5 rounded-md bg-amber-500 text-gray-950 font-black text-xs uppercase">
                       Table {selectedTable < 10 ? '0' + selectedTable : selectedTable}
                     </span>
-                    <span className="text-xs text-slate-300 font-medium">
-                      {activeTableObj?.section || 'Indoor Dining'}
+                    <span className="text-xs text-slate-300 font-medium capitalize">
+                      {activeTableObj?.status ? activeTableObj.status.toLowerCase() : 'available'}
                     </span>
                   </div>
                   <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
@@ -578,7 +578,7 @@ export const WalkieTalkieAdminModal: React.FC<WalkieTalkieAdminModalProps> = ({
                             {isGuest ? `Table ${msg.tableNumber < 10 ? '0' + msg.tableNumber : msg.tableNumber}` : 'Cashier Desk'}
                           </span>
                           <span className="text-slate-400">
-                            {msg.tableSection || 'Indoor Dining'}
+                            Live Radio
                           </span>
                           {isUnread && (
                             <span className="px-1.5 py-0.2 rounded-full bg-rose-500 text-white text-[9px] font-black animate-pulse">

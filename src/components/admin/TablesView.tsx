@@ -18,7 +18,8 @@ import {
   ChefHat,
   UtensilsCrossed,
   CreditCard,
-  Flame
+  Flame,
+  Sparkles
 } from 'lucide-react';
 import { SettleBillModal } from './SettleBillModal';
 import { TableTransferModal } from './TableTransferModal';
@@ -46,8 +47,7 @@ export const TablesView: React.FC<TablesViewProps> = ({
     kots
   } = usePOS();
 
-  // Filters
-  const [selectedSection, setSelectedSection] = useState<string>('all');
+  // Status Filter for real-time monitoring
   const [selectedStatus, setSelectedStatus] = useState<string>('all');
 
   // Modals & Drawers
@@ -110,11 +110,35 @@ export const TablesView: React.FC<TablesViewProps> = ({
     }
   };
 
-  const sections: TableSection[] = ['Indoor AC', 'Terrace Lounge', 'Cafe Patio', 'VIP Dining'];
+  const handleQuickStatusChange = async (tableNumber: number, newStatus: TableStatus, e?: React.MouseEvent) => {
+    if (e) e.stopPropagation();
+    try {
+      await setTableStatus(tableNumber, newStatus);
+    } catch (err) {
+      console.error('Failed to update table status:', err);
+    }
+  };
 
   const filteredTables = tables.filter(t => {
-    if (selectedSection !== 'all' && t.section !== selectedSection) return false;
-    if (selectedStatus !== 'all' && (t.status || '').toLowerCase() !== selectedStatus.toLowerCase()) return false;
+    if (selectedStatus === 'all') return true;
+    const isOccupied = (t.status || '').toUpperCase() === 'OCCUPIED' || (t.status || '').toUpperCase() === 'BILLING' ||
+      Boolean((t.activeOrdersCount && t.activeOrdersCount > 0) || (t.totalBill && t.totalBill > 0));
+    const s = (t.status || '').toUpperCase();
+    if (selectedStatus === 'occupied') {
+      return s === 'OCCUPIED' || isOccupied;
+    }
+    if (selectedStatus === 'available') {
+      return (s === 'AVAILABLE' || !s) && !isOccupied && s !== 'BILLING';
+    }
+    if (selectedStatus === 'billing') {
+      return s === 'BILLING';
+    }
+    if (selectedStatus === 'reserved') {
+      return s === 'RESERVED';
+    }
+    if (selectedStatus === 'cleaning') {
+      return s === 'CLEANING';
+    }
     return true;
   });
 
@@ -131,41 +155,111 @@ export const TablesView: React.FC<TablesViewProps> = ({
     const s = (status || '').toUpperCase();
     if (s === 'OCCUPIED' || isOccupied) {
       return {
+        key: 'occupied',
         label: 'Occupied',
-        dot: 'bg-rose-500',
-        badge: 'bg-rose-500/20 text-rose-700 border-rose-500/30',
-        border: 'border-rose-300 bg-rose-50/40'
+        indicatorTag: 'OCCUPIED',
+        subLabel: 'Active Dine-In',
+        statusColor: 'rose',
+        Icon: Users,
+        iconBg: 'bg-rose-50 border-2 border-rose-300 ring-4 ring-rose-500/10 shadow-sm shadow-rose-500/10',
+        surfaceBg: 'bg-rose-100 text-rose-800 border border-rose-300',
+        chairColor: 'bg-rose-400',
+        iconColor: 'text-rose-600',
+        textColor: 'text-rose-700',
+        beaconDot: 'bg-rose-500',
+        beaconPing: 'bg-rose-400',
+        dot: 'bg-rose-500 animate-pulse',
+        badge: 'bg-rose-50 text-rose-700 border-rose-300 font-extrabold',
+        indicatorChip: 'bg-rose-600 text-white border-rose-700 font-black',
+        border: 'border-rose-300 bg-white hover:border-rose-500 hover:shadow-lg hover:shadow-rose-500/10',
+        glow: 'ring-1 ring-rose-500/30'
       };
     }
     if (s === 'BILLING') {
       return {
+        key: 'billing',
         label: 'Billing',
+        indicatorTag: 'BILLING',
+        subLabel: 'Bill Requested',
+        statusColor: 'purple',
+        Icon: Receipt,
+        iconBg: 'bg-purple-50 border-2 border-purple-300 ring-4 ring-purple-500/10 shadow-sm shadow-purple-500/10',
+        surfaceBg: 'bg-purple-100 text-purple-800 border border-purple-300',
+        chairColor: 'bg-purple-400',
+        iconColor: 'text-purple-600',
+        textColor: 'text-purple-700',
+        beaconDot: 'bg-purple-500',
+        beaconPing: 'bg-purple-400',
         dot: 'bg-purple-500 animate-pulse',
-        badge: 'bg-purple-500/20 text-purple-700 border-purple-500/30',
-        border: 'border-purple-300 bg-purple-50/40'
+        badge: 'bg-purple-50 text-purple-700 border-purple-300 font-extrabold',
+        indicatorChip: 'bg-purple-600 text-white border-purple-700 font-black animate-pulse',
+        border: 'border-purple-300 bg-white hover:border-purple-500 hover:shadow-lg hover:shadow-purple-500/10',
+        glow: 'ring-1 ring-purple-500/30'
       };
     }
     if (s === 'RESERVED') {
       return {
+        key: 'reserved',
         label: 'Reserved',
+        indicatorTag: 'RESERVED',
+        subLabel: 'Pre-Booked Table',
+        statusColor: 'blue',
+        Icon: Clock,
+        iconBg: 'bg-blue-50 border-2 border-blue-300 ring-4 ring-blue-500/10 shadow-sm shadow-blue-500/10',
+        surfaceBg: 'bg-blue-100 text-blue-800 border border-blue-300',
+        chairColor: 'bg-blue-400',
+        iconColor: 'text-blue-600',
+        textColor: 'text-blue-700',
+        beaconDot: 'bg-blue-500',
+        beaconPing: 'bg-blue-400',
         dot: 'bg-blue-500',
-        badge: 'bg-blue-500/20 text-blue-700 border-blue-500/30',
-        border: 'border-blue-300 bg-blue-50/40'
+        badge: 'bg-blue-50 text-blue-700 border-blue-300 font-extrabold',
+        indicatorChip: 'bg-blue-600 text-white border-blue-700 font-black',
+        border: 'border-blue-300 bg-white hover:border-blue-500 hover:shadow-lg hover:shadow-blue-500/10',
+        glow: 'ring-1 ring-blue-500/30'
       };
     }
     if (s === 'CLEANING') {
       return {
+        key: 'cleaning',
         label: 'Cleaning',
-        dot: 'bg-yellow-500',
-        badge: 'bg-yellow-500/20 text-yellow-700 border-yellow-500/30',
-        border: 'border-yellow-300 bg-yellow-50/40'
+        indicatorTag: 'CLEANING',
+        subLabel: 'Turnover Prep',
+        statusColor: 'amber',
+        Icon: Sparkles,
+        iconBg: 'bg-amber-50 border-2 border-amber-300 ring-4 ring-amber-500/10 shadow-sm shadow-amber-500/10',
+        surfaceBg: 'bg-amber-100 text-amber-800 border border-amber-300',
+        chairColor: 'bg-amber-400',
+        iconColor: 'text-amber-700',
+        textColor: 'text-amber-800',
+        beaconDot: 'bg-amber-500',
+        beaconPing: 'bg-amber-400',
+        dot: 'bg-amber-500',
+        badge: 'bg-amber-50 text-amber-800 border-amber-300 font-extrabold',
+        indicatorChip: 'bg-amber-600 text-white border-amber-700 font-black',
+        border: 'border-amber-300 bg-white hover:border-amber-500 hover:shadow-lg hover:shadow-amber-500/10',
+        glow: 'ring-1 ring-amber-500/30'
       };
     }
     return {
-      label: 'Available',
+      key: 'available',
+      label: 'Active / Available',
+      indicatorTag: 'ACTIVE',
+      subLabel: 'Clean & Ready',
+      statusColor: 'emerald',
+      Icon: UtensilsCrossed,
+      iconBg: 'bg-emerald-50 border-2 border-emerald-300 ring-4 ring-emerald-500/10 shadow-sm shadow-emerald-500/10',
+      surfaceBg: 'bg-emerald-100 text-emerald-800 border border-emerald-300',
+      chairColor: 'bg-emerald-400',
+      iconColor: 'text-emerald-600',
+      textColor: 'text-emerald-700',
+      beaconDot: 'bg-emerald-500',
+      beaconPing: 'bg-emerald-400',
       dot: 'bg-emerald-500',
-      badge: 'bg-emerald-500/15 text-emerald-700 border-emerald-500/30',
-      border: 'border-gray-200 hover:border-emerald-500/40 bg-white'
+      badge: 'bg-emerald-50 text-emerald-700 border-emerald-300 font-extrabold',
+      indicatorChip: 'bg-emerald-600 text-white border-emerald-700 font-black',
+      border: 'border-emerald-300 bg-white hover:border-emerald-500 hover:shadow-lg hover:shadow-emerald-500/10',
+      glow: 'ring-1 ring-emerald-500/30'
     };
   };
 
@@ -179,96 +273,124 @@ export const TablesView: React.FC<TablesViewProps> = ({
 
   return (
     <div className="space-y-6">
-      {/* Floor Overview Header & Filters */}
-      <div className="bg-white p-5 rounded-xl border border-gray-200 shadow-xs flex flex-col md:flex-row md:items-center justify-between gap-4">
+      {/* Floor Overview Header & Real-time Status Monitoring Bar */}
+      <div className="bg-white p-4 sm:p-5 rounded-2xl border border-gray-200 shadow-xs flex flex-col lg:flex-row lg:items-center justify-between gap-4">
         <div>
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2.5">
             <h2 className="text-lg font-bold text-gray-900 tracking-tight">
               Table Management
             </h2>
-            <span className="px-2.5 py-0.5 rounded-full text-xs font-bold bg-amber-50 text-amber-800 border border-amber-200 font-mono">
+            <span className="px-2.5 py-0.5 rounded-full text-xs font-black bg-gray-900 text-white font-mono shadow-xs">
               10 Tables
             </span>
           </div>
-          <p className="text-xs text-gray-500 mt-0.5">
-            Real-time occupancy status, running tabs, kitchen orders, and table bill settlements.
+          <p className="text-xs text-gray-500 mt-1">
+            Real-time visual table status monitoring, active orders, and bill settlements.
           </p>
         </div>
 
-        {/* Status Filters */}
-        <div className="flex items-center gap-1.5 flex-wrap text-xs">
+        {/* Real-time Status Indicators & Quick Filter Badges */}
+        <div className="flex items-center gap-1.5 sm:gap-2 flex-wrap text-xs">
           <button
             onClick={() => setSelectedStatus('all')}
-            className={`px-3 py-1.5 rounded-lg border font-semibold transition ${
+            className={`px-3 py-1.5 rounded-xl border font-bold transition flex items-center gap-1.5 cursor-pointer ${
               selectedStatus === 'all'
-                ? 'bg-amber-500 text-white border-amber-500 shadow-xs'
-                : 'bg-gray-50 border-gray-200 text-gray-700 hover:bg-gray-100'
+                ? 'bg-gray-900 text-white border-gray-900 shadow-xs'
+                : 'bg-white border-gray-200 text-gray-700 hover:bg-gray-50'
             }`}
           >
-            All ({tables.length})
+            <span>All Tables</span>
+            <span className="px-1.5 py-0.2 rounded-full bg-gray-200 text-gray-700 text-[10px] font-mono">
+              {tables.length}
+            </span>
           </button>
+
           <button
             onClick={() => setSelectedStatus(selectedStatus === 'available' ? 'all' : 'available')}
-            className={`px-3 py-1.5 rounded-lg border flex items-center gap-1.5 font-semibold transition ${
+            className={`px-3 py-1.5 rounded-xl border flex items-center gap-2 font-bold transition cursor-pointer ${
               selectedStatus === 'available'
                 ? 'bg-emerald-600 text-white border-emerald-600 shadow-xs'
-                : 'bg-gray-50 border-gray-200 text-gray-700 hover:bg-gray-100'
+                : 'bg-emerald-50/60 border-emerald-200 text-emerald-700 hover:bg-emerald-100/60'
             }`}
           >
-            <span className="w-2 h-2 rounded-full bg-emerald-500" />
-            <span>Available ({availableCount})</span>
+            <span className="relative flex h-2 w-2">
+              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75" />
+              <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500" />
+            </span>
+            <span>Active / Ready</span>
+            <span className="px-1.5 py-0.2 rounded-full bg-emerald-100 text-emerald-800 text-[10px] font-mono">
+              {availableCount}
+            </span>
           </button>
+
           <button
             onClick={() => setSelectedStatus(selectedStatus === 'occupied' ? 'all' : 'occupied')}
-            className={`px-3 py-1.5 rounded-lg border flex items-center gap-1.5 font-semibold transition ${
+            className={`px-3 py-1.5 rounded-xl border flex items-center gap-2 font-bold transition cursor-pointer ${
               selectedStatus === 'occupied'
                 ? 'bg-rose-600 text-white border-rose-600 shadow-xs'
-                : 'bg-gray-50 border-gray-200 text-gray-700 hover:bg-gray-100'
+                : 'bg-rose-50/60 border-rose-200 text-rose-700 hover:bg-rose-100/60'
             }`}
           >
-            <span className="w-2 h-2 rounded-full bg-rose-500" />
-            <span>Occupied ({occupiedCount})</span>
+            <span className="relative flex h-2 w-2">
+              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-rose-400 opacity-75" />
+              <span className="relative inline-flex rounded-full h-2 w-2 bg-rose-500" />
+            </span>
+            <span>Occupied</span>
+            <span className="px-1.5 py-0.2 rounded-full bg-rose-100 text-rose-800 text-[10px] font-mono">
+              {occupiedCount}
+            </span>
           </button>
+
           <button
             onClick={() => setSelectedStatus(selectedStatus === 'billing' ? 'all' : 'billing')}
-            className={`px-3 py-1.5 rounded-lg border flex items-center gap-1.5 font-semibold transition ${
+            className={`px-3 py-1.5 rounded-xl border flex items-center gap-2 font-bold transition cursor-pointer ${
               selectedStatus === 'billing'
                 ? 'bg-purple-600 text-white border-purple-600 shadow-xs'
-                : 'bg-gray-50 border-gray-200 text-gray-700 hover:bg-gray-100'
+                : 'bg-purple-50/60 border-purple-200 text-purple-700 hover:bg-purple-100/60'
             }`}
           >
-            <span className="w-2 h-2 rounded-full bg-purple-500" />
-            <span>Billing ({billingCount})</span>
+            <span className="relative flex h-2 w-2">
+              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-purple-400 opacity-75" />
+              <span className="relative inline-flex rounded-full h-2 w-2 bg-purple-500" />
+            </span>
+            <span>Billing</span>
+            <span className="px-1.5 py-0.2 rounded-full bg-purple-100 text-purple-800 text-[10px] font-mono">
+              {billingCount}
+            </span>
           </button>
-        </div>
-      </div>
 
-      {/* Section Filter Pills */}
-      <div className="flex items-center gap-2 overflow-x-auto pb-1 bg-white p-3 rounded-xl border border-gray-200 shadow-xs">
-        <span className="text-xs font-semibold text-gray-400 pl-1">Section:</span>
-        <button
-          onClick={() => setSelectedSection('all')}
-          className={`px-3 py-1.5 rounded-lg text-xs font-semibold whitespace-nowrap transition ${
-            selectedSection === 'all'
-              ? 'bg-gray-900 text-white shadow-xs'
-              : 'bg-gray-50 text-gray-600 hover:bg-gray-100'
-          }`}
-        >
-          All Sections
-        </button>
-        {sections.map(sec => (
           <button
-            key={sec}
-            onClick={() => setSelectedSection(sec)}
-            className={`px-3 py-1.5 rounded-lg text-xs font-semibold whitespace-nowrap transition ${
-              selectedSection === sec
-                ? 'bg-gray-900 text-white shadow-xs'
-                : 'bg-gray-50 text-gray-600 hover:bg-gray-100'
+            onClick={() => setSelectedStatus(selectedStatus === 'reserved' ? 'all' : 'reserved')}
+            className={`px-3 py-1.5 rounded-xl border flex items-center gap-2 font-bold transition cursor-pointer ${
+              selectedStatus === 'reserved'
+                ? 'bg-blue-600 text-white border-blue-600 shadow-xs'
+                : 'bg-blue-50/60 border-blue-200 text-blue-700 hover:bg-blue-100/60'
             }`}
           >
-            {sec}
+            <span className="w-2 h-2 rounded-full bg-blue-500" />
+            <span>Reserved</span>
+            <span className="px-1.5 py-0.2 rounded-full bg-blue-100 text-blue-800 text-[10px] font-mono">
+              {reservedCount}
+            </span>
           </button>
-        ))}
+
+          {cleaningCount > 0 && (
+            <button
+              onClick={() => setSelectedStatus(selectedStatus === 'cleaning' ? 'all' : 'cleaning')}
+              className={`px-3 py-1.5 rounded-xl border flex items-center gap-2 font-bold transition cursor-pointer ${
+                selectedStatus === 'cleaning'
+                  ? 'bg-amber-600 text-white border-amber-600 shadow-xs'
+                  : 'bg-amber-50/60 border-amber-200 text-amber-700 hover:bg-amber-100/60'
+              }`}
+            >
+              <span className="w-2 h-2 rounded-full bg-amber-500" />
+              <span>Cleaning</span>
+              <span className="px-1.5 py-0.2 rounded-full bg-amber-100 text-amber-800 text-[10px] font-mono">
+                {cleaningCount}
+              </span>
+            </button>
+          )}
+        </div>
       </div>
 
       {/* 10 Tables Grid */}
@@ -287,17 +409,17 @@ export const TablesView: React.FC<TablesViewProps> = ({
             <div
               key={table.id}
               onClick={() => setInspectTable(table)}
-              className={`bg-white rounded-xl border p-4 transition-all duration-200 cursor-pointer hover:shadow-md flex flex-col justify-between ${
+              className={`bg-white rounded-2xl border p-4 transition-all duration-200 cursor-pointer hover:shadow-md flex flex-col justify-between ${
                 hasHighPriority
                   ? 'border-2 border-rose-500 shadow-md shadow-rose-500/10 ring-2 ring-rose-500/20'
                   : meta.border
               }`}
             >
-              {/* Top Row: Table Name & Status Badge */}
+              {/* Top Row: Table Number & Status Badge */}
               <div>
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-2">
-                    <span className="text-base font-bold text-gray-900">
+                    <span className="text-base font-black text-gray-900 tracking-tight">
                       Table {table.number < 10 ? `0${table.number}` : table.number}
                     </span>
                     {hasHighPriority && (
@@ -306,45 +428,111 @@ export const TablesView: React.FC<TablesViewProps> = ({
                         <span>RUSH</span>
                       </span>
                     )}
-                    <span className={`w-2.5 h-2.5 rounded-full ${meta.dot}`} />
                   </div>
-                  <span className={`text-[10px] px-2 py-0.5 rounded-full font-bold border ${meta.badge}`}>
-                    {meta.label}
+                  <span className={`text-[10px] px-2 py-0.5 rounded-full font-bold border flex items-center gap-1 ${meta.badge}`}>
+                    <span className={`w-1.5 h-1.5 rounded-full ${meta.beaconDot}`} />
+                    <span>{meta.label}</span>
                   </span>
                 </div>
 
-                {/* Middle Details */}
-                <div className="my-3 space-y-1.5 text-xs text-gray-500">
-                  <div className="flex items-center justify-between text-[11px]">
-                    <span>{table.section}</span>
-                    <span className="flex items-center gap-1">
-                      <Users className="w-3 h-3 text-gray-400" />
-                      <span>{table.capacity} seats</span>
+                {/* Enhanced Visual Table Icon with Status Indicator Beacon & Layout */}
+                <div className={`my-2.5 flex items-center gap-3 p-2.5 rounded-xl border transition-all ${meta.glow} bg-gray-50/90 border-gray-100`}>
+                  {/* Visual Restaurant Table Graphic with 4 Chairs & Status Theme */}
+                  <div className="relative flex flex-col items-center flex-shrink-0">
+                    <div className={`relative w-12 h-12 rounded-xl flex items-center justify-center p-1 transition-all ${meta.iconBg}`}>
+                      {/* 4 Surrounding Table Chairs Representation */}
+                      <span className={`absolute -top-1 w-4 h-1 rounded-full ${meta.chairColor}`} />
+                      <span className={`absolute -bottom-1 w-4 h-1 rounded-full ${meta.chairColor}`} />
+                      <span className={`absolute -left-1 h-4 w-1 rounded-full ${meta.chairColor}`} />
+                      <span className={`absolute -right-1 h-4 w-1 rounded-full ${meta.chairColor}`} />
+
+                      {/* Central Table Top Surface with Status Icon & Table ID */}
+                      <div className={`w-full h-full rounded-lg flex flex-col items-center justify-center ${meta.surfaceBg}`}>
+                        <meta.Icon className="w-4 h-4" />
+                        <span className="text-[8px] font-mono font-black leading-none mt-0.5">
+                          T{table.number < 10 ? `0${table.number}` : table.number}
+                        </span>
+                      </div>
+
+                      {/* Real-time Status Beacon on Table Icon */}
+                      <span className="absolute -top-1.5 -right-1.5 flex h-3.5 w-3.5 items-center justify-center z-10">
+                        <span className={`animate-ping absolute inline-flex h-full w-full rounded-full opacity-75 ${meta.beaconPing}`} />
+                        <span className={`relative inline-flex rounded-full h-2 w-2 ${meta.beaconDot} ring-2 ring-white shadow-xs`} />
+                      </span>
+                    </div>
+
+                    {/* Prominent Visual Status Tag attached directly to Table Icon */}
+                    <span className={`mt-1 text-[8px] font-black uppercase tracking-wider px-1.5 py-0.2 rounded shadow-2xs ${meta.indicatorChip}`}>
+                      {meta.indicatorTag}
                     </span>
                   </div>
 
-                  {isOccupied ? (
-                    <div className="pt-2 border-t border-gray-100 space-y-1">
-                      <div className="flex items-center justify-between font-mono font-bold text-gray-900 text-sm">
-                        <span className="text-gray-500 font-sans text-xs font-normal">Current Tab</span>
-                        <span>Rs. {(table.totalBill || 0).toLocaleString()}.00</span>
-                      </div>
-                      <div className="flex items-center justify-between text-[10px] text-gray-500">
-                        <span>{tableOrders.length} {tableOrders.length === 1 ? 'order' : 'orders'}</span>
-                        {activeKots.length > 0 && (
-                          <span className="text-amber-600 font-bold flex items-center gap-1">
-                            <ChefHat className="w-3 h-3" />
-                            <span>{activeKots.length} KOT</span>
-                          </span>
-                        )}
-                      </div>
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center justify-between">
+                      <span className={`text-xs font-black ${meta.textColor}`}>
+                        {meta.label}
+                      </span>
+                      <span className="text-[10px] font-medium text-gray-400">
+                        {meta.subLabel}
+                      </span>
                     </div>
-                  ) : (
-                    <div className="pt-2 border-t border-gray-100 text-[11px] text-emerald-600 font-semibold">
-                      Ready for guests
+
+                    {/* Quick Status Selector Pills */}
+                    <div className="flex items-center gap-1 mt-1.5" onClick={e => e.stopPropagation()}>
+                      {(['AVAILABLE', 'OCCUPIED', 'BILLING', 'RESERVED'] as TableStatus[]).map(st => {
+                        const isCurrent = (table.status || 'AVAILABLE').toUpperCase() === st;
+                        const labelShort = st === 'AVAILABLE' ? 'Active' : st === 'OCCUPIED' ? 'Occ' : st === 'BILLING' ? 'Bill' : 'Res';
+                        const activeColor = st === 'AVAILABLE'
+                          ? 'bg-emerald-600 text-white shadow-xs border-emerald-600'
+                          : st === 'OCCUPIED'
+                          ? 'bg-rose-600 text-white shadow-xs border-rose-600'
+                          : st === 'BILLING'
+                          ? 'bg-purple-600 text-white shadow-xs border-purple-600'
+                          : 'bg-blue-600 text-white shadow-xs border-blue-600';
+
+                        return (
+                          <button
+                            key={st}
+                            type="button"
+                            onClick={(e) => handleQuickStatusChange(table.number, st, e)}
+                            className={`px-1.5 py-0.5 rounded text-[9px] font-bold transition cursor-pointer border ${
+                              isCurrent
+                                ? activeColor
+                                : 'bg-white hover:bg-gray-100 text-gray-500 border-gray-200'
+                            }`}
+                            title={`Switch Table ${table.number} to ${st}`}
+                          >
+                            {labelShort}
+                          </button>
+                        );
+                      })}
                     </div>
-                  )}
+                  </div>
                 </div>
+
+                {/* Running Tab Details / Available State */}
+                {isOccupied ? (
+                  <div className="mb-3 pt-2 border-t border-gray-100 space-y-1">
+                    <div className="flex items-center justify-between font-mono font-bold text-gray-900 text-sm">
+                      <span className="text-gray-500 font-sans text-xs font-normal">Current Tab</span>
+                      <span>Rs. {(table.totalBill || 0).toLocaleString()}.00</span>
+                    </div>
+                    <div className="flex items-center justify-between text-[10px] text-gray-500">
+                      <span>{tableOrders.length} {tableOrders.length === 1 ? 'order' : 'orders'}</span>
+                      {activeKots.length > 0 && (
+                        <span className="text-amber-600 font-bold flex items-center gap-1">
+                          <ChefHat className="w-3 h-3" />
+                          <span>{activeKots.length} KOT</span>
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                ) : (
+                  <div className="mb-3 pt-2 border-t border-gray-100 text-[11px] text-emerald-600 font-semibold flex items-center gap-1.5">
+                    <CheckCircle2 className="w-3.5 h-3.5" />
+                    <span>Ready for guests</span>
+                  </div>
+                )}
               </div>
 
               {/* Status Management Section (Placed, Confirmed, Served) */}
@@ -494,9 +682,26 @@ export const TablesView: React.FC<TablesViewProps> = ({
                   <h3 className="font-bold text-base text-gray-900">
                     Table {inspectTable.number < 10 ? `0${inspectTable.number}` : inspectTable.number} Overview
                   </h3>
-                  <p className="text-xs text-gray-500">
-                    {inspectTable.section} • Capacity {inspectTable.capacity} Guests
-                  </p>
+                  <div className="flex items-center gap-2 mt-0.5">
+                    <span className={`text-[10px] font-black uppercase px-2 py-0.5 rounded-md border ${
+                      getTableStatusMeta(
+                        inspectTable.status,
+                        (inspectTable.status || '').toUpperCase() === 'OCCUPIED' ||
+                        (inspectTable.status || '').toUpperCase() === 'BILLING' ||
+                        Boolean((inspectTable.activeOrdersCount && inspectTable.activeOrdersCount > 0) || (inspectTable.totalBill && inspectTable.totalBill > 0))
+                      ).badge
+                    }`}>
+                      {getTableStatusMeta(
+                        inspectTable.status,
+                        (inspectTable.status || '').toUpperCase() === 'OCCUPIED' ||
+                        (inspectTable.status || '').toUpperCase() === 'BILLING' ||
+                        Boolean((inspectTable.activeOrdersCount && inspectTable.activeOrdersCount > 0) || (inspectTable.totalBill && inspectTable.totalBill > 0))
+                      ).label}
+                    </span>
+                    <span className="text-[11px] text-gray-400 font-mono">
+                      Table ID: T{inspectTable.number < 10 ? `0${inspectTable.number}` : inspectTable.number}
+                    </span>
+                  </div>
                 </div>
               </div>
               <div className="flex items-center gap-2">

@@ -83,7 +83,7 @@ export const TableTransferModal: React.FC<TableTransferModalProps> = ({
               <div>
                 <span className="text-gray-500 block">From Current Table:</span>
                 <span className="font-bold text-amber-600 text-sm">
-                  Table {fromTable.number < 10 ? '0' + fromTable.number : fromTable.number} ({fromTable.section})
+                  Table {fromTable.number < 10 ? '0' + fromTable.number : fromTable.number}
                 </span>
               </div>
               <div className="text-right">
@@ -119,7 +119,7 @@ export const TableTransferModal: React.FC<TableTransferModalProps> = ({
                       <span className="block font-mono text-xs font-bold">
                         T{tbl.number < 10 ? '0' + tbl.number : tbl.number}
                       </span>
-                      <span className={`text-[9px] ${targetTableNumber === tbl.number ? 'text-amber-100' : 'text-gray-400'}`}>{tbl.capacity} Seats</span>
+                      <span className={`text-[9px] ${targetTableNumber === tbl.number ? 'text-amber-100' : 'text-emerald-600 font-semibold'}`}>Ready</span>
                     </button>
                   ))}
                 </div>

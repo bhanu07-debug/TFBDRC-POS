@@ -224,7 +224,7 @@ export const GuestQRView: React.FC = () => {
                       Table {currentGuestTableNumber < 10 ? '0' + currentGuestTableNumber : currentGuestTableNumber}
                     </span>
                     <span className="text-[11px] text-amber-300 font-medium">
-                      {currentTable?.section || 'Indoor Dining'}
+                      Dine-In
                     </span>
                   </div>
                   <h1 className="text-xl sm:text-2xl font-bold text-white tracking-tight">

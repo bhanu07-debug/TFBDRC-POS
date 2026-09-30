@@ -47,7 +47,7 @@ export const GuestWalkieTalkieModal: React.FC<GuestWalkieTalkieModalProps> = ({
   } = usePOS();
 
   const currentTable = getCurrentTable();
-  const tableSection = currentTable?.section || 'Indoor Dining';
+  const tableSection = 'Dine-In';
   const tableNumStr = currentGuestTableNumber < 10 ? `0${currentGuestTableNumber}` : `${currentGuestTableNumber}`;
 
   // Recording state

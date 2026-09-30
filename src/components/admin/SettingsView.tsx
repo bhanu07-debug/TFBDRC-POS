@@ -224,7 +224,7 @@ export const SettingsView: React.FC = () => {
                         {tbl.label}
                       </div>
                       <div className="text-[10px] text-gray-500 font-semibold">
-                        {tbl.section} • {tbl.capacity} Seats
+                        Dine-In Table
                       </div>
                     </div>
 
