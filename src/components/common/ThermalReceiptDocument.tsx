@@ -20,10 +20,7 @@ export const ThermalReceiptDocument: React.FC<ThermalReceiptDocumentProps> = ({
 
   const originUrl = typeof window !== 'undefined' ? window.location.origin : 'https://fatbuddha.cafe';
   const feedbackUrl = `${originUrl}/feedback?order=${order.orderNumber || order.id}`;
-  // Restaurant Google Review QR Code
-  const reviewQrImage = settings.googleReviewQrImage || '/google-review-qr.svg';
   const reviewQrUrl = settings.googleReviewUrl;
-  const useDynamicUrlQR = Boolean(reviewQrUrl && reviewQrUrl.trim() && settings.googleReviewQrImage === undefined);
 
   const items = Array.isArray(order?.items) ? order.items : [];
   const subtotal = Number(order.subtotal ?? order.total ?? 0);
@@ -105,15 +102,11 @@ export const ThermalReceiptDocument: React.FC<ThermalReceiptDocumentProps> = ({
           1. RESTAURANT HEADER (Centered)
          ==================================================== */}
       <div className="text-center pb-2 border-b-2 border-dashed border-black">
-        <div className="flex justify-center mb-1.5">
-          <img
-            src="/logo.svg"
-            alt="The Fat Buddha Delight Logo"
-            className={`${is58mm ? 'w-8 h-8' : 'w-10 h-10'} object-contain rounded-full border border-black/20`}
-          />
-        </div>
         <div className={`font-black uppercase tracking-tight leading-tight ${is58mm ? 'text-xs' : 'text-sm'}`}>
-          {settings.restaurantName || settings.name || 'The Fat Buddha Delight Restro & Cafe'}
+          {settings.restaurantName || settings.name || 'The Fat Buddha Delight'}
+        </div>
+        <div className={`font-black uppercase tracking-tight leading-tight ${is58mm ? 'text-[9.5px]' : 'text-xs'}`}>
+          Restro & Cafe
         </div>
         {settings.tagline && (
           <div className={`font-sans text-neutral-800 mt-0.5 font-medium ${is58mm ? 'text-[8px]' : 'text-[9px]'}`}>
@@ -121,10 +114,10 @@ export const ThermalReceiptDocument: React.FC<ThermalReceiptDocumentProps> = ({
           </div>
         )}
         <div className={`mt-1 break-words text-neutral-900 ${is58mm ? 'text-[8px]' : 'text-[9px]'}`}>
-          {settings.address || 'Lumbini Road, Nepal'}
+          {settings.address || 'Gonahiya-09, Bhairahawa, Nepal'}
         </div>
         <div className={`mt-0.5 font-bold ${is58mm ? 'text-[8.5px]' : 'text-[9.5px]'}`}>
-          Tel: {settings.phone || '+977-9800000000'}
+          Tel: {settings.phone || '+9779811553592'}
         </div>
         {settings.email && (
           <div className={`break-words text-neutral-800 ${is58mm ? 'text-[7.5px]' : 'text-[8.5px]'}`}>
@@ -178,7 +171,7 @@ export const ThermalReceiptDocument: React.FC<ThermalReceiptDocumentProps> = ({
           3. ITEMIZED ORDER TABLE (Safe 72mm / 48mm Width)
          ==================================================== */}
       <div className="py-2 border-b-2 border-dashed border-black">
-        <table className="w-full border-collapse text-black">
+        <table className="w-full border-collapse text-black" style={{ tableLayout: 'fixed', width: '100%' }}>
           <thead>
             <tr className="border-b-2 border-black font-black text-[10px] uppercase tracking-wider">
               <th className="w-[12%] text-left py-0.5 whitespace-nowrap">QTY</th>
@@ -311,22 +304,14 @@ export const ThermalReceiptDocument: React.FC<ThermalReceiptDocumentProps> = ({
       {/* ====================================================
           6. FOOTER QR & APPRECIATION MESSAGE (GOOGLE REVIEW)
          ==================================================== */}
-      <div className="pt-2.5 pb-4 text-center flex flex-col items-center space-y-1 avoid-break">
-        <div className="p-1 bg-white border border-black rounded inline-block">
-          {useDynamicUrlQR && reviewQrUrl ? (
-            <QRCodeSVG value={reviewQrUrl} size={is58mm ? 48 : 58} level="M" />
-          ) : (
-            <img
-              src={reviewQrImage}
-              alt="Restaurant Google Review QR"
-              className="object-contain block mx-auto"
-              style={{
-                width: is58mm ? '50px' : '62px',
-                height: is58mm ? '50px' : '62px',
-                imageRendering: 'crisp-edges'
-              }}
-            />
-          )}
+      <div className="pt-2 pb-1 text-center flex flex-col items-center space-y-1">
+        <div className="p-1 bg-white border border-black inline-block">
+          <QRCodeSVG
+            value={reviewQrUrl || originUrl}
+            size={is58mm ? 44 : 52}
+            level="L"
+            includeMargin={false}
+          />
         </div>
         <div className="text-[9px] font-black tracking-tight text-neutral-900 flex items-center justify-center gap-1">
           <span>Scan to Rate on Google</span>
@@ -335,7 +320,7 @@ export const ThermalReceiptDocument: React.FC<ThermalReceiptDocumentProps> = ({
         <div className="text-[8px] font-medium text-neutral-700">
           Leave a Review & Share Your Experience
         </div>
-        <div className="text-[9.5px] font-black uppercase pt-1 tracking-wider">
+        <div className="text-[9.5px] font-black uppercase pt-0.5 tracking-wider">
           *** THANK YOU FOR DINING WITH US ***
         </div>
         <div className="text-[8px] text-neutral-700">
@@ -346,8 +331,8 @@ export const ThermalReceiptDocument: React.FC<ThermalReceiptDocumentProps> = ({
         </div>
       </div>
 
-      {/* Feed padding ensures automatic thermal paper cutter doesn't cut through last line */}
-      <div className="h-4" style={{ minHeight: '16mm' }} />
+      {/* Feed spacing ensures automatic thermal paper cutter doesn't cut through last line */}
+      <div style={{ height: '8mm' }} />
     </div>
   );
 };
