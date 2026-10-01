@@ -954,28 +954,36 @@ export const POSProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         ? 'CANCELLED'
         : 'PENDING';
 
-    // 2. Find and optimistically update all linked KOT tickets for this order
-    const linkedKots = kots.filter(
-      k =>
-        k.orderId === orderId ||
-        (targetOrder &&
-          ((targetOrder.orderNumber && k.orderNumber === targetOrder.orderNumber) ||
-            (targetOrder.kotNumber && k.kotNumber === targetOrder.kotNumber) ||
-            (Number(k.tableNumber) === Number(targetOrder.tableNumber) &&
-              (k.status || '').toLowerCase() !== 'cancelled' &&
-              (k.status || '').toLowerCase() !== 'served')))
-    );
-
-    if (linkedKots.length > 0) {
-      setKots(prev =>
-        prev.map(k =>
-          linkedKots.some(lk => lk.id === k.id)
-            ? { ...k, status: targetKotStatus as any, updatedAt: nowIso }
-            : k
-        )
+    // 2. Only if the entire order is explicitly CANCELLED do we cancel all active KOTs for this order
+    if (statusLower === 'cancelled') {
+      const linkedKots = kots.filter(
+        k =>
+          k.orderId === orderId ||
+          (targetOrder &&
+            ((targetOrder.orderNumber && k.orderNumber === targetOrder.orderNumber) ||
+              (targetOrder.kotNumber && k.kotNumber === targetOrder.kotNumber) ||
+              (Number(k.tableNumber) === Number(targetOrder.tableNumber) &&
+                (k.status || '').toLowerCase() !== 'cancelled')))
       );
-    } else if (targetOrder && targetOrder.items && targetOrder.items.length > 0) {
-      // Auto-generate KOT ticket so it immediately appears in KOTView Preparing section
+
+      if (linkedKots.length > 0) {
+        setKots(prev =>
+          prev.map(k =>
+            linkedKots.some(lk => lk.id === k.id)
+              ? { ...k, status: 'CANCELLED', updatedAt: nowIso }
+              : k
+          )
+        );
+        for (const lk of linkedKots) {
+          setDoc(
+            doc(db, 'kots', lk.id),
+            { status: 'CANCELLED', updatedAt: nowIso },
+            { merge: true }
+          ).catch(err => console.warn(`Error syncing KOT ${lk.id} to CANCELLED:`, err));
+        }
+      }
+    } else if (targetOrder && targetOrder.items && targetOrder.items.length > 0 && kots.filter(k => k.orderId === orderId).length === 0) {
+      // Auto-generate KOT ticket if none exists
       const tableNum = targetOrder.tableNumber || 1;
       const numStr = tableNum < 10 ? `0${tableNum}` : `${tableNum}`;
       const newKotId = `KOT-${(targetOrder.orderNumber || 'ORD').replace(/[^a-zA-Z0-9]/g, '')}-${Date.now().toString(36).toUpperCase()}`;
@@ -1024,7 +1032,7 @@ export const POSProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       );
     }
 
-    // 3. Persist order update and KOT updates to Firestore
+    // 3. Persist order update to Firestore
     try {
       await updateDoc(doc(db, 'orders', orderId), {
         status,
@@ -1032,19 +1040,6 @@ export const POSProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       }).catch(async () => {
         await setDoc(doc(db, 'orders', orderId), { status, updatedAt: nowIso }, { merge: true });
       });
-
-      if (linkedKots.length > 0) {
-        for (const lk of linkedKots) {
-          await setDoc(
-            doc(db, 'kots', lk.id),
-            {
-              status: targetKotStatus,
-              updatedAt: nowIso
-            },
-            { merge: true }
-          ).catch(err => console.warn(`Error syncing KOT ${lk.id} to ${targetKotStatus}:`, err));
-        }
-      }
     } catch (error) {
       console.warn("Order status update notice:", error);
     }
@@ -1356,35 +1351,40 @@ export const POSProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     let syncOrder: Order | undefined;
 
     if (!targetKot) {
-      const candidateOrderId = kotId.replace('kot-sync-', '');
+      const candidateOrderId = kotId.replace('kot-sync-k-', '').replace('kot-sync-r-', '').replace('kot-sync-', '');
       syncOrder = orders.find(o => o.id === candidateOrderId || o.orderNumber === candidateOrderId || o.id === kotId);
       if (syncOrder) {
         const tableNum = syncOrder.tableNumber || 1;
         const numStr = tableNum < 10 ? `0${tableNum}` : `${tableNum}`;
+        const isReception = kotId.includes('-r-') || kotId.includes('reception');
+        const stationSuffix = isReception ? 'R' : 'K';
         const newKotId = kotId.startsWith('kot-sync-')
-          ? `KOT-${(syncOrder.orderNumber || 'ORD').replace(/[^a-zA-Z0-9]/g, '')}-${Date.now().toString(36).toUpperCase()}`
+          ? `KOT-${stationSuffix}-${(syncOrder.orderNumber || 'ORD').replace(/[^a-zA-Z0-9]/g, '')}-${Date.now().toString(36).toUpperCase()}`
           : kotId;
 
-        const isAllDrinksOrShop = syncOrder.items.every(i => {
+        const filteredItems = syncOrder.items.filter(i => {
           const cat = (i.category || '').toLowerCase();
           const nm = (i.name || '').toLowerCase();
-          return i.department === 'SHOP' || (i as any).kotDestination === 'RECEPTION' ||
+          const isRec = i.department === 'SHOP' || (i as any).kotDestination === 'RECEPTION' ||
             cat.includes('cafe') || cat.includes('drink') || cat.includes('beverage') || cat.includes('barista') || cat.includes('dessert') ||
             nm.includes('coffee') || nm.includes('shake') || nm.includes('tea') || nm.includes('lassi');
+          return isReception ? isRec : !isRec;
         });
+
+        const activeItems = filteredItems.length > 0 ? filteredItems : syncOrder.items;
 
         targetKot = {
           id: newKotId,
-          kotNumber: (syncOrder as any).kotNumber || `KOT-${Math.floor(100 + Math.random() * 900)}`,
+          kotNumber: (syncOrder as any).kotNumber ? `${(syncOrder as any).kotNumber}-${stationSuffix}` : `KOT-${stationSuffix}-${Math.floor(100 + Math.random() * 900)}`,
           orderId: syncOrder.id,
           orderNumber: syncOrder.orderNumber,
           sessionId: syncOrder.sessionId || `SES-${tableNum}`,
           tableId: syncOrder.tableId || `T${numStr}`,
           tableNumber: tableNum,
-          destination: isAllDrinksOrShop ? 'RECEPTION' : 'KITCHEN',
+          destination: isReception ? 'RECEPTION' : 'KITCHEN',
           status: mappedStatus as any,
           priority: syncOrder.priority || 'STANDARD',
-          items: syncOrder.items.map((it, idx) => ({
+          items: activeItems.map((it, idx) => ({
             id: `kot-it-${it.id || idx}`,
             orderItemId: it.id,
             menuItemId: it.menuItemId,
@@ -1440,17 +1440,35 @@ export const POSProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
 
       if (resolvedOrderId) {
         if (status === 'served' || status === 'ready' || status === 'completed' || status === 'bumped') {
-          // If this ticket is marked served/ready, synchronize order status to 'served'
-          const nextOrderStatus = 'served';
-
-          setOrders(prev =>
-            prev.map(o => (o.id === resolvedOrderId ? { ...o, status: nextOrderStatus, updatedAt: nowIso } : o))
+          // Check if there are other active station KOTs for this order that are NOT yet served
+          const siblingKots = kots.filter(
+            k =>
+              k.id !== (targetKot?.id || kotId) &&
+              (k.orderId === resolvedOrderId || (targetKot?.orderNumber && k.orderNumber === targetKot.orderNumber)) &&
+              (k.status || '').toLowerCase() !== 'cancelled'
           );
-          await setDoc(
-            doc(db, 'orders', resolvedOrderId),
-            { status: nextOrderStatus, updatedAt: nowIso },
-            { merge: true }
-          ).catch(err => console.warn("Error updating order to served:", err));
+          const allSiblingsServed = siblingKots.length === 0 || siblingKots.every(k => {
+            const s = (k.status || '').toLowerCase();
+            return s === 'served' || s === 'ready' || s === 'completed' || s === 'bumped';
+          });
+
+          if (allSiblingsServed) {
+            // All station KOTs for this order are now served
+            const nextOrderStatus = 'served';
+            setOrders(prev =>
+              prev.map(o => (o.id === resolvedOrderId ? { ...o, status: nextOrderStatus, updatedAt: nowIso } : o))
+            );
+            await setDoc(
+              doc(db, 'orders', resolvedOrderId),
+              { status: nextOrderStatus, updatedAt: nowIso },
+              { merge: true }
+            ).catch(err => console.warn("Error updating order to served:", err));
+          } else {
+            // Sibling station KOT is still pending/preparing! Keep order in preparing
+            setOrders(prev =>
+              prev.map(o => (o.id === resolvedOrderId && o.status !== 'preparing' ? { ...o, status: 'preparing', updatedAt: nowIso } : o))
+            );
+          }
         } else if (status === 'in_progress' || status === 'preparing') {
           // Update linked order state to 'preparing'
           setOrders(prev =>

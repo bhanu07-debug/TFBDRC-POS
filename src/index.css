@@ -33,6 +33,28 @@
 }
 
 /* ==========================================================================
+   Screen Rules: Completely hide thermal print containers & templates from screen
+   ========================================================================== */
+#thermal-print-container,
+div#thermal-print-container,
+#printable-receipt,
+#printable-kot,
+#printable-report,
+#printable-qr-sheet {
+  display: none !important;
+  visibility: hidden !important;
+  position: fixed !important;
+  top: -99999px !important;
+  left: -99999px !important;
+  width: 0 !important;
+  height: 0 !important;
+  opacity: 0 !important;
+  pointer-events: none !important;
+  overflow: hidden !important;
+  z-index: -99999 !important;
+}
+
+/* ==========================================================================
    Comprehensive Thermal Receipt & Slip Print Rules
    Ensures 100% of receipt text, item lines, and totals print cleanly in 80mm & 58mm.
    ========================================================================== */
@@ -79,6 +101,8 @@
   #printable-qr-sheet,
   #printable-qr-sheet * {
     visibility: visible !important;
+    opacity: 1 !important;
+    pointer-events: auto !important;
   }
 
   /* 80mm Dedicated Thermal Print Portal (Safe printable width: 66mm with right padding buffer) */
@@ -86,8 +110,11 @@
   body.printing-thermal #thermal-print-container {
     display: block !important;
     position: static !important;
+    top: auto !important;
+    left: auto !important;
     width: 66mm !important;
     max-width: 66mm !important;
+    height: auto !important;
     margin: 0 !important;
     margin-left: 0 !important;
     padding: 1.5mm 3.5mm 18mm 1mm !important;
@@ -95,6 +122,7 @@
     background: #ffffff !important;
     color: #000000 !important;
     overflow: visible !important;
+    z-index: 1000 !important;
     font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, monospace !important;
   }
 
@@ -102,8 +130,11 @@
   body.printing-thermal-58mm #thermal-print-container {
     display: block !important;
     position: static !important;
+    top: auto !important;
+    left: auto !important;
     width: 44mm !important;
     max-width: 44mm !important;
+    height: auto !important;
     margin: 0 !important;
     margin-left: 0 !important;
     padding: 1mm 2.5mm 16mm 1mm !important;
@@ -111,6 +142,7 @@
     background: #ffffff !important;
     color: #000000 !important;
     overflow: visible !important;
+    z-index: 1000 !important;
     font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, monospace !important;
   }
 

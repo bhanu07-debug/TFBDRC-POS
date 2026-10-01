@@ -155,42 +155,80 @@ export const KOTView: React.FC = () => {
             ? 'SERVED'
             : 'PENDING';
 
-        const hasKitchenItems = ord.items.some(i => !isReceptionItem(i));
-        const resolvedDest: KOTDestination = hasKitchenItems ? 'KITCHEN' : 'RECEPTION';
+        const kitchenItems = ord.items.filter(i => !isReceptionItem(i));
+        const receptionItems = ord.items.filter(i => isReceptionItem(i));
 
-        list.push({
-          id: `kot-sync-${ord.id}`,
-          kotNumber:
-            ord.kotNumber ||
-            `KOT-${(ord.orderNumber || '000').replace(/\D/g, '').slice(-3) || '101'}`,
-          orderId: ord.id,
-          orderNumber: ord.orderNumber,
-          sessionId: ord.sessionId || `SES-${tableNum}`,
-          tableId: ord.tableId || `T${numStr}`,
-          tableNumber: tableNum,
-          destination: resolvedDest,
-          status: synthesizedStatus as any,
-          priority:
-            ord.priority ||
-            (ord.items.some(i => i.priority === 'HIGH') ? 'HIGH' : 'STANDARD'),
-          items: ord.items.map((it, idx) => ({
-            id: `kot-it-${it.id || idx}`,
-            orderItemId: it.id,
-            menuItemId: it.menuItemId,
-            nameSnapshot: it.name || (it as any).nameSnapshot || 'Dish',
-            name: it.name || (it as any).nameSnapshot || 'Dish',
-            quantity: it.quantity || 1,
-            notes: it.instructions || (it as any).notes || '',
-            status: 'PENDING',
-            category: it.category,
-            priority: it.priority || 'STANDARD',
-            department: (it as any).department,
-            kotDestination: (it as any).kotDestination
-          })),
-          createdAt: ord.createdAt || new Date().toISOString(),
-          updatedAt: ord.updatedAt || new Date().toISOString(),
-          tableLabel: `Table T${numStr}`
-        });
+        if (kitchenItems.length > 0) {
+          list.push({
+            id: `kot-sync-k-${ord.id}`,
+            kotNumber: ord.kotNumber
+              ? `${ord.kotNumber}-K`
+              : `KOT-K-${(ord.orderNumber || '000').replace(/\D/g, '').slice(-3) || '101'}`,
+            orderId: ord.id,
+            orderNumber: ord.orderNumber,
+            sessionId: ord.sessionId || `SES-${tableNum}`,
+            tableId: ord.tableId || `T${numStr}`,
+            tableNumber: tableNum,
+            destination: 'KITCHEN',
+            status: synthesizedStatus as any,
+            priority:
+              ord.priority ||
+              (kitchenItems.some(i => i.priority === 'HIGH') ? 'HIGH' : 'STANDARD'),
+            items: kitchenItems.map((it, idx) => ({
+              id: `kot-it-${it.id || idx}`,
+              orderItemId: it.id,
+              menuItemId: it.menuItemId,
+              nameSnapshot: it.name || (it as any).nameSnapshot || 'Dish',
+              name: it.name || (it as any).nameSnapshot || 'Dish',
+              quantity: it.quantity || 1,
+              notes: it.instructions || (it as any).notes || '',
+              status: 'PENDING',
+              category: it.category,
+              priority: it.priority || 'STANDARD',
+              department: (it as any).department,
+              kotDestination: 'KITCHEN' as const
+            })),
+            createdAt: ord.createdAt || new Date().toISOString(),
+            updatedAt: ord.updatedAt || new Date().toISOString(),
+            tableLabel: `Table T${numStr}`
+          });
+        }
+
+        if (receptionItems.length > 0) {
+          list.push({
+            id: `kot-sync-r-${ord.id}`,
+            kotNumber: ord.kotNumber
+              ? `${ord.kotNumber}-R`
+              : `KOT-R-${(ord.orderNumber || '000').replace(/\D/g, '').slice(-3) || '102'}`,
+            orderId: ord.id,
+            orderNumber: ord.orderNumber,
+            sessionId: ord.sessionId || `SES-${tableNum}`,
+            tableId: ord.tableId || `T${numStr}`,
+            tableNumber: tableNum,
+            destination: 'RECEPTION',
+            status: synthesizedStatus as any,
+            priority:
+              ord.priority ||
+              (receptionItems.some(i => i.priority === 'HIGH') ? 'HIGH' : 'STANDARD'),
+            items: receptionItems.map((it, idx) => ({
+              id: `kot-it-rec-${it.id || idx}`,
+              orderItemId: it.id,
+              menuItemId: it.menuItemId,
+              nameSnapshot: it.name || (it as any).nameSnapshot || 'Dish',
+              name: it.name || (it as any).nameSnapshot || 'Dish',
+              quantity: it.quantity || 1,
+              notes: it.instructions || (it as any).notes || '',
+              status: 'PENDING',
+              category: it.category,
+              priority: it.priority || 'STANDARD',
+              department: (it as any).department,
+              kotDestination: 'RECEPTION' as const
+            })),
+            createdAt: ord.createdAt || new Date().toISOString(),
+            updatedAt: ord.updatedAt || new Date().toISOString(),
+            tableLabel: `Table T${numStr}`
+          });
+        }
       }
     });
 
@@ -266,49 +304,21 @@ export const KOTView: React.FC = () => {
     ) {
       return 'preparing';
     }
+    if (
+      kotStatus === 'pending' ||
+      kotStatus === 'new' ||
+      kotStatus === 'placed'
+    ) {
+      return 'pending';
+    }
 
-    // Check linked order status in case order was updated to preparing/confirmed from OrdersView or TablesView
+    // Only if ticket status is completely unassigned, check if linked order was cancelled
     let linkedOrder = kot.orderId ? orders.find(o => o.id === kot.orderId) : undefined;
     if (!linkedOrder && kot.orderNumber) {
       linkedOrder = orders.find(o => o.orderNumber === kot.orderNumber);
     }
-    if (!linkedOrder && kot.kotNumber) {
-      linkedOrder = orders.find(o => o.kotNumber === kot.kotNumber);
-    }
-    if (!linkedOrder && kot.tableNumber) {
-      linkedOrder = orders.find(
-        o =>
-          Number(o.tableNumber) === Number(kot.tableNumber) &&
-          (o.status || '').toLowerCase() !== 'cancelled' &&
-          (o.status || '').toLowerCase() !== 'paid' &&
-          (o.status || '').toLowerCase() !== 'served' &&
-          (o.status || '').toLowerCase() !== 'completed'
-      );
-    }
-
     if (linkedOrder) {
       const ordStatus = (linkedOrder.status || '').toLowerCase().trim();
-      if (
-        ordStatus === 'preparing' ||
-        ordStatus === 'confirmed' ||
-        ordStatus === 'cooking' ||
-        ordStatus === 'in_progress' ||
-        ordStatus === 'in-progress' ||
-        ordStatus === 'printing' ||
-        ordStatus === 'in_preparation' ||
-        ordStatus === 'in preparation' ||
-        ordStatus === 'in preparing' ||
-        ordStatus === 'in_preparing'
-      ) {
-        return 'preparing';
-      }
-      if (
-        ordStatus === 'served' ||
-        ordStatus === 'ready' ||
-        ordStatus === 'completed'
-      ) {
-        return 'served';
-      }
       if (ordStatus === 'cancelled') {
         return 'cancelled';
       }
@@ -587,44 +597,27 @@ export const KOTView: React.FC = () => {
   };
 
   // 1. ACTION: Print KOT for specific location (Kitchen / Reception)
-  // When printed, automatically transitions ticket to 'in_progress' (PREPARING) and clears it from Active
+  // When printed, automatically transitions this ticket to 'in_progress' (PREPARING) without touching other stations
   const handlePrintKOT = async (ticket: StationTicket) => {
     setActivePrintTicket(ticket);
     playPrintSound();
 
-    // Automatically transition ticket to 'in_progress' (Preparing)
+    // Automatically transition ONLY this station ticket to 'in_progress' (Preparing)
     try {
       await updateKOTStatus(ticket.id, 'in_progress');
     } catch (err) {
       console.warn("Could not update KOT status:", err);
     }
 
-    // Automatically transition linked order to 'preparing'
-    let orderToUpdateId = ticket.orderId;
-    if (!orderToUpdateId && ticket.kotNumber) {
-      const matchOrder = orders.find(
-        o => (o.kotNumber && o.kotNumber === ticket.kotNumber) ||
-             (o.tableNumber === ticket.tableNumber && (o.status === 'placed' || o.status === 'confirmed' || o.status === 'NEW'))
-      );
-      if (matchOrder) orderToUpdateId = matchOrder.id;
-    }
-    if (orderToUpdateId) {
-      try {
-        await updateOrderStatus(orderToUpdateId, 'preparing');
-      } catch (err) {
-        console.warn("Could not update order status:", err);
-      }
-    }
-
     const tableNumStr = ticket.tableNumber < 10 ? `0${ticket.tableNumber}` : `${ticket.tableNumber}`;
     const stationLabel = ticket.station === 'kitchen' ? 'Kitchen Food' : 'Cafe & Reception Bar';
 
-    // Send real-time notification to the guest table
+    // Send real-time notification to the guest table for THIS station
     await sendTableNotification({
       tableNumber: ticket.tableNumber,
       type: 'order_preparing',
       title: `Order In Preparation: ${stationLabel}`,
-      message: `Your ${stationLabel.toLowerCase()} order (${ticket.kotNumber}) is now being prepared fresh in the kitchen for Table ${tableNumStr}!`,
+      message: `Your ${stationLabel.toLowerCase()} (${ticket.kotNumber}) is now being prepared fresh for Table ${tableNumStr}!`,
       kotId: ticket.id,
       orderId: ticket.orderId,
       station: ticket.station
@@ -632,7 +625,7 @@ export const KOTView: React.FC = () => {
 
     showToast(
       'print',
-      `Printing KOT (${ticket.kotNumber}) for Table ${tableNumStr} — Moved to Preparing!`
+      `Printing ${ticket.station === 'kitchen' ? 'Kitchen' : 'Reception'} KOT (${ticket.kotNumber}) for Table ${tableNumStr} — Moved to Preparing!`
     );
 
     // Switch view to 'preparing' section immediately so the preparing ticket is visible
@@ -641,36 +634,23 @@ export const KOTView: React.FC = () => {
     // Give browser small render tick to populate thermal print DOM before window.print()
     setTimeout(() => {
       triggerThermalPrint('80mm');
+      setTimeout(() => {
+        setActivePrintTicket(null);
+      }, 1200);
     }, 100);
   };
 
   // ACTION: Move order to Preparing manually without printing
   const handleMoveToPreparing = async (ticket: StationTicket) => {
-    // Transition ticket to 'in_progress' (PREPARING in POS context)
+    // Transition ONLY this station ticket to 'in_progress' (PREPARING in POS context)
     try {
       await updateKOTStatus(ticket.id, 'in_progress');
     } catch (err) {
       console.warn("Could not update KOT status:", err);
     }
 
-    let orderToUpdateId = ticket.orderId;
-    if (!orderToUpdateId && ticket.kotNumber) {
-      const matchOrder = orders.find(
-        o => (o.kotNumber && o.kotNumber === ticket.kotNumber) ||
-             (o.tableNumber === ticket.tableNumber && (o.status === 'placed' || o.status === 'confirmed' || o.status === 'NEW'))
-      );
-      if (matchOrder) orderToUpdateId = matchOrder.id;
-    }
-    if (orderToUpdateId) {
-      try {
-        await updateOrderStatus(orderToUpdateId, 'preparing');
-      } catch (err) {
-        console.warn("Could not update order status:", err);
-      }
-    }
-
     const tableNumStr = ticket.tableNumber < 10 ? `0${ticket.tableNumber}` : `${ticket.tableNumber}`;
-    const stationLabel = ticket.station === 'kitchen' ? 'Kitchen' : 'Reception / Bar';
+    const stationLabel = ticket.station === 'kitchen' ? 'Kitchen Food' : 'Cafe & Reception Bar';
 
     await sendTableNotification({
       tableNumber: ticket.tableNumber,
@@ -680,55 +660,66 @@ export const KOTView: React.FC = () => {
       kotId: ticket.id,
       orderId: ticket.orderId,
       station: ticket.station
-    });
+    }).catch(err => console.warn("Table notification error:", err));
 
     showToast(
       'print',
-      `KOT (${ticket.kotNumber}) for Table ${tableNumStr} moved to Preparing!`
+      `${ticket.station === 'kitchen' ? 'Kitchen' : 'Reception'} KOT (${ticket.kotNumber}) for Table ${tableNumStr} moved to Preparing!`
     );
 
     // Switch view to 'preparing' section immediately so the preparing ticket is visible
     setStatusFilter('preparing');
   };
 
-  // 2. ACTION: Mark Served & notify table number (syncs order & KOT to served)
+  // 2. ACTION: Mark Served & notify table number (operates individually for Kitchen vs Reception)
   const handleMarkServed = async (ticket: StationTicket) => {
     const tableNumStr = ticket.tableNumber < 10 ? `0${ticket.tableNumber}` : `${ticket.tableNumber}`;
     const stationLabel = ticket.station === 'kitchen' ? 'Kitchen Food' : 'Cafe & Reception Bar';
 
-    // 1. Update KOT in POS context & Firestore to 'served'
+    // 1. Update ONLY this specific KOT ticket in POS context & Firestore to 'served'
     await updateKOTStatus(ticket.id, 'served');
 
-    // 2. Synchronize table and linked order so both served buttons work in 100% sync
-    if (ticket.tableNumber > 0) {
-      await updateTableOrdersStatus(ticket.tableNumber, 'served');
-    } else {
+    // 2. Check if all sibling station tickets for this table/order are also served
+    const siblingTickets = allTickets.filter(
+      k =>
+        k.id !== ticket.id &&
+        (k.orderId === ticket.orderId ||
+         (ticket.orderNumber && k.orderNumber === ticket.orderNumber) ||
+         (Number(k.tableNumber) === Number(ticket.tableNumber))) &&
+        (k.status || '').toLowerCase() !== 'cancelled'
+    );
+    const allSiblingsServed = siblingTickets.length === 0 || siblingTickets.every(k => isTicketServed(k.status));
+
+    // If all station tickets for this order are now served, we can complete the order
+    if (allSiblingsServed) {
       let orderToUpdateId = ticket.orderId;
       if (!orderToUpdateId && ticket.orderNumber) {
         const matchOrder = orders.find(o => o.orderNumber === ticket.orderNumber);
         if (matchOrder) orderToUpdateId = matchOrder.id;
       }
       if (orderToUpdateId) {
-        await updateOrderStatus(orderToUpdateId, 'served');
+        await updateOrderStatus(orderToUpdateId, 'served').catch(console.warn);
       }
     }
 
-    // 3. Send real-time notification to the guest table
+    // 3. Send real-time notification to the guest table specifically for this station
     await sendTableNotification({
       tableNumber: ticket.tableNumber,
       type: 'order_ready',
       title: `${stationLabel} Served!`,
-      message: `Your ${stationLabel.toLowerCase()} order (${ticket.kotNumber}) has been served to Table ${tableNumStr}!`,
+      message: `Your ${stationLabel.toLowerCase()} (${ticket.kotNumber}) has been served to Table ${tableNumStr}!`,
       kotId: ticket.id,
       orderId: ticket.orderId,
       station: ticket.station
-    });
+    }).catch(err => console.warn("Table notification error:", err));
 
     playReadySound();
 
     showToast(
       'ready',
-      `Table ${tableNumStr} KOT (${ticket.kotNumber}) marked as Served & synced with table order!`
+      allSiblingsServed
+        ? `Table ${tableNumStr} ${stationLabel} (${ticket.kotNumber}) Served! (All station items now served)`
+        : `Table ${tableNumStr} ${stationLabel} (${ticket.kotNumber}) Served! (Other station ticket still in progress)`
     );
   };
 
