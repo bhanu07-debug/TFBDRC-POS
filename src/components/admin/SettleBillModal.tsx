@@ -227,9 +227,36 @@ export const SettleBillModal: React.FC<SettleBillModalProps> = ({
       setTimeout(() => {
         triggerThermalPrint('80mm');
         setIsPrintTriggered(true);
-      }, 100);
+      }, 50);
     } else if (onReceiptOpen) {
-      onReceiptOpen();
+      const billOrderNum = tableOrders[0]?.orderNumber || generateNextOrderNumber();
+      const resolvedGuestName = guestName.trim() || tableOrders.find(o => o.guestName)?.guestName || undefined;
+      const resolvedGuestPhone = guestPhone.trim() || tableOrders.find(o => o.guestPhone)?.guestPhone || undefined;
+      const preSettleOrder: Order = {
+        id: `BILL-${billOrderNum}`,
+        orderNumber: billOrderNum,
+        sessionId: table.currentSessionId || `SES-${table.number}`,
+        tableId: table.id || `T${table.number}`,
+        tableNumber: table.number,
+        items: allBillItems,
+        subtotal: rawSubtotal,
+        discount: discountAmount,
+        serviceCharge: serviceCharge,
+        vat: vatAmount,
+        total: finalPayable,
+        finalAmount: finalPayable,
+        status: 'placed',
+        paymentStatus: 'unpaid',
+        orderType: 'dine_in',
+        cashierName: cashierName.trim() || 'Dilip Chaudhary',
+        waiterName: cashierName.trim() || 'Dilip Chaudhary',
+        createdBy: cashierName.trim() || 'POS Staff',
+        guestName: resolvedGuestName,
+        guestPhone: resolvedGuestPhone,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString()
+      };
+      onReceiptOpen(preSettleOrder);
     }
   };
 
@@ -239,7 +266,7 @@ export const SettleBillModal: React.FC<SettleBillModalProps> = ({
       setTimeout(() => {
         triggerThermalPrint('80mm');
         setIsKOTPrintTriggered(true);
-      }, 100);
+      }, 50);
     }
   };
 

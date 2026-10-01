@@ -179,6 +179,20 @@
     font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, monospace !important;
   }
 
+  /* Inside #thermal-print-container, documents stay in normal flow matching container width */
+  #thermal-print-container #printable-receipt,
+  #thermal-print-container #printable-kot,
+  #thermal-print-container .thermal-receipt-container,
+  #thermal-print-container .thermal-kot-container {
+    position: static !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    box-shadow: none !important;
+    border: none !important;
+  }
+
   /* Standalone / Fallback 80mm KOT Rule */
   #printable-kot {
     position: absolute !important;

@@ -57,21 +57,29 @@ export const ReceiptModal: React.FC<ReceiptModalProps> = ({
 
   if (!isOpen || !order) return null;
 
-  const handlePrint = async () => {
+  const handlePrint = () => {
     setActivePrintDoc('receipt');
+    // Non-blocking background order status transition if in placed state
     if (order && (order.status === 'placed' || (order.status as string) === 'pending')) {
-      await updateOrderStatus(order.id, 'preparing');
+      try {
+        updateOrderStatus(order.id, 'preparing').catch(err => {
+          console.warn('[ReceiptModal] Non-blocking status update error:', err);
+        });
+      } catch (err) {
+        console.warn('[ReceiptModal] Non-blocking status update caught:', err);
+      }
     }
+    // Immediately trigger thermal print while user gesture token is active
     setTimeout(() => {
       triggerThermalPrint(paperWidth);
-    }, 100);
+    }, 50);
   };
 
   const handlePrintKOT = () => {
     setActivePrintDoc('kot');
     setTimeout(() => {
       triggerThermalPrint(paperWidth);
-    }, 100);
+    }, 50);
   };
 
   const handleWhatsAppSend = () => {
@@ -268,6 +276,7 @@ export const ReceiptModal: React.FC<ReceiptModalProps> = ({
 
             <button
               id="btn-print-receipt-action"
+              type="button"
               onClick={handlePrint}
               className="w-full sm:flex-1 flex items-center justify-center gap-2 px-5 py-2.5 rounded-xl bg-amber-500 hover:bg-amber-600 text-white font-bold text-xs shadow-xs transition transform active:scale-98"
             >

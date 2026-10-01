@@ -25,25 +25,29 @@ export const ThermalReceiptDocument: React.FC<ThermalReceiptDocumentProps> = ({
   const reviewQrUrl = settings.googleReviewUrl;
   const useDynamicUrlQR = Boolean(reviewQrUrl && reviewQrUrl.trim() && settings.googleReviewQrImage === undefined);
 
-  const subtotal = order.subtotal ?? order.total ?? 0;
-  const discount = order.discountAmount ?? order.discount ?? 0;
+  const items = Array.isArray(order?.items) ? order.items : [];
+  const subtotal = Number(order.subtotal ?? order.total ?? 0);
+  const discount = Number(order.discountAmount ?? order.discount ?? 0);
   const discountedSubtotal = Math.max(0, subtotal - discount);
-  const serviceCharge = order.serviceCharge ?? (settings.serviceChargeEnabled ? Math.round(discountedSubtotal * (settings.serviceChargePercent || 10) / 100) : 0);
-  const vat = order.vat ?? order.taxAmount ?? (settings.vatEnabled ? Math.round((discountedSubtotal + serviceCharge) * (settings.vatRate || 13) / 100) : 0);
-  const grandTotal = order.finalAmount ?? (discountedSubtotal + serviceCharge + vat);
+  const serviceCharge = Number(order.serviceCharge ?? (settings.serviceChargeEnabled ? Math.round(discountedSubtotal * (Number(settings.serviceChargePercent) || 10) / 100) : 0));
+  const vat = Number(order.vat ?? order.taxAmount ?? (settings.vatEnabled ? Math.round((discountedSubtotal + serviceCharge) * (Number(settings.vatRate) || 13) / 100) : 0));
+  const grandTotal = Number(order.finalAmount ?? (discountedSubtotal + serviceCharge + vat));
 
   const isPaid = (order.paymentStatus || '').toLowerCase() === 'paid';
-  const totalItemQty = order.items.reduce((s, i) => s + (i.quantity || 1), 0);
+  const totalItemQty = items.reduce((s, i) => s + (Number(i.quantity) || 1), 0);
+
+  const tableNum = typeof order.tableNumber === 'number' ? order.tableNumber : parseInt(String(order.tableNumber || 1), 10) || 1;
+  const tableNumStr = tableNum < 10 ? `0${tableNum}` : `${tableNum}`;
 
   // Clean sequential invoice number starting with 0001 (e.g. ORD-0001)
   const displayInvoiceNumber = (() => {
-    if (order.orderNumber && order.orderNumber.trim()) {
-      return order.orderNumber.trim();
+    if (order.orderNumber && String(order.orderNumber).trim()) {
+      return String(order.orderNumber).trim();
     }
-    if (order.id && /^ORD-\d+/i.test(order.id)) {
+    if (order.id && typeof order.id === 'string' && /^ORD-\d+/i.test(order.id)) {
       return order.id.split('-').slice(0, 2).join('-');
     }
-    return 'ORD-0001';
+    return order.id ? String(order.id) : 'ORD-0001';
   })();
 
   // Sanitize order type and staff names (no ADMIN_MANUAL strings on the bill)
@@ -86,7 +90,7 @@ export const ThermalReceiptDocument: React.FC<ThermalReceiptDocumentProps> = ({
     <div
       id={id}
       className={`thermal-receipt-container font-mono text-black bg-white ${
-        is58mm ? 'w-[44mm] max-w-[44mm] text-[9px]' : 'w-[66mm] max-w-[66mm] text-[10.5px]'
+        is58mm ? 'w-[44mm] max-w-[44mm] text-[9.5px]' : 'w-[66mm] max-w-[66mm] text-[11px]'
       } leading-snug`}
       style={{
         width: is58mm ? '44mm' : '66mm',
@@ -138,7 +142,7 @@ export const ThermalReceiptDocument: React.FC<ThermalReceiptDocumentProps> = ({
       <div className="py-2 border-b border-dashed border-black space-y-1 text-[10px]">
         <div className="flex justify-between items-center">
           <span>INVOICE: <strong className="font-black text-black">{displayInvoiceNumber}</strong></span>
-          <span className="font-black text-xs pr-1">TABLE: T{order.tableNumber < 10 ? '0' + order.tableNumber : order.tableNumber}</span>
+          <span className="font-black text-xs pr-1">TABLE: T{tableNumStr}</span>
         </div>
         <div className="flex justify-between items-center text-[9.5px]">
           <span>DATE: {orderDate}</span>
@@ -171,79 +175,68 @@ export const ThermalReceiptDocument: React.FC<ThermalReceiptDocumentProps> = ({
       </div>
 
       {/* ====================================================
-          3. ITEMIZED ORDER TABLE (Safe 66mm / 44mm Width)
+          3. ITEMIZED ORDER TABLE (Safe 72mm / 48mm Width)
          ==================================================== */}
       <div className="py-2 border-b-2 border-dashed border-black">
-        {/* Table Column Headers */}
-        <div className="flex justify-between font-black pb-1 border-b border-black text-[9.5px] uppercase tracking-wider">
-          <span className="w-5 text-center">QTY</span>
-          <span className="flex-1 text-left px-1.5">ITEM</span>
-          <span className="w-11 text-right">RATE</span>
-          <span className="w-13 text-right pr-0.5">AMT</span>
-        </div>
+        <table className="w-full border-collapse text-black">
+          <thead>
+            <tr className="border-b-2 border-black font-black text-[10px] uppercase tracking-wider">
+              <th className="w-[12%] text-left py-0.5 whitespace-nowrap">QTY</th>
+              <th className="w-[52%] text-left px-1.5 py-0.5">ITEM</th>
+              <th className="w-[18%] text-right py-0.5 whitespace-nowrap">RATE</th>
+              <th className="w-[18%] text-right py-0.5 whitespace-nowrap pr-0.5">AMT</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-dashed divide-neutral-400">
+            {items.map((item, idx) => {
+              const qty = Number(item.quantity) || 1;
+              const unitPrice = Number(item.price ?? item.priceSnapshot ?? 0);
+              const itemTotal = unitPrice * qty;
+              const itemName = item.name || item.nameSnapshot || (item as any).title || 'Menu Item';
 
-        {/* Item Rows */}
-        <div className="divide-y divide-dashed divide-neutral-400 pt-1">
-          {order.items.map((item, idx) => {
-            const qty = item.quantity || 1;
-            const unitPrice = item.price ?? item.priceSnapshot ?? 0;
-            const itemTotal = unitPrice * qty;
-            const itemName = item.name || item.nameSnapshot || 'Menu Item';
-
-            return (
-              <div key={item.id || idx} className="py-1 avoid-break">
-                <div className="flex items-start justify-between text-[10px]">
-                  <span className="w-5 text-center font-black pt-0.5">{qty}</span>
-                  <span className="flex-1 font-bold text-left px-1.5 leading-tight break-words text-black">
-                    {itemName}
-                  </span>
-                  <span className="w-11 text-right text-[9.5px] pt-0.5 text-neutral-800">
+              return (
+                <tr key={item.id || idx} className="py-1 avoid-break text-[10.5px]">
+                  <td className="font-black align-top py-1 whitespace-nowrap">{qty}</td>
+                  <td className="font-bold align-top px-1.5 py-1 leading-snug break-words text-black">
+                    <div>{itemName}</div>
+                    {item.variantName && (
+                      <div className="text-[8.5px] font-normal text-neutral-800">
+                        * Variant: {item.variantName}
+                      </div>
+                    )}
+                    {(item.size || item.color) && (
+                      <div className="text-[8.5px] font-normal text-neutral-800">
+                        {item.size && <span>Size: {item.size} </span>}
+                        {item.color && <span>Color: {item.color}</span>}
+                      </div>
+                    )}
+                    {item.sku && (
+                      <div className="text-[8px] font-mono font-normal text-neutral-600">
+                        SKU: {item.sku}
+                      </div>
+                    )}
+                    {item.addOns && item.addOns.length > 0 && (
+                      <div className="text-[8.5px] font-normal text-neutral-800">
+                        + Add: {item.addOns.join(', ')}
+                      </div>
+                    )}
+                    {item.instructions && (
+                      <div className="text-[8.5px] font-semibold text-neutral-900 italic">
+                        ↳ Note: {item.instructions}
+                      </div>
+                    )}
+                  </td>
+                  <td className="text-right align-top py-1 whitespace-nowrap text-neutral-800 text-[10px]">
                     {unitPrice.toFixed(0)}
-                  </span>
-                  <span className="w-13 text-right font-black pt-0.5 text-black pr-0.5">
+                  </td>
+                  <td className="text-right align-top py-1 whitespace-nowrap font-black text-black pr-0.5">
                     {itemTotal.toFixed(0)}
-                  </span>
-                </div>
-
-                {/* Variant / Size */}
-                {item.variantName && (
-                  <div className="text-[8.5px] text-neutral-800 pl-6">
-                    * Variant: {item.variantName}
-                  </div>
-                )}
-
-                {/* Shop Clothing attributes: Size & Color */}
-                {(item.size || item.color) && (
-                  <div className="text-[8.5px] text-neutral-800 pl-6">
-                    {item.size && <span>Size: {item.size} </span>}
-                    {item.color && <span>Color: {item.color}</span>}
-                  </div>
-                )}
-
-                {/* SKU */}
-                {item.sku && (
-                  <div className="text-[8px] font-mono text-neutral-600 pl-6">
-                    SKU: {item.sku}
-                  </div>
-                )}
-
-                {/* Add-ons */}
-                {item.addOns && item.addOns.length > 0 && (
-                  <div className="text-[8.5px] text-neutral-800 pl-6">
-                    + Add: {item.addOns.join(', ')}
-                  </div>
-                )}
-
-                {/* Special Instructions */}
-                {item.instructions && (
-                  <div className="text-[8.5px] text-neutral-900 font-semibold pl-6 italic">
-                    ↳ Note: {item.instructions}
-                  </div>
-                )}
-              </div>
-            );
-          })}
-        </div>
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
       </div>
 
       {/* ====================================================
