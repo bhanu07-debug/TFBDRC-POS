@@ -14,12 +14,26 @@ import {
   UserCheck,
   User,
   Check,
-  Printer
+  Printer,
+  MessageCircle,
+  Phone,
+  QrCode,
+  Copy,
+  ChefHat,
+  Send
 } from 'lucide-react';
 import confetti from 'canvas-confetti';
+import { QRCodeSVG } from 'qrcode.react';
 import { ThermalReceiptDocument } from '../common/ThermalReceiptDocument';
+import { ThermalKOTDocument } from '../common/ThermalKOTDocument';
 import { ThermalPrintPortal } from '../common/ThermalPrintPortal';
 import { triggerThermalPrint } from '../../utils/printUtils';
+import {
+  openWhatsAppReceipt,
+  openSMSReceipt,
+  copyReceiptText,
+  generateDigitalReceiptUrl
+} from '../../utils/receiptShareUtils';
 
 interface SettleBillModalProps {
   table: Table | null;
@@ -43,6 +57,11 @@ export const SettleBillModal: React.FC<SettleBillModalProps> = ({
   const [cashierName, setCashierName] = useState(() => localStorage.getItem('last_cashier_name') || 'Dilip Chaudhary');
   const [guestName, setGuestName] = useState('');
   const [guestPhone, setGuestPhone] = useState('');
+  const [recipientPhone, setRecipientPhone] = useState('');
+  const [autoSendWhatsApp, setAutoSendWhatsApp] = useState(true);
+  const [copiedReceipt, setCopiedReceipt] = useState(false);
+  const [showQrScan, setShowQrScan] = useState(false);
+  const [activePrintDoc, setActivePrintDoc] = useState<'receipt' | 'kot'>('receipt');
   const [notes, setNotes] = useState('');
   const [isSettled, setIsSettled] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
@@ -57,6 +76,7 @@ export const SettleBillModal: React.FC<SettleBillModalProps> = ({
     itemCount: number;
   } | null>(null);
   const [isPrintTriggered, setIsPrintTriggered] = useState(false);
+  const [isKOTPrintTriggered, setIsKOTPrintTriggered] = useState(false);
 
   const tableOrders = table ? getTableOrders(table.number) : [];
 
@@ -68,6 +88,7 @@ export const SettleBillModal: React.FC<SettleBillModalProps> = ({
       const existingPhone = currentOrders.find(o => o.guestPhone)?.guestPhone || '';
       setGuestName(existingName);
       setGuestPhone(existingPhone);
+      setRecipientPhone(existingPhone);
     }
   }, [isOpen, table?.number]);
 
@@ -178,6 +199,7 @@ export const SettleBillModal: React.FC<SettleBillModalProps> = ({
         finalGuestName,
         finalGuestPhone
       );
+      setRecipientPhone(finalGuestPhone || guestPhone || '');
       setIsSettled(true);
       setIsProcessing(false);
 
@@ -186,7 +208,13 @@ export const SettleBillModal: React.FC<SettleBillModalProps> = ({
         spread: 70,
         origin: { y: 0.6 }
       });
-      // Do NOT auto-close modal or call onSettled here. The cashier will see the success view and choose to Print or Close.
+
+      // Auto-trigger WhatsApp message if guest phone is present and toggle is enabled
+      if (autoSendWhatsApp && finalGuestPhone && finalGuestPhone.trim().length >= 7) {
+        setTimeout(() => {
+          openWhatsAppReceipt(consolidatedOrder, settings, finalGuestPhone);
+        }, 500);
+      }
     } catch (err) {
       console.error("Settlement error:", err);
       setIsProcessing(false);
@@ -194,11 +222,46 @@ export const SettleBillModal: React.FC<SettleBillModalProps> = ({
   };
 
   const handlePrintReceipt = () => {
+    setActivePrintDoc('receipt');
     if (settledOrder) {
-      triggerThermalPrint('80mm');
-      setIsPrintTriggered(true);
+      setTimeout(() => {
+        triggerThermalPrint('80mm');
+        setIsPrintTriggered(true);
+      }, 50);
     } else if (onReceiptOpen) {
       onReceiptOpen();
+    }
+  };
+
+  const handlePrintKOT = () => {
+    setActivePrintDoc('kot');
+    if (settledOrder) {
+      setTimeout(() => {
+        triggerThermalPrint('80mm');
+        setIsKOTPrintTriggered(true);
+      }, 50);
+    }
+  };
+
+  const handleWhatsAppSend = () => {
+    if (settledOrder) {
+      openWhatsAppReceipt(settledOrder, settings, recipientPhone);
+    }
+  };
+
+  const handleSMSSend = () => {
+    if (settledOrder) {
+      openSMSReceipt(settledOrder, settings, recipientPhone);
+    }
+  };
+
+  const handleCopyReceipt = async () => {
+    if (settledOrder) {
+      const ok = await copyReceiptText(settledOrder, settings);
+      if (ok) {
+        setCopiedReceipt(true);
+        setTimeout(() => setCopiedReceipt(false), 2000);
+      }
     }
   };
 
@@ -216,12 +279,30 @@ export const SettleBillModal: React.FC<SettleBillModalProps> = ({
       {/* Root portal for thermal printing directly under <body> */}
       {isSettled && settledOrder && (
         <ThermalPrintPortal active={true}>
-          <ThermalReceiptDocument
-            order={settledOrder}
-            settings={settings}
-            paperWidth="80mm"
-            id="printable-receipt"
-          />
+          {activePrintDoc === 'kot' ? (
+            <ThermalKOTDocument
+              ticket={{
+                kotNumber: `KOT-${settledOrder.orderNumber || settledOrder.id}`,
+                tableNumber: settledOrder.tableNumber,
+                orderNumber: settledOrder.orderNumber,
+                waiterName: settledOrder.cashierName,
+                station: 'kitchen',
+                createdAt: settledOrder.createdAt,
+                items: settledOrder.items
+              }}
+              settings={settings}
+              linkedOrder={settledOrder}
+              paperWidth="80mm"
+              id="printable-kot"
+            />
+          ) : (
+            <ThermalReceiptDocument
+              order={settledOrder}
+              settings={settings}
+              paperWidth="80mm"
+              id="printable-receipt"
+            />
+          )}
         </ThermalPrintPortal>
       )}
 
@@ -301,18 +382,126 @@ export const SettleBillModal: React.FC<SettleBillModalProps> = ({
                 )}
               </div>
 
-              {/* Action Buttons: Print Bill and Close */}
-              <div className="w-full flex flex-col sm:flex-row items-center gap-2.5 pt-2">
-                <button
-                  id="btn-print-settled-bill"
-                  type="button"
-                  onClick={handlePrintReceipt}
-                  className="w-full sm:flex-1 py-3 px-4 bg-amber-500 hover:bg-amber-600 text-white font-bold text-xs rounded-xl shadow-xs transition flex items-center justify-center gap-2 cursor-pointer"
-                >
-                  <Printer className="w-4 h-4" />
-                  <span>{isPrintTriggered ? 'Print Bill Again' : 'Print Bill'}</span>
-                </button>
+              {/* Paperless Digital Receipt via WhatsApp & SMS */}
+              <div className="w-full bg-gradient-to-br from-emerald-50 via-teal-50 to-amber-50/40 border-2 border-emerald-300 rounded-2xl p-4 text-left space-y-3 shadow-xs">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <span className="p-1.5 rounded-lg bg-emerald-600 text-white shadow-xs">
+                      <Send className="w-4 h-4" />
+                    </span>
+                    <div>
+                      <h5 className="font-bold text-xs text-gray-900 tracking-tight flex items-center gap-1.5">
+                        <span>Paperless Digital Receipt</span>
+                        <span className="text-[9px] uppercase px-1.5 py-0.2 bg-emerald-100 text-emerald-850 font-black rounded-full border border-emerald-200">
+                          WhatsApp & SMS
+                        </span>
+                      </h5>
+                      <p className="text-[11px] text-gray-500">
+                        Send tax invoice directly to customer's mobile or scan on screen.
+                      </p>
+                    </div>
+                  </div>
+                </div>
 
+                {/* Recipient Phone & One-Click Send Actions */}
+                <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
+                  <div className="relative flex-1">
+                    <Phone className="w-3.5 h-3.5 text-gray-400 absolute left-3 top-1/2 -translate-y-1/2" />
+                    <input
+                      type="tel"
+                      value={recipientPhone}
+                      onChange={(e) => setRecipientPhone(e.target.value)}
+                      placeholder="Customer Mobile (e.g. 9841234567)"
+                      className="w-full pl-8 pr-3 py-2 text-xs font-mono font-bold bg-white border border-gray-300 rounded-xl focus:outline-none focus:border-emerald-500 shadow-2xs text-gray-900"
+                    />
+                  </div>
+                  <div className="flex items-center gap-1.5">
+                    <button
+                      type="button"
+                      onClick={handleWhatsAppSend}
+                      className="flex-1 sm:flex-initial px-3.5 py-2 bg-emerald-600 hover:bg-emerald-700 active:scale-95 text-white font-bold text-xs rounded-xl shadow-xs transition flex items-center justify-center gap-1.5 cursor-pointer"
+                      title="Send Receipt via WhatsApp"
+                    >
+                      <MessageCircle className="w-4 h-4" />
+                      <span>WhatsApp</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={handleSMSSend}
+                      className="flex-1 sm:flex-initial px-3.5 py-2 bg-blue-600 hover:bg-blue-700 active:scale-95 text-white font-bold text-xs rounded-xl shadow-xs transition flex items-center justify-center gap-1.5 cursor-pointer"
+                      title="Send Receipt via SMS"
+                    >
+                      <Smartphone className="w-4 h-4" />
+                      <span>SMS</span>
+                    </button>
+                  </div>
+                </div>
+
+                {/* Quick Utilities: Copy Link & Show QR Standee */}
+                <div className="flex items-center justify-between pt-1 border-t border-emerald-200/60 text-[11px]">
+                  <button
+                    type="button"
+                    onClick={handleCopyReceipt}
+                    className="text-gray-700 hover:text-gray-900 font-semibold flex items-center gap-1 cursor-pointer transition"
+                  >
+                    {copiedReceipt ? <Check className="w-3.5 h-3.5 text-emerald-600" /> : <Copy className="w-3.5 h-3.5 text-gray-500" />}
+                    <span>{copiedReceipt ? 'Receipt Copied to Clipboard!' : 'Copy Receipt Text & Link'}</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setShowQrScan(!showQrScan)}
+                    className="text-emerald-700 hover:text-emerald-800 font-bold flex items-center gap-1 cursor-pointer transition"
+                  >
+                    <QrCode className="w-3.5 h-3.5" />
+                    <span>{showQrScan ? 'Hide QR' : 'Show Guest QR'}</span>
+                  </button>
+                </div>
+
+                {showQrScan && settledOrder && (
+                  <div className="p-3 bg-white border border-gray-200 rounded-xl flex flex-col items-center text-center space-y-1.5 animate-in fade-in zoom-in-95">
+                    <QRCodeSVG value={generateDigitalReceiptUrl(settledOrder)} size={110} level="M" />
+                    <span className="text-[10px] text-gray-500 font-mono">
+                      Guest can scan with phone camera to view E-Receipt
+                    </span>
+                  </div>
+                )}
+              </div>
+
+              {/* Thermal Printer Actions: Bill Receipt + KOT Slip */}
+              <div className="w-full space-y-2">
+                <div className="flex items-center justify-between text-[11px] font-bold uppercase tracking-wider text-gray-400 px-1">
+                  <span>Thermal Printer Options (80mm)</span>
+                  <span className="text-amber-600 font-normal">ESC/POS Ready</span>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                  <button
+                    id="btn-print-settled-bill"
+                    type="button"
+                    onClick={handlePrintReceipt}
+                    className="py-2.5 px-3 bg-amber-500 hover:bg-amber-600 text-white font-bold text-xs rounded-xl shadow-xs transition flex items-center justify-center gap-2 cursor-pointer"
+                    title="Print Customer Bill on Thermal Printer"
+                  >
+                    <Printer className="w-4 h-4" />
+                    <span>{isPrintTriggered ? 'Print Bill Again' : 'Print Thermal Bill'}</span>
+                  </button>
+
+                  <button
+                    id="btn-print-settled-kot"
+                    type="button"
+                    onClick={handlePrintKOT}
+                    className="py-2.5 px-3 bg-slate-900 hover:bg-black text-amber-300 font-bold text-xs rounded-xl shadow-xs transition flex items-center justify-center gap-2 cursor-pointer border border-slate-800"
+                    title="Print Kitchen Order Ticket (KOT Slip) on Thermal Printer"
+                  >
+                    <ChefHat className="w-4 h-4 text-amber-400" />
+                    <span>{isKOTPrintTriggered ? 'Print KOT Again' : 'Print KOT Slip'}</span>
+                  </button>
+                </div>
+              </div>
+
+              {/* Modal Footer Controls */}
+              <div className="w-full flex items-center justify-end gap-2 pt-2 border-t border-gray-100">
                 {onReceiptOpen && settledOrder && (
                   <button
                     type="button"
@@ -320,11 +509,11 @@ export const SettleBillModal: React.FC<SettleBillModalProps> = ({
                       onReceiptOpen(settledOrder);
                       handleClose();
                     }}
-                    className="w-full sm:w-auto py-3 px-3.5 bg-gray-100 hover:bg-gray-200 text-gray-700 font-bold text-xs rounded-xl border border-gray-200 transition flex items-center justify-center gap-1.5 cursor-pointer"
+                    className="py-2 px-3 bg-gray-100 hover:bg-gray-200 text-gray-700 font-bold text-xs rounded-xl border border-gray-200 transition flex items-center gap-1.5 cursor-pointer"
                     title="View Full Thermal Receipt Preview"
                   >
-                    <Receipt className="w-4 h-4 text-amber-600" />
-                    <span>View Bill</span>
+                    <Receipt className="w-3.5 h-3.5 text-amber-600" />
+                    <span>Full Preview</span>
                   </button>
                 )}
 
@@ -332,10 +521,10 @@ export const SettleBillModal: React.FC<SettleBillModalProps> = ({
                   id="btn-close-settled-modal"
                   type="button"
                   onClick={handleClose}
-                  className="w-full sm:w-28 py-3 px-4 bg-white hover:bg-gray-100 text-gray-800 font-bold text-xs rounded-xl border border-gray-300 transition flex items-center justify-center gap-1.5 cursor-pointer shadow-2xs"
+                  className="py-2 px-5 bg-white hover:bg-gray-100 text-gray-800 font-bold text-xs rounded-xl border border-gray-300 transition flex items-center gap-1.5 cursor-pointer shadow-2xs"
                 >
-                  <X className="w-4 h-4 text-gray-500" />
-                  <span>Close</span>
+                  <X className="w-3.5 h-3.5 text-gray-500" />
+                  <span>Done / Close</span>
                 </button>
               </div>
             </div>
@@ -437,11 +626,26 @@ export const SettleBillModal: React.FC<SettleBillModalProps> = ({
                 <input
                   type="tel"
                   value={guestPhone}
-                  onChange={e => setGuestPhone(e.target.value)}
-                  placeholder="Guest Mobile / Phone Number"
+                  onChange={e => {
+                    setGuestPhone(e.target.value);
+                    setRecipientPhone(e.target.value);
+                  }}
+                  placeholder="Guest Mobile (e.g. 9841234567)"
                   className="w-full px-3 py-2 bg-white rounded-lg text-xs font-medium text-gray-900 border border-gray-300 placeholder-gray-400 focus:outline-none focus:border-amber-500"
                 />
               </div>
+              <label className="flex items-center gap-2 pt-1 text-xs text-gray-700 cursor-pointer select-none">
+                <input
+                  type="checkbox"
+                  checked={autoSendWhatsApp}
+                  onChange={e => setAutoSendWhatsApp(e.target.checked)}
+                  className="rounded text-emerald-600 focus:ring-emerald-500 w-3.5 h-3.5 cursor-pointer"
+                />
+                <span className="text-[11px] font-medium text-emerald-800 flex items-center gap-1">
+                  <MessageCircle className="w-3.5 h-3.5 text-emerald-600" />
+                  <span>Prompt / Open WhatsApp receipt after settlement</span>
+                </span>
+              </label>
             </div>
 
             {/* Cashier Name (Mandatory for settlement) */}

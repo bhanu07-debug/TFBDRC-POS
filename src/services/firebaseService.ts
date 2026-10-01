@@ -140,7 +140,16 @@ export const DEFAULT_SETTINGS: RestaurantSettings = {
   googleReviewQrImage: "/google-review-qr.svg",
   adminUsername: "admin",
   adminPassword: "buddhaadmin@123",
-  adminRecoveryEmail: "vanuchdry05@gmail.com"
+  adminRecoveryEmail: "vanuchdry05@gmail.com",
+  twilioAccountSid: "",
+  twilioAuthToken: "",
+  twilioPhoneNumber: "",
+  whatsappBusinessAccountId: "",
+  whatsappBusinessId: "",
+  whatsappPhoneNumberId: "",
+  whatsappAccessToken: "",
+  receiptDeliveryMethod: "direct_share",
+  autoSendReceiptOnSettlement: true
 };
 
 // ====================================================

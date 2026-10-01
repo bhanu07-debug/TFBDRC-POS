@@ -494,6 +494,17 @@ export interface RestaurantSettings {
   adminPassword?: string; // default: 'buddhaadmin@123'
   adminRecoveryEmail?: string; // default: 'vanuchdry05@gmail.com'
   adminLastPasswordChangedAt?: string;
+
+  // Paperless Receipt Delivery (Twilio SMS & WhatsApp Business API)
+  twilioAccountSid?: string;
+  twilioAuthToken?: string;
+  twilioPhoneNumber?: string;
+  whatsappBusinessAccountId?: string;
+  whatsappBusinessId?: string;
+  whatsappPhoneNumberId?: string;
+  whatsappAccessToken?: string;
+  receiptDeliveryMethod?: 'direct_share' | 'twilio_sms' | 'whatsapp_api' | 'both';
+  autoSendReceiptOnSettlement?: boolean;
 }
 
 export interface AdminSession {
