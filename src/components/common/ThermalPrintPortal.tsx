@@ -16,11 +16,11 @@ export const ThermalPrintPortal: React.FC<ThermalPrintPortalProps> = ({ children
     if (!el) {
       el = document.createElement('div');
       el.id = 'thermal-print-container';
-      el.className = 'hidden print:block fixed -top-[99999px] -left-[99999px] w-0 h-0 overflow-hidden pointer-events-none opacity-0 print:opacity-100 print:pointer-events-auto print:static print:w-auto print:h-auto print:overflow-visible';
+      el.className = 'thermal-print-portal';
       el.setAttribute('aria-hidden', 'true');
       document.body.appendChild(el);
     } else {
-      el.className = 'hidden print:block fixed -top-[99999px] -left-[99999px] w-0 h-0 overflow-hidden pointer-events-none opacity-0 print:opacity-100 print:pointer-events-auto print:static print:w-auto print:h-auto print:overflow-visible';
+      el.className = 'thermal-print-portal';
       el.setAttribute('aria-hidden', 'true');
     }
     setContainer(el);

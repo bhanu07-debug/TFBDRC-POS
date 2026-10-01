@@ -33,30 +33,34 @@
 }
 
 /* ==========================================================================
-   Screen Rules: Completely hide thermal print containers & templates from screen
+   Screen Rules: Completely hide thermal print containers & templates on screen
+   Only active in screen media so they never bleed into printing!
    ========================================================================== */
-#thermal-print-container,
-div#thermal-print-container,
-#printable-receipt,
-#printable-kot,
-#printable-report,
-#printable-qr-sheet {
-  display: none !important;
-  visibility: hidden !important;
-  position: fixed !important;
-  top: -99999px !important;
-  left: -99999px !important;
-  width: 0 !important;
-  height: 0 !important;
-  opacity: 0 !important;
-  pointer-events: none !important;
-  overflow: hidden !important;
-  z-index: -99999 !important;
+@media screen {
+  #thermal-print-container,
+  div#thermal-print-container,
+  .thermal-print-portal,
+  #printable-receipt,
+  #printable-kot,
+  #printable-report,
+  #printable-qr-sheet {
+    display: none !important;
+    visibility: hidden !important;
+    position: fixed !important;
+    top: -99999px !important;
+    left: -99999px !important;
+    width: 0 !important;
+    height: 0 !important;
+    opacity: 0 !important;
+    pointer-events: none !important;
+    overflow: hidden !important;
+    z-index: -99999 !important;
+  }
 }
 
 /* ==========================================================================
    Comprehensive Thermal Receipt & Slip Print Rules
-   Ensures 100% of receipt text, item lines, and totals print cleanly in 80mm & 58mm.
+   Ensures 100% of KOT and receipt text, item lines, and totals print cleanly in 80mm & 58mm.
    ========================================================================== */
 @media print {
   @page {
@@ -68,11 +72,9 @@ div#thermal-print-container,
   body.printing-thermal #root,
   body.printing-thermal-58mm #root {
     display: none !important;
-  }
-
-  /* Fallback: Hide all main screen UI elements when not using full root toggle */
-  body * {
     visibility: hidden !important;
+    height: 0 !important;
+    overflow: hidden !important;
   }
 
   /* Reset html & body to clean pure white paper canvas */
@@ -89,25 +91,48 @@ div#thermal-print-container,
     print-color-adjust: exact !important;
   }
 
-  /* Isolate printable elements */
+  /* Ensure thermal print container and all its children are fully visible and properly positioned */
   #thermal-print-container,
-  #thermal-print-container *,
+  div#thermal-print-container,
+  .thermal-print-portal,
   #printable-receipt,
-  #printable-receipt *,
   #printable-kot,
-  #printable-kot *,
-  #printable-report,
-  #printable-report *,
-  #printable-qr-sheet,
-  #printable-qr-sheet * {
+  .thermal-kot-container,
+  .thermal-receipt-container {
+    display: block !important;
     visibility: visible !important;
+    position: static !important;
+    top: auto !important;
+    left: auto !important;
     opacity: 1 !important;
     pointer-events: auto !important;
+    overflow: visible !important;
+    background: #ffffff !important;
+    color: #000000 !important;
+  }
+
+  /* Ensure all nested text, divs, spans, tables inside the container are visible and black */
+  #thermal-print-container *,
+  div#thermal-print-container *,
+  .thermal-print-portal *,
+  #printable-receipt *,
+  #printable-kot *,
+  .thermal-kot-container *,
+  .thermal-receipt-container * {
+    visibility: visible !important;
+    opacity: 1 !important;
+    color: #000000 !important;
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
   }
 
   /* 80mm Dedicated Thermal Print Portal (Safe printable width: 66mm with right padding buffer) */
   #thermal-print-container,
-  body.printing-thermal #thermal-print-container {
+  body.printing-thermal #thermal-print-container,
+  #printable-kot,
+  #printable-receipt,
+  .thermal-kot-container,
+  .thermal-receipt-container {
     display: block !important;
     position: static !important;
     top: auto !important;
@@ -123,11 +148,17 @@ div#thermal-print-container,
     color: #000000 !important;
     overflow: visible !important;
     z-index: 1000 !important;
+    font-size: 11px !important;
+    line-height: 1.35 !important;
     font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, monospace !important;
   }
 
   /* 58mm Thermal Print Portal (Safe printable width: 44mm) */
-  body.printing-thermal-58mm #thermal-print-container {
+  body.printing-thermal-58mm #thermal-print-container,
+  body.printing-thermal-58mm #printable-kot,
+  body.printing-thermal-58mm #printable-receipt,
+  body.printing-thermal-58mm .thermal-kot-container,
+  body.printing-thermal-58mm .thermal-receipt-container {
     display: block !important;
     position: static !important;
     top: auto !important;
@@ -143,6 +174,8 @@ div#thermal-print-container,
     color: #000000 !important;
     overflow: visible !important;
     z-index: 1000 !important;
+    font-size: 9.5px !important;
+    line-height: 1.3 !important;
     font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, monospace !important;
   }
 

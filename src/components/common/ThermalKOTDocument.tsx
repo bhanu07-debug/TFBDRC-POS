@@ -47,17 +47,25 @@ export const ThermalKOTDocument: React.FC<ThermalKOTDocumentProps> = ({
 }) => {
   const is58mm = paperWidth === '58mm';
 
-  // Normalize items array
-  const items: ThermalKOTItem[] = ticket.filteredItems || (ticket.items || []).map(item => ({
+  // Normalize items array with fallback to linkedOrder.items
+  const rawList = (ticket.filteredItems && ticket.filteredItems.length > 0)
+    ? ticket.filteredItems
+    : (ticket.items && ticket.items.length > 0)
+    ? ticket.items
+    : (linkedOrder?.items && linkedOrder.items.length > 0)
+    ? linkedOrder.items
+    : [];
+
+  const items: ThermalKOTItem[] = rawList.map(item => ({
     id: item.id || item.orderItemId,
     orderItemId: item.orderItemId,
     quantity: item.quantity || 1,
-    name: item.name || item.nameSnapshot || 'Dish Item',
-    variant: item.variant || item.variantName,
+    name: item.name || item.nameSnapshot || (item as any).title || 'Dish Item',
+    variant: item.variant || (item as any).variantName,
     size: item.size,
     color: item.color,
     sku: item.sku,
-    instructions: item.instructions,
+    instructions: item.instructions || (item as any).notes || (item as any).specialInstructions,
     category: item.category,
     status: item.status,
     priority: item.priority || (ticket.priority === 'HIGH' ? 'HIGH' : 'STANDARD'),
@@ -179,8 +187,13 @@ export const ThermalKOTDocument: React.FC<ThermalKOTDocumentProps> = ({
           <span className="flex-1 text-left px-1">ITEM & SPECIFICATIONS</span>
         </div>
 
-        <div className="divide-y divide-dashed divide-black/40 pt-1.5 space-y-1.5">
-          {items.map((item, idx) => (
+        {items.length === 0 ? (
+          <div className="py-3 text-center text-xs font-bold text-neutral-800">
+            No items listed on this ticket
+          </div>
+        ) : (
+          <div className="divide-y divide-dashed divide-black/40 pt-1.5 space-y-1.5">
+            {items.map((item, idx) => (
             <div key={item.id || idx} className="pt-1.5 pb-1 avoid-break">
               <div className={`flex items-start ${item.cancelled ? 'line-through opacity-60' : ''}`}>
                 {/* Large quantity indicator */}
@@ -244,6 +257,7 @@ export const ThermalKOTDocument: React.FC<ThermalKOTDocumentProps> = ({
             </div>
           ))}
         </div>
+      )}
       </div>
 
       {/* ====================================================

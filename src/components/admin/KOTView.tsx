@@ -634,9 +634,11 @@ export const KOTView: React.FC = () => {
     // Give browser small render tick to populate thermal print DOM before window.print()
     setTimeout(() => {
       triggerThermalPrint('80mm');
-      setTimeout(() => {
+      const handleAfterPrint = () => {
         setActivePrintTicket(null);
-      }, 1200);
+        window.removeEventListener('afterprint', handleAfterPrint);
+      };
+      window.addEventListener('afterprint', handleAfterPrint);
     }, 100);
   };
 

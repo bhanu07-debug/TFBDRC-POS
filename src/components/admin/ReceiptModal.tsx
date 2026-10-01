@@ -64,14 +64,14 @@ export const ReceiptModal: React.FC<ReceiptModalProps> = ({
     }
     setTimeout(() => {
       triggerThermalPrint(paperWidth);
-    }, 50);
+    }, 100);
   };
 
   const handlePrintKOT = () => {
     setActivePrintDoc('kot');
     setTimeout(() => {
       triggerThermalPrint(paperWidth);
-    }, 50);
+    }, 100);
   };
 
   const handleWhatsAppSend = () => {

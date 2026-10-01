@@ -227,7 +227,7 @@ export const SettleBillModal: React.FC<SettleBillModalProps> = ({
       setTimeout(() => {
         triggerThermalPrint('80mm');
         setIsPrintTriggered(true);
-      }, 50);
+      }, 100);
     } else if (onReceiptOpen) {
       onReceiptOpen();
     }
@@ -239,7 +239,7 @@ export const SettleBillModal: React.FC<SettleBillModalProps> = ({
       setTimeout(() => {
         triggerThermalPrint('80mm');
         setIsKOTPrintTriggered(true);
-      }, 50);
+      }, 100);
     }
   };
 

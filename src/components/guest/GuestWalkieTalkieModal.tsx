@@ -13,6 +13,7 @@ import {
   Send,
   Sparkles,
   CheckCircle2,
+  CheckCheck,
   AlertCircle,
   Clock,
   User,
@@ -20,7 +21,8 @@ import {
   Signal,
   HelpCircle,
   MessageSquare,
-  RotateCcw
+  RotateCcw,
+  ChevronDown
 } from 'lucide-react';
 import {
   playWalkieTalkieChirp,
@@ -64,11 +66,60 @@ export const GuestWalkieTalkieModal: React.FC<GuestWalkieTalkieModalProps> = ({
   const audioChunksRef = useRef<Blob[]>([]);
   const recordingTimerRef = useRef<NodeJS.Timeout | null>(null);
   const activeAudioRef = useRef<HTMLAudioElement | null>(null);
+  const messagesContainerRef = useRef<HTMLDivElement | null>(null);
+  const messagesEndRef = useRef<HTMLDivElement | null>(null);
+  const [showScrollBottomBtn, setShowScrollBottomBtn] = useState(false);
 
-  // Filter messages for this table
-  const tableMessages = walkieTalkieMessages
-    .filter(m => m.tableNumber === currentGuestTableNumber)
-    .sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
+  // Filter messages for this table chronologically (oldest at top, newest at bottom like WhatsApp)
+  const tableMessages = React.useMemo(() => {
+    return [...walkieTalkieMessages]
+      .filter(m => m.tableNumber === currentGuestTableNumber)
+      .sort((a, b) => {
+        const timeDiff = new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime();
+        if (timeDiff !== 0) return timeDiff;
+        return (a.id || '').localeCompare(b.id || '');
+      });
+  }, [walkieTalkieMessages, currentGuestTableNumber]);
+
+  // Robust auto-scroll to bottom directly on scrollable container
+  const scrollToBottom = (smooth = true) => {
+    if (messagesContainerRef.current) {
+      const container = messagesContainerRef.current;
+      if (smooth) {
+        container.scrollTo({ top: container.scrollHeight, behavior: 'smooth' });
+      } else {
+        container.scrollTop = container.scrollHeight;
+      }
+    }
+    messagesEndRef.current?.scrollIntoView({ behavior: smooth ? 'smooth' : 'auto' });
+  };
+
+  const handleMessagesScroll = () => {
+    if (!messagesContainerRef.current) return;
+    const { scrollTop, scrollHeight, clientHeight } = messagesContainerRef.current;
+    // Show jump to bottom button if user scrolled up more than 90px
+    setShowScrollBottomBtn(scrollHeight - scrollTop - clientHeight > 90);
+  };
+
+  // When modal opens, jump to latest message at the bottom
+  useEffect(() => {
+    if (isOpen) {
+      scrollToBottom(false);
+      const t1 = setTimeout(() => scrollToBottom(false), 50);
+      const t2 = setTimeout(() => scrollToBottom(true), 180);
+      return () => {
+        clearTimeout(t1);
+        clearTimeout(t2);
+      };
+    }
+  }, [isOpen]);
+
+  // When new messages arrive, automatically scroll down
+  useEffect(() => {
+    scrollToBottom(true);
+    const t = setTimeout(() => scrollToBottom(true), 60);
+    return () => clearTimeout(t);
+  }, [tableMessages.length]);
 
   // Auto-play incoming admin voice reply if modal is open
   const prevAdminCountRef = useRef(0);
@@ -114,7 +165,7 @@ export const GuestWalkieTalkieModal: React.FC<GuestWalkieTalkieModalProps> = ({
 
       if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
         setMicPermissionDenied(true);
-        setInfoNotice('Voice recording not supported in this browser. You can still send text walkie messages below!');
+        setInfoNotice('Voice recording not supported in this browser. You can still type messages below!');
         return;
       }
 
@@ -170,7 +221,7 @@ export const GuestWalkieTalkieModal: React.FC<GuestWalkieTalkieModalProps> = ({
       console.warn('Microphone access issue:', err);
       setMicPermissionDenied(true);
       setIsRecording(false);
-      setInfoNotice('Microphone access blocked or unavailable. You can tap quick presets or type to transmit!');
+      setInfoNotice('Microphone access blocked. You can tap quick presets or type messages!');
     }
   };
 
@@ -211,7 +262,7 @@ export const GuestWalkieTalkieModal: React.FC<GuestWalkieTalkieModalProps> = ({
           type: 'voice'
         });
         setIsSubmitting(false);
-        setInfoNotice('Transmitted to Cashier & Staff!');
+        setInfoNotice('Voice message sent to Cashier!');
         setTimeout(() => setInfoNotice(null), 3000);
       };
     } catch (err) {
@@ -235,7 +286,7 @@ export const GuestWalkieTalkieModal: React.FC<GuestWalkieTalkieModalProps> = ({
         text: `🚨 Urgent Walkie-Talkie Direct Call to Cashier / Staff!`,
         type: 'call_ring'
       });
-      setInfoNotice('Calling Cashier desk radio! Cashier notified.');
+      setInfoNotice('Ringing Cashier Desk radio!');
     } catch (err) {
       console.warn(err);
     } finally {
@@ -248,6 +299,7 @@ export const GuestWalkieTalkieModal: React.FC<GuestWalkieTalkieModalProps> = ({
   // Send Quick Preset Message
   const handleSendPreset = async (presetText: string) => {
     setIsSubmitting(true);
+    scrollToBottom(true);
     try {
       playWalkieTalkieChirp();
       await sendWalkieTalkieMessage({
@@ -259,8 +311,9 @@ export const GuestWalkieTalkieModal: React.FC<GuestWalkieTalkieModalProps> = ({
         text: presetText,
         type: 'roger'
       });
-      setInfoNotice(`Transmitted: "${presetText}"`);
+      setInfoNotice(`Sent: "${presetText}"`);
       setTimeout(() => setInfoNotice(null), 3000);
+      setTimeout(() => scrollToBottom(true), 80);
     } catch (err) {
       console.warn(err);
     } finally {
@@ -271,11 +324,12 @@ export const GuestWalkieTalkieModal: React.FC<GuestWalkieTalkieModalProps> = ({
   // Send Custom Text Transmission
   const handleSendCustomText = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!customText.trim()) return;
+    if (!customText.trim() || isSubmitting) return;
 
     const msg = customText.trim();
     setCustomText('');
     setIsSubmitting(true);
+    scrollToBottom(true);
 
     try {
       playWalkieTalkieChirp();
@@ -288,8 +342,9 @@ export const GuestWalkieTalkieModal: React.FC<GuestWalkieTalkieModalProps> = ({
         text: msg,
         type: 'voice'
       });
-      setInfoNotice('Transmitted to Cashier!');
-      setTimeout(() => setInfoNotice(null), 3000);
+      setInfoNotice('Message sent!');
+      setTimeout(() => setInfoNotice(null), 2500);
+      setTimeout(() => scrollToBottom(true), 80);
     } catch (err) {
       console.warn(err);
     } finally {
@@ -303,7 +358,7 @@ export const GuestWalkieTalkieModal: React.FC<GuestWalkieTalkieModalProps> = ({
     try {
       await clearTableWalkieTalkie(currentGuestTableNumber);
       playWalkieRogerBeep();
-      setInfoNotice(`Table ${tableNumStr} radio history cleared!`);
+      setInfoNotice(`Table ${tableNumStr} chat cleared!`);
       setTimeout(() => setInfoNotice(null), 3000);
     } catch (err) {
       console.warn(err);
@@ -352,297 +407,324 @@ export const GuestWalkieTalkieModal: React.FC<GuestWalkieTalkieModalProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-black/80 backdrop-blur-md animate-in fade-in duration-200">
-      <div className="bg-[#0F172A] border-2 border-amber-500/40 rounded-3xl w-full max-w-md overflow-hidden shadow-2xl flex flex-col max-h-[92vh] text-slate-100">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-2 sm:p-4 bg-black/80 backdrop-blur-md animate-in fade-in duration-200">
+      <div className="bg-[#0F172A] border-2 border-emerald-500/40 rounded-3xl w-full max-w-lg h-[92vh] max-h-[720px] overflow-hidden shadow-2xl flex flex-col text-slate-100">
         
-        {/* Walkie Talkie Radio Top Antenna & Status Bar */}
-        <div className="bg-gradient-to-r from-gray-950 via-slate-900 to-gray-950 px-4 py-3 border-b border-slate-800 flex items-center justify-between">
-          <div className="flex items-center gap-2.5">
-            <div className="w-8 h-8 rounded-xl bg-gradient-to-br from-amber-500 to-rose-600 text-white flex items-center justify-center shadow-md shadow-rose-900/40">
-              <Radio className="w-4 h-4 animate-pulse" />
+        {/* WhatsApp-Style Top App Header */}
+        <div className="bg-[#1F2C34] px-4 py-3 border-b border-slate-800 flex items-center justify-between flex-shrink-0 shadow-sm">
+          <div className="flex items-center gap-3">
+            <div className="relative">
+              <div className="w-10 h-10 rounded-full bg-gradient-to-tr from-emerald-600 to-teal-500 flex items-center justify-center text-white shadow-md">
+                <Radio className="w-5 h-5" />
+              </div>
+              <span className="absolute bottom-0 right-0 w-3 h-3 rounded-full bg-emerald-400 ring-2 ring-[#1F2C34] animate-pulse" />
             </div>
+
             <div>
-              <div className="flex items-center gap-1.5">
-                <span className="text-xs font-black tracking-wider uppercase text-amber-400">
-                  Walkie-Talkie Radio
-                </span>
-                <span className="flex items-center gap-1 px-1.5 py-0.5 rounded-full bg-emerald-500/20 text-emerald-400 text-[9px] font-bold border border-emerald-500/30">
-                  <Signal className="w-2.5 h-2.5" />
-                  CH-01 LIVE
+              <div className="flex items-center gap-2">
+                <h3 className="text-sm font-bold text-white tracking-wide">
+                  Cashier & Staff Direct
+                </h3>
+                <span className="px-2 py-0.5 rounded-full bg-amber-500 text-gray-950 font-black text-[10px] uppercase">
+                  Table {tableNumStr}
                 </span>
               </div>
-              <p className="text-[11px] text-slate-400">
-                Direct Link • Cashier & Floor Staff
+              <p className="text-[11px] text-emerald-400 font-medium flex items-center gap-1">
+                <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-ping inline-block" />
+                <span>online • Live Radio Link</span>
               </p>
             </div>
           </div>
 
-          <button
-            onClick={onClose}
-            className="p-1.5 rounded-xl text-slate-400 hover:text-white hover:bg-slate-800 transition"
-            title="Close Walkie-Talkie"
-          >
-            <X className="w-5 h-5" />
-          </button>
+          <div className="flex items-center gap-1">
+            {/* Direct Call Cashier button */}
+            <button
+              type="button"
+              onClick={handleDirectCallCashier}
+              disabled={callRingingState || isSubmitting}
+              className={`p-2 rounded-xl text-amber-300 hover:bg-slate-800/80 transition flex items-center gap-1 text-xs font-bold ${
+                callRingingState ? 'bg-rose-600 text-white animate-bounce' : ''
+              }`}
+              title="Ring Cashier Desk Directly"
+            >
+              <PhoneCall className={`w-4 h-4 ${callRingingState ? 'animate-spin' : ''}`} />
+              <span className="hidden sm:inline">{callRingingState ? 'Ringing...' : 'Call'}</span>
+            </button>
+
+            {/* Clear table chat */}
+            {tableMessages.length > 0 && (
+              <button
+                type="button"
+                onClick={handleClearMyTableChat}
+                disabled={isSubmitting}
+                className="p-2 rounded-xl text-slate-400 hover:text-rose-400 hover:bg-slate-800/80 transition"
+                title="Clear table chat history"
+              >
+                <RotateCcw className="w-4 h-4" />
+              </button>
+            )}
+
+            {/* Close */}
+            <button
+              onClick={onClose}
+              className="p-2 rounded-xl text-slate-400 hover:text-white hover:bg-slate-800 transition"
+              title="Close chat"
+            >
+              <X className="w-5 h-5" />
+            </button>
+          </div>
         </div>
 
-        {/* Table Identification Card */}
-        <div className="bg-slate-900/90 border-b border-slate-800 px-4 py-2.5 flex items-center justify-between text-xs">
-          <div className="flex items-center gap-2">
-            <span className="px-2 py-0.5 rounded-md bg-amber-500 text-gray-950 font-black text-[11px] uppercase tracking-wider">
-              Table {tableNumStr}
-            </span>
-            <span className="text-slate-300 font-medium">
-              {tableSection}
-            </span>
-          </div>
-          <div className="text-[10px] text-slate-400 font-mono flex items-center gap-1">
-            <ShieldCheck className="w-3 h-3 text-amber-400" />
-            <span>Encrypted Direct Channel</span>
-          </div>
-        </div>
-
-        {/* Informational Toast notice */}
+        {/* Informational Toast Notice */}
         {infoNotice && (
-          <div className="bg-amber-500/15 border-b border-amber-500/30 px-4 py-1.5 text-xs text-amber-300 flex items-center gap-1.5 animate-in fade-in">
-            <Sparkles className="w-3.5 h-3.5 text-amber-400 flex-shrink-0" />
+          <div className="bg-emerald-500/15 border-b border-emerald-500/30 px-4 py-1.5 text-xs text-emerald-300 flex items-center gap-2 animate-in fade-in flex-shrink-0">
+            <Sparkles className="w-3.5 h-3.5 text-emerald-400 flex-shrink-0" />
             <span>{infoNotice}</span>
           </div>
         )}
 
-        {/* Radio Body / Transmission Area */}
-        <div className="flex-1 overflow-y-auto p-4 space-y-4">
-          
-          {/* Main Push to Talk & Direct Call Controls */}
-          <div className="bg-gradient-to-b from-slate-900 to-slate-950 rounded-2xl p-4 border border-slate-800 shadow-inner flex flex-col items-center text-center">
-            
-            {/* Visual Audio Frequency Wave during recording */}
-            <div className="h-10 flex items-center justify-center gap-1 mb-2 w-full">
-              {isRecording ? (
-                <>
-                  {[...Array(16)].map((_, i) => (
-                    <span
-                      key={i}
-                      className="w-1.5 bg-rose-500 rounded-full animate-pulse"
-                      style={{
-                        height: `${Math.max(8, Math.sin((i + recordingSeconds * 4) * 0.7) * 32 + 10)}px`,
-                        animationDuration: `${0.3 + (i % 4) * 0.15}s`
-                      }}
-                    />
-                  ))}
-                </>
-              ) : (
-                <div className="flex items-center gap-1 text-[11px] text-slate-400">
-                  <span className="w-2 h-2 rounded-full bg-emerald-500" />
-                  <span>Channel Open • Ready to transmit</span>
-                </div>
-              )}
-            </div>
-
-            {/* Large Interactive PTT (Push-To-Talk) Button */}
-            <button
-              id="btn-guest-push-to-talk"
-              type="button"
-              onMouseDown={startRecording}
-              onMouseUp={() => stopRecording()}
-              onTouchStart={startRecording}
-              onTouchEnd={() => stopRecording()}
-              disabled={isSubmitting}
-              className={`relative w-28 h-28 rounded-full flex flex-col items-center justify-center transition-all duration-150 shadow-xl select-none touch-none cursor-pointer ${
-                isRecording
-                  ? 'bg-rose-600 text-white scale-105 shadow-rose-600/50 ring-4 ring-rose-400/50 animate-pulse'
-                  : 'bg-gradient-to-tr from-amber-600 via-amber-500 to-amber-400 text-gray-950 hover:brightness-110 shadow-amber-500/30 active:scale-95'
-              }`}
-              title="Press & Hold to Speak into Walkie-Talkie"
-            >
-              {isRecording ? (
-                <>
-                  <Mic className="w-8 h-8 animate-bounce" />
-                  <span className="text-[11px] font-black uppercase tracking-wider mt-1">
-                    {recordingSeconds}s • TALKING
-                  </span>
-                </>
-              ) : (
-                <>
-                  <Mic className="w-8 h-8 text-gray-950" />
-                  <span className="text-[11px] font-black uppercase tracking-wider mt-1">
-                    Hold to Talk
-                  </span>
-                </>
-              )}
-            </button>
-
-            <p className="text-[11px] text-slate-400 mt-3 font-medium">
-              {isRecording
-                ? '🔴 Recording voice transmission... Release to send!'
-                : 'Press & Hold to talk (or click to record voice to cashier)'}
-            </p>
-
-            {/* Direct Call / Ring Cashier Button */}
-            <div className="mt-4 pt-3 border-t border-slate-800 w-full flex items-center justify-center gap-2">
-              <button
-                type="button"
-                onClick={handleDirectCallCashier}
-                disabled={callRingingState || isSubmitting}
-                className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold transition shadow-md ${
-                  callRingingState
-                    ? 'bg-rose-600 text-white animate-bounce'
-                    : 'bg-slate-800 hover:bg-slate-700 text-amber-300 border border-amber-500/30'
-                }`}
-                title="Ring Cashier Desk Directly"
-              >
-                <PhoneCall className={`w-3.5 h-3.5 ${callRingingState ? 'animate-spin' : 'text-amber-400'}`} />
-                <span>{callRingingState ? 'Ringing Cashier Desk...' : 'Direct Call Cashier'}</span>
-              </button>
-            </div>
-          </div>
-
-          {/* Quick Voice Radio Presets */}
-          <div>
-            <h4 className="text-[11px] font-bold uppercase tracking-wider text-slate-400 mb-2 flex items-center gap-1.5">
-              <Sparkles className="w-3 h-3 text-amber-400" />
-              <span>Quick Radio Alerts</span>
-            </h4>
-            <div className="grid grid-cols-2 gap-2 text-xs">
-              {[
-                { label: '🧾 Bill Please', text: 'Table ' + tableNumStr + ': Please bring the bill' },
-                { label: '💧 Water Refill', text: 'Table ' + tableNumStr + ': Water refill requested' },
-                { label: '👨‍🍳 Food Status', text: 'Table ' + tableNumStr + ': Inquiring about order status' },
-                { label: '🙋 Staff Attention', text: 'Table ' + tableNumStr + ': Staff attention needed at table' }
-              ].map((p, idx) => (
-                <button
-                  key={idx}
-                  type="button"
-                  onClick={() => handleSendPreset(p.text)}
-                  disabled={isSubmitting}
-                  className="px-3 py-2 rounded-xl bg-slate-900 hover:bg-slate-800 border border-slate-800 hover:border-amber-500/40 text-slate-300 hover:text-white text-left font-medium transition active:scale-95 flex items-center justify-between"
-                >
-                  <span>{p.label}</span>
-                  <Radio className="w-3 h-3 text-slate-500" />
-                </button>
-              ))}
-            </div>
-          </div>
-
-          {/* Text Radio Message Input */}
-          <form onSubmit={handleSendCustomText} className="flex gap-2">
-            <input
-              type="text"
-              placeholder="Or type radio message..."
-              value={customText}
-              onChange={e => setCustomText(e.target.value)}
-              className="flex-1 px-3 py-2 bg-slate-900 border border-slate-800 rounded-xl text-xs text-white placeholder-slate-500 focus:outline-none focus:border-amber-500 transition"
-            />
-            <button
-              type="submit"
-              disabled={!customText.trim() || isSubmitting}
-              className="px-3.5 py-2 bg-amber-500 hover:bg-amber-600 disabled:opacity-40 text-gray-950 font-bold text-xs rounded-xl shadow transition flex items-center gap-1"
-            >
-              <Send className="w-3.5 h-3.5" />
-              <span>Send</span>
-            </button>
-          </form>
-
-          {/* Live Table Radio Transmissions Feed */}
-          <div>
-            <div className="flex items-center justify-between mb-2">
-              <h4 className="text-[11px] font-bold uppercase tracking-wider text-slate-400 flex items-center gap-1.5">
-                <MessageSquare className="w-3 h-3 text-amber-400" />
-                <span>Radio Log (Table {tableNumStr})</span>
-              </h4>
-              <div className="flex items-center gap-2">
-                {tableMessages.length > 0 && (
-                  <button
-                    type="button"
-                    onClick={handleClearMyTableChat}
-                    disabled={isSubmitting}
-                    className="text-[10px] text-rose-400 hover:text-rose-300 font-bold transition flex items-center gap-1 cursor-pointer"
-                    title="Clear radio chat for this table"
-                  >
-                    <RotateCcw className="w-2.5 h-2.5" />
-                    <span>Clear Chat</span>
-                  </button>
-                )}
-                <span className="text-[10px] text-slate-400">
-                  {tableMessages.length} transmissions
-                </span>
+        {/* ====================================================
+            WhatsApp-Style Chronological Chat Feed
+            Old messages scroll up, new messages come down at bottom!
+           ==================================================== */}
+        <div className="flex-1 min-h-0 relative flex flex-col bg-[#0B141A] overflow-hidden">
+          <div
+            ref={messagesContainerRef}
+            onScroll={handleMessagesScroll}
+            className="flex-1 overflow-y-auto p-4 space-y-3 min-h-0 overscroll-contain select-text"
+            style={{
+              scrollBehavior: 'smooth',
+              backgroundImage: 'radial-gradient(rgba(255, 255, 255, 0.04) 1px, transparent 0)',
+              backgroundSize: '24px 24px'
+            }}
+          >
+            {/* WhatsApp System Date & Security Pill */}
+            <div className="flex flex-col items-center gap-1.5 my-2">
+              <div className="px-3.5 py-1 rounded-lg bg-[#182229] border border-slate-800 text-[#8696A0] text-[11px] font-semibold tracking-wide uppercase shadow-xs">
+                TODAY
+              </div>
+              <div className="px-3 py-1 rounded-xl bg-[#182229]/80 border border-slate-800 text-amber-300/80 text-[10px] text-center max-w-xs flex items-center gap-1.5 shadow-xs">
+                <ShieldCheck className="w-3.5 h-3.5 text-emerald-400 flex-shrink-0" />
+                <span>Private Table {tableNumStr} channel • Clears upon bill settlement</span>
               </div>
             </div>
 
             {tableMessages.length === 0 ? (
-              <div className="p-4 rounded-xl bg-slate-900/60 border border-slate-800/80 text-center text-xs text-slate-400 space-y-1.5">
-                <div className="flex items-center justify-center gap-1 text-emerald-400 font-semibold">
-                  <CheckCircle2 className="w-3.5 h-3.5" />
-                  <span>Fresh Session • Radio Channel Clean</span>
+              <div className="h-full flex flex-col items-center justify-center text-center p-6 text-slate-500 space-y-2">
+                <div className="w-12 h-12 rounded-full bg-slate-800/80 border border-slate-700/60 flex items-center justify-center text-emerald-400 mb-1">
+                  <MessageSquare className="w-6 h-6" />
                 </div>
-                <p className="text-[11px] text-slate-400">
-                  All past radio chat and voice calls automatically clear upon bill settlement so each guest has a fresh session.
+                <p className="text-sm font-semibold text-slate-300">
+                  Direct Chat with Cashier & Waiters
                 </p>
-                <p className="text-[10px] text-slate-500">
-                  Hold the button above to speak or tap "Direct Call Cashier".
+                <p className="text-xs text-slate-400 max-w-xs">
+                  Need extra napkins, water refill, order status, or the bill? Type below or tap a quick alert!
                 </p>
+                <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 text-[11px] font-medium mt-2">
+                  <ShieldCheck className="w-3.5 h-3.5" />
+                  <span>Private Encrypted Table {tableNumStr} Channel</span>
+                </div>
               </div>
             ) : (
-              <div className="space-y-2 max-h-48 overflow-y-auto pr-1">
-                {tableMessages.slice(-6).map(msg => {
-                  const isGuest = msg.sender === 'guest';
-                  const isAudio = Boolean(msg.audioDataUrl);
-                  const isPlaying = playingMsgId === msg.id;
+              tableMessages.map(msg => {
+                const isGuest = msg.sender === 'guest';
+                const isAudio = Boolean(msg.audioDataUrl);
+                const isPlaying = playingMsgId === msg.id;
+                const isCallRing = msg.type === 'call_ring';
 
+                if (isCallRing) {
                   return (
-                    <div
-                      key={msg.id}
-                      className={`p-2.5 rounded-xl border text-xs flex flex-col gap-1 transition ${
-                        isGuest
-                          ? 'bg-slate-900/90 border-slate-800 ml-4'
-                          : 'bg-amber-500/10 border-amber-500/30 mr-4 text-amber-200'
-                      }`}
-                    >
-                      <div className="flex items-center justify-between text-[10px]">
-                        <span className={`font-bold ${isGuest ? 'text-slate-400' : 'text-amber-400'}`}>
-                          {isGuest ? '👤 You (Table ' + tableNumStr + ')' : '📻 Cashier / Staff'}
-                        </span>
-                        <span className="text-slate-400 font-mono">
+                    <div key={msg.id} className="flex justify-center my-1.5">
+                      <div className="px-3.5 py-1.5 rounded-full bg-rose-500/20 border border-rose-500/40 text-rose-300 text-[11px] font-bold flex items-center gap-1.5 shadow-xs">
+                        <PhoneCall className="w-3 h-3 text-rose-400 animate-pulse" />
+                        <span>{msg.text || 'Direct Walkie-Talkie Call triggered'}</span>
+                        <span className="text-[10px] text-rose-400/80 font-mono ml-1">
                           {new Date(msg.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                         </span>
                       </div>
+                    </div>
+                  );
+                }
 
-                      <div className="flex items-center justify-between gap-2 mt-0.5">
-                        <span className="text-slate-200 text-xs">
-                          {msg.text || (isAudio ? 'Voice transmission' : 'Radio call')}
+                return (
+                  <div
+                    key={msg.id}
+                    className={`flex ${isGuest ? 'justify-end' : 'justify-start'} animate-in fade-in slide-in-from-bottom-2 duration-200`}
+                  >
+                    <div
+                      className={`relative px-3.5 py-2 rounded-2xl text-xs max-w-[85%] shadow-md flex flex-col gap-1 transition ${
+                        isGuest
+                          ? 'bg-[#005C4B] text-white rounded-tr-xs border border-emerald-600/30'
+                          : 'bg-[#202C33] text-slate-100 rounded-tl-xs border border-slate-700/60'
+                      }`}
+                    >
+                      {/* Incoming sender label */}
+                      {!isGuest && (
+                        <span className="text-[11px] font-bold text-amber-400 flex items-center gap-1">
+                          <Radio className="w-3 h-3 text-amber-400" />
+                          <span>Cashier / Staff Desk</span>
                         </span>
+                      )}
 
-                        {isAudio && (
+                      {/* Content: Text or Voice Note */}
+                      {isAudio ? (
+                        <div className="flex items-center gap-3 py-1">
                           <button
                             type="button"
                             onClick={() => handlePlayAudio(msg.id, msg.audioDataUrl)}
-                            className={`flex items-center gap-1 px-2 py-1 rounded-lg text-[10px] font-bold transition flex-shrink-0 ${
+                            className={`w-9 h-9 rounded-full flex items-center justify-center transition shadow-md flex-shrink-0 cursor-pointer ${
                               isPlaying
                                 ? 'bg-rose-500 text-white animate-pulse'
-                                : 'bg-slate-800 hover:bg-slate-700 text-amber-300 border border-slate-700'
+                                : isGuest
+                                ? 'bg-emerald-400 hover:bg-emerald-300 text-gray-950'
+                                : 'bg-amber-500 hover:bg-amber-400 text-gray-950'
                             }`}
                           >
-                            {isPlaying ? <Pause className="w-3 h-3" /> : <Play className="w-3 h-3 fill-current" />}
-                            <span>{isPlaying ? 'Playing...' : (msg.audioDuration ? `${msg.audioDuration}s` : 'Listen')}</span>
+                            {isPlaying ? <Pause className="w-4 h-4" /> : <Play className="w-4 h-4 fill-current ml-0.5" />}
                           </button>
+
+                          {/* Audio Waveform visualization */}
+                          <div className="flex-1 flex flex-col gap-1">
+                            <div className="flex items-center gap-0.5 h-5">
+                              {[40, 70, 30, 90, 60, 100, 50, 80, 45, 95, 75, 40, 60, 30].map((h, idx) => (
+                                <span
+                                  key={idx}
+                                  className={`w-1 rounded-full ${
+                                    isPlaying ? 'bg-amber-300 animate-pulse' : isGuest ? 'bg-emerald-300/80' : 'bg-slate-400'
+                                  }`}
+                                  style={{ height: `${(h / 100) * 18}px` }}
+                                />
+                              ))}
+                            </div>
+                            <span className={`text-[10px] font-mono ${isGuest ? 'text-emerald-200' : 'text-slate-400'}`}>
+                              {isPlaying ? 'Playing Voice Note...' : `${msg.audioDuration ? `${msg.audioDuration}s` : 'Voice Note'}`}
+                            </span>
+                          </div>
+                        </div>
+                      ) : (
+                        <p className="text-xs leading-relaxed whitespace-pre-wrap break-words">
+                          {msg.text}
+                        </p>
+                      )}
+
+                      {/* Timestamp & Double Checkmarks */}
+                      <div className={`flex items-center justify-end gap-1 text-[10px] mt-0.5 ${
+                        isGuest ? 'text-emerald-200/80' : 'text-slate-400'
+                      }`}>
+                        <span className="font-mono">
+                          {new Date(msg.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                        </span>
+                        {isGuest && (
+                          <CheckCheck className="w-3.5 h-3.5 text-[#53BDEB] inline" />
                         )}
                       </div>
                     </div>
-                  );
-                })}
-              </div>
+                  </div>
+                );
+              })
             )}
+            {/* Scroll anchor at the bottom of messages list */}
+            <div ref={messagesEndRef} className="h-1" />
           </div>
 
+          {/* Floating Jump to Latest Button */}
+          {showScrollBottomBtn && (
+            <button
+              type="button"
+              onClick={() => scrollToBottom(true)}
+              className="absolute bottom-3 right-4 w-9 h-9 rounded-full bg-[#202C33] hover:bg-[#2A3942] border border-slate-700/80 text-emerald-400 shadow-2xl flex items-center justify-center transition-all duration-200 active:scale-90 z-20 cursor-pointer animate-in fade-in zoom-in-75"
+              title="Jump to latest messages"
+            >
+              <ChevronDown className="w-5 h-5 text-emerald-400" />
+            </button>
+          )}
         </div>
 
-        {/* Footer info note */}
-        <div className="bg-slate-950 px-4 py-2 border-t border-slate-800 text-[10px] text-slate-400 flex items-center justify-between">
-          <span className="flex items-center gap-1 text-emerald-400 font-medium">
-            <Sparkles className="w-3 h-3" />
-            Auto-clears on bill settlement
-          </span>
-          <span className="text-amber-400">Fat Buddha Walkie-Talkie v2</span>
+        {/* ====================================================
+            Pinned WhatsApp Bottom Input Console
+            Type message at down, with quick presets & voice note
+           ==================================================== */}
+        <div className="bg-[#1F2C34] border-t border-slate-800 p-3 space-y-2.5 flex-shrink-0">
+          
+          {/* Quick Preset Action Chips (Horizontal Scroll) */}
+          <div className="flex items-center gap-1.5 overflow-x-auto pb-1 text-xs no-scrollbar">
+            {[
+              { label: '🧾 Bill Please', text: 'Please bring the bill to Table ' + tableNumStr },
+              { label: '💧 Water Refill', text: 'Water refill requested for Table ' + tableNumStr },
+              { label: '👨‍🍳 Food Status', text: 'Table ' + tableNumStr + ': Inquiring about order status' },
+              { label: '🙋 Call Waiter', text: 'Waiter attention requested at Table ' + tableNumStr }
+            ].map((p, idx) => (
+              <button
+                key={idx}
+                type="button"
+                onClick={() => handleSendPreset(p.text)}
+                disabled={isSubmitting}
+                className="px-3 py-1.5 rounded-full bg-[#2A3942] hover:bg-slate-700/80 border border-slate-700 text-slate-200 hover:text-white text-xs font-medium whitespace-nowrap transition active:scale-95 flex-shrink-0 cursor-pointer"
+              >
+                {p.label}
+              </button>
+            ))}
+          </div>
+
+          {/* If Recording Voice: Show Live Voice Wave Bar */}
+          {isRecording ? (
+            <div className="flex items-center justify-between gap-3 p-2.5 bg-rose-950/40 border border-rose-500/50 rounded-2xl animate-pulse">
+              <div className="flex items-center gap-2">
+                <span className="w-3 h-3 rounded-full bg-rose-500 animate-ping" />
+                <span className="text-xs font-bold text-rose-300">
+                  Recording Voice ({recordingSeconds}s / 30s)
+                </span>
+              </div>
+              <button
+                type="button"
+                onClick={() => stopRecording()}
+                className="px-4 py-1.5 bg-rose-600 hover:bg-rose-500 text-white font-bold text-xs rounded-xl shadow cursor-pointer"
+              >
+                Release to Send
+              </button>
+            </div>
+          ) : (
+            /* WhatsApp-Style Input Bar */
+            <div className="flex items-center gap-2">
+              {/* Voice Hold-to-Talk Button */}
+              <button
+                id="btn-guest-push-to-talk"
+                type="button"
+                onMouseDown={startRecording}
+                onMouseUp={() => stopRecording()}
+                onTouchStart={startRecording}
+                onTouchEnd={() => stopRecording()}
+                disabled={isSubmitting}
+                className="w-10 h-10 rounded-full bg-[#2A3942] hover:bg-[#34444e] text-amber-400 hover:text-amber-300 flex items-center justify-center transition flex-shrink-0 shadow active:scale-95 cursor-pointer touch-none select-none"
+                title="Hold to Record Voice Note"
+              >
+                <Mic className="w-5 h-5" />
+              </button>
+
+              {/* Text Input Form */}
+              <form onSubmit={handleSendCustomText} className="flex-1 flex items-center gap-2">
+                <input
+                  type="text"
+                  placeholder="Type a message..."
+                  value={customText}
+                  onChange={e => setCustomText(e.target.value)}
+                  disabled={isSubmitting}
+                  className="flex-1 px-4 py-2.5 bg-[#2A3942] border border-slate-700/60 rounded-full text-xs text-white placeholder-slate-400 focus:outline-none focus:border-emerald-500 transition"
+                />
+
+                {/* Send Button */}
+                <button
+                  type="submit"
+                  disabled={!customText.trim() || isSubmitting}
+                  className="w-10 h-10 rounded-full bg-[#00A884] hover:bg-[#008f72] disabled:opacity-40 text-white flex items-center justify-center transition shadow flex-shrink-0 cursor-pointer active:scale-95"
+                  title="Send message"
+                >
+                  <Send className="w-4 h-4 ml-0.5" />
+                </button>
+              </form>
+            </div>
+          )}
+
         </div>
 
       </div>
