@@ -1,5 +1,6 @@
 import React, { useState, useMemo } from 'react';
 import { usePOS } from '../../context/POSContext';
+import * as XLSX from 'xlsx';
 import {
   TrendingUp,
   BarChart3,
@@ -209,6 +210,47 @@ export const ReportsView: React.FC = () => {
       .sort((a, b) => b.amount - a.amount);
   }, [filteredOrders]);
 
+  // Cash vs Digital sales breakdown
+  const cashSales = useMemo(() => {
+    return filteredOrders
+      .filter(o => (o.paymentMethod || 'cash').toLowerCase() === 'cash')
+      .reduce((sum, o) => sum + (o.finalAmount ?? o.total ?? 0), 0);
+  }, [filteredOrders]);
+
+  const digitalSales = useMemo(() => {
+    return filteredOrders
+      .filter(o => (o.paymentMethod || 'cash').toLowerCase() !== 'cash')
+      .reduce((sum, o) => sum + (o.finalAmount ?? o.total ?? 0), 0);
+  }, [filteredOrders]);
+
+  // Itemized goods/dishes sales aggregation
+  const itemSalesList = useMemo(() => {
+    const map = new Map<string, { name: string; category: string; quantity: number; unitPrice: number; totalAmount: number }>();
+    filteredOrders.forEach(o => {
+      (o.items || []).forEach(it => {
+        const name = it.nameSnapshot || it.name || 'Menu Dish Item';
+        const key = name.toLowerCase().trim();
+        const qty = Number(it.quantity) || 1;
+        const price = Number(it.priceSnapshot ?? it.price ?? 0);
+        const lineTotal = price * qty;
+        if (map.has(key)) {
+          const prev = map.get(key)!;
+          prev.quantity += qty;
+          prev.totalAmount += lineTotal;
+        } else {
+          map.set(key, {
+            name,
+            category: (it as any).category || (it as any).department || 'Dishes',
+            quantity: qty,
+            unitPrice: price,
+            totalAmount: lineTotal
+          });
+        }
+      });
+    });
+    return Array.from(map.values()).sort((a, b) => b.totalAmount - a.totalAmount);
+  }, [filteredOrders]);
+
   // Real Hourly rush dynamically and accurately synchronized from actual order timestamps
   const hourlyRush = useMemo(() => {
     const hourBuckets: Record<number, {
@@ -299,7 +341,336 @@ export const ReportsView: React.FC = () => {
     return hourlyRush;
   }, [rushViewMode, activeHoursList, hourlyRush]);
 
-  // Export report to CSV (Excel format)
+  // Export multi-sheet Excel Workbook (.xlsx) with Sales & Performance, Daily Financial Report, and Financial Ledger
+  const handleExportExcel = () => {
+    try {
+      const panNo = settings.panNumber || settings.panNo || '302194821';
+      const restaurantName = settings.restaurantName || settings.name || 'The Fat Buddha Delight Restro & Cafe';
+      const nowStr = new Date().toLocaleString();
+      const reportingPeriodStr = reportRange === 'custom' ? `Specific Date (${selectedDate})` : reportRange.toUpperCase();
+      const effectiveDate = reportRange === 'custom'
+        ? selectedDate
+        : reportRange === 'today'
+        ? new Date().toISOString().slice(0, 10)
+        : `${reportRange.toUpperCase()} (${new Date().toISOString().slice(0, 10)})`;
+
+      const wb = XLSX.utils.book_new();
+
+      // ====================================================
+      // SHEET 1: Sales & Performance
+      // ====================================================
+      const sheet1Rows: any[][] = [
+        ["RESTAURANT PERFORMANCE & SALES REPORT"],
+        ["Restaurant:", restaurantName],
+        ["PAN NO:", panNo],
+        ["Reporting Period:", reportingPeriodStr],
+        ["Generated On:", nowStr],
+        [],
+        ["--- EXECUTIVE SUMMARY ---"],
+        ["Gross Sales / Total Income (Rs.)", Number(totalSales.toFixed(2))],
+        ["Total Orders", filteredOrders.length],
+        ["Total Recorded Expenses (Rs.)", Number(totalExpenses.toFixed(2))],
+        ["Cash Expenses (Rs.)", Number(cashExpenses.toFixed(2))],
+        ["Digital/Bank Expenses (Rs.)", Number(digitalExpenses.toFixed(2))],
+        ["Balance After Expenses (Rs.)", Number(balanceAfterExpenses.toFixed(2))],
+        ["Average Order Value (Rs.)", Number(avgOrderValue.toFixed(2))],
+        ["Total Items Sold", totalItemsSold],
+        [],
+        ["--- EXPENSES BREAKDOWN ---"],
+        ["Expense Category", "Expense Amount (Rs.)", "Share of Total (%)"],
+        ...categoryExpenses.map(c => [
+          c.category,
+          Number(c.amount.toFixed(2)),
+          totalExpenses > 0 ? `${((c.amount / totalExpenses) * 100).toFixed(1)}%` : '0%'
+        ]),
+        ["Total Expenses", Number(totalExpenses.toFixed(2)), "100.0%"],
+        [],
+        ["--- CATEGORY SALES MIX ---"],
+        ["Category", "Sales Revenue (Rs.)", "Contribution Share (%)"],
+        ...categorySales.map(c => [c.name, Number(c.amount.toFixed(2)), `${c.percent}%`]),
+        [],
+        ["--- HOURLY RUSH BREAKDOWN ---"],
+        ["Time Slot", "Order Count", "Sales Volume (Rs.)"],
+        ...hourlyRush.map(h => [h.hour, h.orders, Number(h.sales.toFixed(2))]),
+        [],
+        ["--- DETAILED ORDER TRANSACTIONS ---"],
+        [
+          "Order ID",
+          "Table Number",
+          "Timestamp",
+          "Guest Name",
+          "Ordered Items",
+          "Subtotal (Rs.)",
+          "Discount (Rs.)",
+          "VAT (Rs.)",
+          "Final Total (Rs.)",
+          "Status",
+          "Payment Method"
+        ],
+        ...filteredOrders.map(o => {
+          const itemsText = (o.items || [])
+            .map(it => `${it.nameSnapshot || it.name || 'Item'} x${it.quantity || 1}`)
+            .join('; ');
+          const dateText = o.createdAt ? new Date(o.createdAt).toLocaleString() : '-';
+          return [
+            o.orderNumber || o.id,
+            `Table ${o.tableNumber || '-'}`,
+            dateText,
+            o.guestName || 'Walk-in Guest',
+            itemsText,
+            Number((o.subtotal || 0).toFixed(2)),
+            Number((o.discount || o.discountAmount || 0).toFixed(2)),
+            Number((o.vat || o.taxAmount || 0).toFixed(2)),
+            Number((o.finalAmount ?? o.total ?? 0).toFixed(2)),
+            o.status,
+            o.paymentMethod || 'cash'
+          ];
+        })
+      ];
+
+      const ws1 = XLSX.utils.aoa_to_sheet(sheet1Rows);
+      ws1['!cols'] = [
+        { wch: 32 }, { wch: 25 }, { wch: 24 }, { wch: 22 }, { wch: 45 },
+        { wch: 15 }, { wch: 15 }, { wch: 15 }, { wch: 16 }, { wch: 14 }, { wch: 16 }
+      ];
+      XLSX.utils.book_append_sheet(wb, ws1, "Sales & Performance");
+
+      // ====================================================
+      // SHEET 2: Daily_Financial_Report (Exact Layout Requested)
+      // ====================================================
+      const sheet2Rows: any[][] = [
+        [restaurantName.toUpperCase()],
+        ["Daily Financial Report"],
+        [`Date: ${effectiveDate}`],
+        [`Reporting Period: ${reportingPeriodStr}`],
+        [`PAN NO: ${panNo}`],
+        [],
+        ["INCOME"],
+        ["Total Sales:", Number(totalSales.toFixed(2))],
+        ["Total Orders:", filteredOrders.length],
+        ["Average Order Value:", Number(avgOrderValue.toFixed(2))],
+        ["Total Items Sold:", totalItemsSold],
+        [],
+        ["EXPENSES"],
+        ...(categoryExpenses.length === 0
+          ? [["No Expenses Recorded:", 0.00]]
+          : categoryExpenses.map(c => [`${c.category}:`, Number(c.amount.toFixed(2))])
+        ),
+        ["Total Expenses:", Number(totalExpenses.toFixed(2))],
+        [],
+        ["FINANCIAL SUMMARY"],
+        ["Total Income:", Number(totalSales.toFixed(2))],
+        ["Total Expenses:", Number(totalExpenses.toFixed(2))],
+        ["Balance After Expenses:", Number(balanceAfterExpenses.toFixed(2))],
+        [],
+        ["PAYMENT METHOD RECONCILIATION"],
+        ["Cash Sales Collected:", Number(cashSales.toFixed(2))],
+        ["Digital / Bank / QR Sales:", Number(digitalSales.toFixed(2))],
+        ["Cash Expenses Paid Out:", Number(cashExpenses.toFixed(2))],
+        ["Digital / Bank Expenses Paid Out:", Number(digitalExpenses.toFixed(2))],
+        ["Net Cash in Drawer Change:", Number((cashSales - cashExpenses).toFixed(2))]
+      ];
+
+      const ws2 = XLSX.utils.aoa_to_sheet(sheet2Rows);
+      ws2['!cols'] = [{ wch: 36 }, { wch: 24 }, { wch: 28 }];
+      XLSX.utils.book_append_sheet(wb, ws2, "Daily_Financial_Report");
+
+      // ====================================================
+      // SHEET 3: Financial_Ledger (Goods Sales & Expenses Side-by-Side + Totals + Summary)
+      // ====================================================
+      const salesEntries = filteredOrders.map(o => {
+        const itemsText = (o.items || [])
+          .map(it => `${it.nameSnapshot || it.name || 'Item'} x${it.quantity || 1}`)
+          .join('; ');
+        return {
+          dateTime: o.createdAt ? new Date(o.createdAt).toLocaleString() : '-',
+          ref: o.orderNumber || o.id,
+          items: itemsText,
+          table: `Table ${o.tableNumber || '-'} (${o.guestName || 'Walk-in'})`,
+          amount: Number((o.finalAmount ?? o.total ?? 0).toFixed(2))
+        };
+      });
+
+      const expenseEntries = filteredExpenses.map(e => {
+        const who = [
+          e.paidTo ? `To: ${e.paidTo}` : '',
+          e.paidBy ? `By: ${e.paidBy}` : ''
+        ].filter(Boolean).join(' | ');
+
+        return {
+          date: e.date || (e.createdAt ? e.createdAt.slice(0, 10) : '-'),
+          title: e.title || 'Operational Expense',
+          category: e.category || 'Miscellaneous',
+          who: who || '-',
+          amount: Number((Number(e.amount) || 0).toFixed(2))
+        };
+      });
+
+      const maxLedgerRows = Math.max(salesEntries.length, expenseEntries.length, 1);
+
+      const sheet3Rows: any[][] = [
+        [`${restaurantName.toUpperCase()} - FINANCIAL LEDGER & CASHBOOK`],
+        [`Reporting Period: ${reportingPeriodStr}`, "", "", "", "", " | ", `Date: ${effectiveDate}`, "", "", ""],
+        [],
+        [
+          "--- GOODS SALES (INCOME) ---", "", "", "", "",
+          " | ",
+          "--- OPERATING EXPENSES (OUTGOINGS) ---", "", "", ""
+        ],
+        [
+          "Sales Date/Time",
+          "Order / Ref #",
+          "Goods / Dishes Sold (Items)",
+          "Table & Guest",
+          "Sales Amount (Rs.)",
+          " | ",
+          "Expense Date",
+          "Expense Item (Purpose / Particulars)",
+          "Category",
+          "Paid To / Paid By",
+          "Expense Amount (Rs.)"
+        ]
+      ];
+
+      for (let i = 0; i < maxLedgerRows; i++) {
+        const s = salesEntries[i];
+        const e = expenseEntries[i];
+
+        sheet3Rows.push([
+          s ? s.dateTime : '',
+          s ? s.ref : '',
+          s ? s.items : '',
+          s ? s.table : '',
+          s ? s.amount : '',
+          ' | ',
+          e ? e.date : '',
+          e ? e.title : '',
+          e ? e.category : '',
+          e ? e.who : '',
+          e ? e.amount : ''
+        ]);
+      }
+
+      // Sum of Amount Row (Goods Sales Sum & Expenses Sum)
+      sheet3Rows.push([]);
+      sheet3Rows.push([
+        "TOTAL GOODS SALES",
+        "",
+        "",
+        "",
+        Number(totalSales.toFixed(2)),
+        " | ",
+        "TOTAL EXPENSES",
+        "",
+        "",
+        "",
+        Number(totalExpenses.toFixed(2))
+      ]);
+
+      // Complete Ledger Summary Box
+      sheet3Rows.push([]);
+      sheet3Rows.push(["=== COMPLETE FINANCIAL LEDGER SUMMARY ==="]);
+      sheet3Rows.push(["Particulars / Ledger Item", "Amount (Rs.)", "Accounting Notes"]);
+      sheet3Rows.push(["Total Goods Sales / Revenue (Credit / Inflow)", Number(totalSales.toFixed(2)), "Gross sum of all food and beverage sales orders"]);
+      sheet3Rows.push(["Total Operating Expenses (Debit / Outflow)", Number(totalExpenses.toFixed(2)), "Gross sum of all recorded purchases, utilities & operational outgoings"]);
+      sheet3Rows.push(["Net Balance After Expenses (Closing Balance)", Number(balanceAfterExpenses.toFixed(2)), "Total Goods Sales minus Total Operating Expenses"]);
+      sheet3Rows.push(["Cash Sales Collected", Number(cashSales.toFixed(2)), "Total sales collected in physical cash"]);
+      sheet3Rows.push(["Cash Expenses Paid Out", Number(cashExpenses.toFixed(2)), "Operating expenses paid from physical cash drawer"]);
+      sheet3Rows.push(["Net Cash Drawer Balance", Number((cashSales - cashExpenses).toFixed(2)), "Net physical cash change for this period"]);
+      sheet3Rows.push(["Digital / Bank Sales Collected", Number(digitalSales.toFixed(2)), "Sales settled via Bank, Card, or QR"]);
+      sheet3Rows.push(["Digital / Bank Expenses Paid", Number(digitalExpenses.toFixed(2)), "Expenses paid through Bank, Card, or QR"]);
+      sheet3Rows.push(["Net Digital / Bank Account Flow", Number((digitalSales - digitalExpenses).toFixed(2)), "Net digital funds change for this period"]);
+
+      const ws3 = XLSX.utils.aoa_to_sheet(sheet3Rows);
+      ws3['!cols'] = [
+        { wch: 20 }, { wch: 18 }, { wch: 38 }, { wch: 25 }, { wch: 18 },
+        { wch: 5 },
+        { wch: 15 }, { wch: 32 }, { wch: 22 }, { wch: 30 }, { wch: 18 }
+      ];
+      XLSX.utils.book_append_sheet(wb, ws3, "Financial_Ledger");
+
+      // ====================================================
+      // SHEET 4: Goods_Sales_Summary (Dish-by-Dish)
+      // ====================================================
+      const sheet4Rows: any[][] = [
+        [`${restaurantName.toUpperCase()} - GOODS SALES BREAKDOWN BY DISH / ITEM`],
+        [`Reporting Period: ${reportingPeriodStr}`, `Date: ${effectiveDate}`],
+        [],
+        ["#", "Dish / Menu Item Name", "Category", "Quantity Sold", "Unit Price (Rs.)", "Total Sales Amount (Rs.)", "Contribution (%)"],
+        ...itemSalesList.map((item, idx) => [
+          idx + 1,
+          item.name,
+          item.category,
+          item.quantity,
+          Number(item.unitPrice.toFixed(2)),
+          Number(item.totalAmount.toFixed(2)),
+          totalSales > 0 ? `${((item.totalAmount / totalSales) * 100).toFixed(1)}%` : '0%'
+        ]),
+        [],
+        ["TOTAL GOODS SALES", "", "", totalItemsSold, "", Number(totalSales.toFixed(2)), "100.0%"]
+      ];
+
+      const ws4 = XLSX.utils.aoa_to_sheet(sheet4Rows);
+      ws4['!cols'] = [
+        { wch: 6 }, { wch: 35 }, { wch: 22 }, { wch: 15 }, { wch: 16 }, { wch: 24 }, { wch: 18 }
+      ];
+      XLSX.utils.book_append_sheet(wb, ws4, "Goods_Sales_Summary");
+
+      // ====================================================
+      // SHEET 5: Detailed_Expenses (Itemized Expenses)
+      // ====================================================
+      const sheet5Rows: any[][] = [
+        [`${restaurantName.toUpperCase()} - ITEMIZED EXPENSE REGISTER`],
+        [`Reporting Period: ${reportingPeriodStr}`, `Date: ${effectiveDate}`],
+        [],
+        [
+          "Expense ID",
+          "Expense Date",
+          "Expense Item / Title",
+          "Category",
+          "Amount (Rs.)",
+          "Payment Method",
+          "Paid To (Vendor)",
+          "Paid By (Staff Member)",
+          "Receipt / Ref #",
+          "Description / Notes"
+        ],
+        ...filteredExpenses.map(e => [
+          e.id,
+          e.date || '-',
+          e.title,
+          e.category,
+          Number((Number(e.amount) || 0).toFixed(2)),
+          e.paymentMethod || 'Cash',
+          e.paidTo || '-',
+          e.paidBy || '-',
+          e.receiptRef || '-',
+          e.notes || '-'
+        ]),
+        [],
+        ["TOTAL EXPENSES RECORDED", "", "", "", Number(totalExpenses.toFixed(2)), "", "", "", "", ""]
+      ];
+
+      const ws5 = XLSX.utils.aoa_to_sheet(sheet5Rows);
+      ws5['!cols'] = [
+        { wch: 18 }, { wch: 14 }, { wch: 32 }, { wch: 22 }, { wch: 16 },
+        { wch: 16 }, { wch: 24 }, { wch: 24 }, { wch: 18 }, { wch: 35 }
+      ];
+      XLSX.utils.book_append_sheet(wb, ws5, "Itemized_Expenses");
+
+      // Save complete multi-sheet Excel file (.xlsx)
+      const filePeriod = reportRange === 'custom' ? `Date_${selectedDate}` : `${reportRange}_${new Date().toISOString().slice(0, 10)}`;
+      XLSX.writeFile(wb, `Fat_Buddha_Report_${filePeriod}.xlsx`);
+
+      setExportNotice(`Fat Buddha Report for ${reportRange === 'custom' ? selectedDate : reportRange} successfully exported with all sheets (Sales & Performance, Daily Financial Report, Financial Ledger, Goods Sales, and Expenses)!`);
+      setTimeout(() => setExportNotice(null), 4500);
+    } catch (err) {
+      console.error('Failed to export Excel report:', err);
+      setExportNotice('Failed to generate Excel export. Please try again.');
+    }
+  };
+
+  // Export report to CSV (Single-sheet fallback)
   const handleExportCSV = () => {
     try {
       const panNo = settings.panNumber || settings.panNo || '302194821';
@@ -375,7 +746,7 @@ export const ReportsView: React.FC = () => {
       document.body.removeChild(link);
       URL.revokeObjectURL(url);
 
-      setExportNotice(`Report for ${reportRange === 'custom' ? selectedDate : reportRange} successfully exported as Excel/CSV!`);
+      setExportNotice(`Report for ${reportRange === 'custom' ? selectedDate : reportRange} successfully exported as CSV! (Use Export Excel for multi-sheet workbook)`);
       setTimeout(() => setExportNotice(null), 3500);
     } catch (err) {
       console.error('Failed to export CSV:', err);
@@ -547,29 +918,39 @@ export const ReportsView: React.FC = () => {
           {/* Export Actions */}
           <div className="flex flex-wrap items-center gap-1.5">
             <button
+              id="btn-export-excel"
+              onClick={handleExportExcel}
+              className="px-3.5 py-2 bg-amber-500 hover:bg-amber-600 text-white rounded-lg text-xs font-bold flex items-center gap-1.5 shadow-xs transition cursor-pointer"
+              title="Download complete multi-sheet Excel workbook (.xlsx) with Sales & Performance, Daily Financial Report, and Financial Ledger"
+            >
+              <FileSpreadsheet className="w-3.5 h-3.5" />
+              <span>Export Fat Buddha Report (Excel)</span>
+            </button>
+
+            <button
               id="btn-download-daily-report"
               onClick={handleDownloadDailyReport}
-              className="px-3.5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-bold flex items-center gap-1.5 shadow-xs transition"
-              title="Download formatted daily financial report with income, orders & categorized expenses"
+              className="px-3.5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-bold flex items-center gap-1.5 shadow-xs transition cursor-pointer"
+              title="Download formatted daily financial text summary"
             >
               <FileText className="w-3.5 h-3.5" />
-              <span>Download Daily Report</span>
+              <span>Daily Financial Text</span>
             </button>
 
             <button
               id="btn-export-csv"
               onClick={handleExportCSV}
-              className="px-3.5 py-2 bg-amber-500 hover:bg-amber-600 text-white rounded-lg text-xs font-bold flex items-center gap-1.5 shadow-xs transition"
-              title="Download Excel / CSV spreadsheet"
+              className="px-3 py-2 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-lg text-xs font-semibold flex items-center gap-1.5 border border-gray-200 transition cursor-pointer"
+              title="Download single-sheet CSV format"
             >
               <Download className="w-3.5 h-3.5" />
-              <span>Export CSV (Excel)</span>
+              <span>Export CSV</span>
             </button>
 
             <button
               id="btn-print-report"
               onClick={handlePrintReport}
-              className="px-3 py-2 bg-gray-50 hover:bg-gray-100 text-gray-700 rounded-lg text-xs font-semibold flex items-center gap-1.5 border border-gray-200 transition"
+              className="px-3 py-2 bg-gray-50 hover:bg-gray-100 text-gray-700 rounded-lg text-xs font-semibold flex items-center gap-1.5 border border-gray-200 transition cursor-pointer"
               title="Print or Save as PDF"
             >
               <Printer className="w-3.5 h-3.5" />
@@ -975,13 +1356,25 @@ export const ReportsView: React.FC = () => {
             </h3>
             <p className="text-xs text-gray-500">Detailed bills for the selected period</p>
           </div>
-          <button
-            onClick={handleExportCSV}
-            className="text-xs font-bold text-amber-600 hover:text-amber-700 flex items-center gap-1"
-          >
-            <Download className="w-3.5 h-3.5" />
-            <span>Download Table as CSV</span>
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={handleExportExcel}
+              className="text-xs font-bold text-amber-600 hover:text-amber-700 flex items-center gap-1 cursor-pointer"
+              title="Download multi-sheet Excel workbook (.xlsx)"
+            >
+              <FileSpreadsheet className="w-3.5 h-3.5" />
+              <span>Download Excel Ledger (.xlsx)</span>
+            </button>
+            <span className="text-gray-300">•</span>
+            <button
+              onClick={handleExportCSV}
+              className="text-xs font-semibold text-gray-500 hover:text-gray-700 flex items-center gap-1 cursor-pointer"
+              title="Download flat CSV"
+            >
+              <Download className="w-3.5 h-3.5" />
+              <span>CSV</span>
+            </button>
+          </div>
         </div>
 
         {filteredOrders.length === 0 ? (
