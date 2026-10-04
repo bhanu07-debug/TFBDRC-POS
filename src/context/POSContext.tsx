@@ -2437,13 +2437,11 @@ export const POSProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
 
   const resetToDemoData = async () => {
     await clearAllTestDataAndResetTables();
-    await syncOfficialRestaurantMenu(true);
     setOrders([]);
     setKots([]);
     setPayments([]);
     setServiceRequests([]);
-    setMenuItems(OFFICIAL_MENU_ITEMS);
-    setCategories(OFFICIAL_CATEGORIES);
+    // Do NOT reset or overwrite menu items or categories; keep user's menu additions and edits intact!
   };
 
   const syncOfficialMenu = async (force: boolean = false): Promise<boolean> => {

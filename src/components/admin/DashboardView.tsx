@@ -50,9 +50,9 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
   const currentHour = new Date().getHours();
   const timeGreeting = currentHour < 12 ? 'Good morning' : currentHour < 17 ? 'Good afternoon' : 'Good evening';
 
-  // Handle fresh slate reset
+  // Handle fresh slate reset (resets tables & transactions, preserves all menu items & categories)
   const handleFreshReset = async () => {
-    if (window.confirm(`Reset all ${tables.length || 11} tables to Available and clear transaction orders/KOTs for a clean initial development slate?`)) {
+    if (window.confirm(`Reset all ${tables.length || 11} tables to Available and clear transaction orders/KOTs? (All your menu items and category changes will be safely preserved)`)) {
       try {
         setIsResetting(true);
         await resetToDemoData();
@@ -309,11 +309,11 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
             id="btn-dashboard-fresh-slate"
             onClick={handleFreshReset}
             disabled={isResetting}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold bg-[#161F30] hover:bg-[#1f2b42] text-slate-200 border border-slate-700 hover:border-amber-500/40 shadow-xs transition"
-            title="Reset tables to Available and clear test orders for a clean slate"
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold bg-[#161F30] hover:bg-[#1f2b42] text-slate-200 border border-slate-700 hover:border-amber-500/40 shadow-xs transition cursor-pointer active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed"
+            title="Reset tables to Available and clear test orders (Preserves all your menu items and changes)"
           >
             <RotateCcw className={`w-3.5 h-3.5 ${isResetting ? 'animate-spin text-amber-400' : 'text-amber-400'}`} />
-            <span>{isResetting ? 'Resetting...' : 'Fresh Slate'}</span>
+            <span>{isResetting ? 'Resetting Tables...' : 'Fresh Slate'}</span>
           </button>
           <div className="flex items-center gap-2 text-xs text-amber-400/90 font-medium px-3 py-1.5 rounded-xl bg-amber-500/10 border border-amber-500/20">
             <Clock className="w-3.5 h-3.5" />

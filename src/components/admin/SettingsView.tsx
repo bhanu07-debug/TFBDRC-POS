@@ -98,7 +98,7 @@ export const SettingsView: React.FC = () => {
   };
 
   const handleReset = async () => {
-    if (confirm('Reset all 11 tables to Available and clear test orders, payments, and KOTs for a clean initial development slate?')) {
+    if (confirm('Reset all 11 tables to Available and clear test orders, payments, and KOTs for a clean slate? (All your custom menu items and categories will be safely preserved)')) {
       setIsResetting(true);
       await resetToDemoData();
       setIsResetting(false);

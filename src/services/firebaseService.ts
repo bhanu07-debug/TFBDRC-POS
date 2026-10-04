@@ -504,15 +504,8 @@ export const syncOfficialRestaurantMenu = async (forceReplace: boolean = false):
     const menuColl = collection(db, 'menu_items');
     const existingSnap = await getDocs(menuColl);
     
-    // Check if empty, or contains old dummy items, or forceReplace
-    const hasOldDummy = existingSnap.docs.some(d => {
-      const cat = (d.data().category || '') as string;
-      return cat === 'Buddha Bowls & Mains' || cat === 'Momos & Dimsums' || cat === 'Clay Oven & Tandoor' || cat === 'Artisanal Cafe & Drinks';
-    });
-
-    const hasNewItems = existingSnap.docs.some(d => d.id === 'food-sp-6' || d.id === 'food-sp-1');
-
-    if (existingSnap.empty || hasOldDummy || !hasNewItems || forceReplace) {
+    // Only initialize if the menu collection is completely empty, or if explicitly force replaced from Menu Management
+    if (existingSnap.empty || forceReplace) {
       // 1. Delete all old menu items
       if (!existingSnap.empty) {
         const delBatch = writeBatch(db);
