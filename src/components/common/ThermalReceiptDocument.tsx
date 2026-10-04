@@ -1,6 +1,6 @@
 import React from 'react';
 import { Order, RestaurantSettings } from '../../types';
-import { QRCodeSVG } from 'qrcode.react';
+import { QRCodeCanvas } from 'qrcode.react';
 
 interface ThermalReceiptDocumentProps {
   order: Order;
@@ -19,66 +19,72 @@ export const ThermalReceiptDocument: React.FC<ThermalReceiptDocumentProps> = ({
   const currency = settings.currencySymbol || 'Rs.';
 
   const originUrl = typeof window !== 'undefined' ? window.location.origin : 'https://fatbuddha.cafe';
-  const feedbackUrl = `${originUrl}/feedback?order=${order.orderNumber || order.id}`;
+  const feedbackUrl = `${originUrl}/feedback?order=${order?.orderNumber || order?.id || 'ORD-0001'}`;
   const reviewQrUrl = settings.googleReviewUrl;
 
   const items = Array.isArray(order?.items) ? order.items : [];
-  const subtotal = Number(order.subtotal ?? order.total ?? 0);
-  const discount = Number(order.discountAmount ?? order.discount ?? 0);
+  const subtotal = Number(order?.subtotal ?? order?.total ?? 0);
+  const discount = Number(order?.discountAmount ?? order?.discount ?? 0);
   const discountedSubtotal = Math.max(0, subtotal - discount);
-  const serviceCharge = Number(order.serviceCharge ?? (settings.serviceChargeEnabled ? Math.round(discountedSubtotal * (Number(settings.serviceChargePercent) || 10) / 100) : 0));
-  const vat = Number(order.vat ?? order.taxAmount ?? (settings.vatEnabled ? Math.round((discountedSubtotal + serviceCharge) * (Number(settings.vatRate) || 13) / 100) : 0));
-  const grandTotal = Number(order.finalAmount ?? (discountedSubtotal + serviceCharge + vat));
+  const serviceCharge = Number(order?.serviceCharge ?? (settings.serviceChargeEnabled ? Math.round(discountedSubtotal * (Number(settings.serviceChargePercent) || 10) / 100) : 0));
+  const vat = Number(order?.vat ?? order?.taxAmount ?? (settings.vatEnabled ? Math.round((discountedSubtotal + serviceCharge) * (Number(settings.vatRate) || 13) / 100) : 0));
+  const grandTotal = Number(order?.finalAmount ?? (discountedSubtotal + serviceCharge + vat));
 
-  const isPaid = (order.paymentStatus || '').toLowerCase() === 'paid';
+  const isPaid = (order?.paymentStatus || '').toLowerCase() === 'paid';
   const totalItemQty = items.reduce((s, i) => s + (Number(i.quantity) || 1), 0);
 
-  const tableNum = typeof order.tableNumber === 'number' ? order.tableNumber : parseInt(String(order.tableNumber || 1), 10) || 1;
+  const tableNum = typeof order?.tableNumber === 'number' ? order.tableNumber : parseInt(String(order?.tableNumber || 1), 10) || 1;
   const tableNumStr = tableNum < 10 ? `0${tableNum}` : `${tableNum}`;
 
   // Clean sequential invoice number starting with 0001 (e.g. ORD-0001)
   const displayInvoiceNumber = (() => {
-    if (order.orderNumber && String(order.orderNumber).trim()) {
+    if (order?.orderNumber && String(order.orderNumber).trim()) {
       return String(order.orderNumber).trim();
     }
-    if (order.id && typeof order.id === 'string' && /^ORD-\d+/i.test(order.id)) {
+    if (order?.id && typeof order.id === 'string' && /^ORD-\d+/i.test(order.id)) {
       return order.id.split('-').slice(0, 2).join('-');
     }
-    return order.id ? String(order.id) : 'ORD-0001';
+    return order?.id ? String(order.id) : 'ORD-0001';
   })();
 
-  // Sanitize order type and staff names (no ADMIN_MANUAL strings on the bill)
-  const rawOrderType = (order.orderType || 'DINE_IN').replace(/_/g, ' ');
+  // Sanitize order type and staff names safely
+  const rawOrderType = String(order?.orderType || 'DINE_IN').replace(/_/g, ' ');
   const displayOrderType = (rawOrderType.includes('MANUAL') || rawOrderType.includes('ADMIN'))
     ? 'DINE IN'
     : rawOrderType;
 
-  const rawCaptain = order.waiterName || 'Dilip Chaudhary';
+  const rawCaptain = String(order?.waiterName || 'Dilip Chaudhary');
   const displayCaptain = (rawCaptain.includes('MANUAL') || rawCaptain === 'POS Staff')
     ? 'Dilip Chaudhary'
     : rawCaptain;
 
-  const rawCashier = order.cashierName || (order as any).settledBy || (order.createdBy !== 'ADMIN_MANUAL' ? order.createdBy : null) || 'Dilip Chaudhary';
+  const rawCashier = String(
+    order?.cashierName ||
+    (order as any)?.settledBy ||
+    (typeof order?.createdBy === 'string' && order.createdBy !== 'ADMIN_MANUAL' ? order.createdBy : '') ||
+    'Dilip Chaudhary'
+  );
   const displayCashier = (rawCashier.includes('MANUAL') || rawCashier === 'POS Staff')
     ? 'Dilip Chaudhary'
     : (rawCashier.includes('(') ? rawCashier.split('(')[0].trim() : rawCashier);
 
-  // Extract Guest Name & Phone (from order direct props, customer props, or createdBy snapshot)
-  const rawGuestName = (order.guestName || (order as any).customerName || '').trim();
-  const rawGuestPhone = (order.guestPhone || (order as any).customerPhone || '').trim();
-  const fallbackGuestMatch = !rawGuestName && order.createdBy && order.createdBy.includes('(')
-    ? order.createdBy.match(/^([^(]+)\s*\(([^)]+)\)$/)
+  // Extract Guest Name & Phone safely
+  const rawGuestName = String(order?.guestName || (order as any)?.customerName || '').trim();
+  const rawGuestPhone = String(order?.guestPhone || (order as any)?.customerPhone || '').trim();
+  const createdByStr = typeof order?.createdBy === 'string' ? order.createdBy : '';
+  const fallbackGuestMatch = !rawGuestName && createdByStr && createdByStr.includes('(')
+    ? createdByStr.match(/^([^(]+)\s*\(([^)]+)\)$/)
     : null;
   const displayGuestName = rawGuestName || (fallbackGuestMatch ? fallbackGuestMatch[1].trim() : '');
   const displayGuestPhone = rawGuestPhone || (fallbackGuestMatch && fallbackGuestMatch[2] !== 'Guest' ? fallbackGuestMatch[2].trim() : '');
 
   // Formatted dates
-  const orderDate = new Date(order.createdAt || Date.now()).toLocaleDateString([], {
+  const orderDate = new Date(order?.createdAt || Date.now()).toLocaleDateString([], {
     year: 'numeric',
     month: 'short',
     day: 'numeric'
   });
-  const orderTime = new Date(order.createdAt || Date.now()).toLocaleTimeString([], {
+  const orderTime = new Date(order?.createdAt || Date.now()).toLocaleTimeString([], {
     hour: '2-digit',
     minute: '2-digit'
   });
@@ -306,7 +312,7 @@ export const ThermalReceiptDocument: React.FC<ThermalReceiptDocumentProps> = ({
          ==================================================== */}
       <div className="pt-2 pb-1 text-center flex flex-col items-center space-y-1">
         <div className="p-1 bg-white border border-black inline-block">
-          <QRCodeSVG
+          <QRCodeCanvas
             value={reviewQrUrl || originUrl}
             size={is58mm ? 44 : 52}
             level="L"
@@ -332,7 +338,7 @@ export const ThermalReceiptDocument: React.FC<ThermalReceiptDocumentProps> = ({
       </div>
 
       {/* Feed spacing ensures automatic thermal paper cutter doesn't cut through last line */}
-      <div style={{ height: '8mm' }} />
+      <div className="h-4" style={{ minHeight: '18mm' }} />
     </div>
   );
 };

@@ -17,7 +17,12 @@ import {
   Sparkles,
   Eye,
   ChevronDown,
-  ChevronUp
+  ChevronUp,
+  Wallet,
+  FileText,
+  ArrowDownRight,
+  Banknote,
+  CreditCard
 } from 'lucide-react';
 
 export type ReportRange = 'today' | 'week' | 'month' | 'all' | 'custom';
@@ -53,7 +58,8 @@ const formatHourShort = (hour: number): string => {
 };
 
 export const ReportsView: React.FC = () => {
-  const { orders, payments, settings } = usePOS();
+  const { orders, payments, expenses, settings } = usePOS();
+  const currency = settings.currencySymbol || 'Rs.';
   const [reportRange, setReportRange] = useState<ReportRange>('today');
   const [rushViewMode, setRushViewMode] = useState<'active' | 'all'>('active');
   const [expandedHour, setExpandedHour] = useState<number | null>(null);
@@ -129,6 +135,52 @@ export const ReportsView: React.FC = () => {
   const totalItemsSold = useMemo(() => {
     return filteredOrders.reduce((sum, o) => sum + (o.items || []).reduce((is, it) => is + (it.quantity || 1), 0), 0);
   }, [filteredOrders]);
+
+  // Real filtered expenses from Firestore matching the selected date/range
+  const filteredExpenses = useMemo(() => {
+    return (expenses || []).filter(exp => {
+      const expDate = exp.date || (exp.createdAt ? exp.createdAt.slice(0, 10) : '');
+      return isDateInRange(expDate);
+    });
+  }, [expenses, reportRange, selectedDate]);
+
+  // Total Expenses for the selected date
+  const totalExpenses = useMemo(() => {
+    return filteredExpenses.reduce((sum, e) => sum + (Number(e.amount) || 0), 0);
+  }, [filteredExpenses]);
+
+  // Cash Expenses
+  const cashExpenses = useMemo(() => {
+    return filteredExpenses
+      .filter(e => (e.paymentMethod || 'cash').toLowerCase() === 'cash')
+      .reduce((sum, e) => sum + (Number(e.amount) || 0), 0);
+  }, [filteredExpenses]);
+
+  // Digital/Bank Expenses (Bank, Card, QR)
+  const digitalExpenses = useMemo(() => {
+    return filteredExpenses
+      .filter(e => (e.paymentMethod || 'cash').toLowerCase() !== 'cash')
+      .reduce((sum, e) => sum + (Number(e.amount) || 0), 0);
+  }, [filteredExpenses]);
+
+  // Formula: Daily Balance = Total Sales - Total Expenses (Balance After Expenses)
+  // Note: Do not call this "Net Profit" as per business requirement
+  const balanceAfterExpenses = totalSales - totalExpenses;
+
+  // Real Categorized Expense Breakdown for selected date
+  const categoryExpenses = useMemo(() => {
+    const map: Record<string, number> = {};
+    filteredExpenses.forEach(e => {
+      const cat = e.category || 'Miscellaneous';
+      map[cat] = (map[cat] || 0) + (Number(e.amount) || 0);
+    });
+    return Object.entries(map)
+      .map(([category, amount]) => ({
+        category,
+        amount
+      }))
+      .sort((a, b) => b.amount - a.amount);
+  }, [filteredExpenses]);
 
   // Real Category sales breakdown dynamically computed from filtered orders
   const categorySales = useMemo(() => {
@@ -264,10 +316,19 @@ export const ReportsView: React.FC = () => {
         `"Generated On:","${nowStr}"`,
         `""`,
         `"--- EXECUTIVE SUMMARY ---"`,
-        `"Gross Sales (Rs.)",${totalSales.toFixed(2)}`,
+        `"Gross Sales / Total Income (Rs.)",${totalSales.toFixed(2)}`,
         `"Total Orders",${filteredOrders.length}`,
+        `"Total Recorded Expenses (Rs.)",${totalExpenses.toFixed(2)}`,
+        `"Cash Expenses (Rs.)",${cashExpenses.toFixed(2)}`,
+        `"Digital/Bank Expenses (Rs.)",${digitalExpenses.toFixed(2)}`,
+        `"Balance After Expenses (Rs.)",${balanceAfterExpenses.toFixed(2)}`,
         `"Average Order Value (Rs.)",${avgOrderValue.toFixed(2)}`,
         `"Total Items Sold",${totalItemsSold}`,
+        `""`,
+        `"--- EXPENSES BREAKDOWN ---"`,
+        `"Expense Category","Expense Amount (Rs.)"`,
+        ...categoryExpenses.map(c => `"${c.category.replace(/"/g, '""')}",${c.amount.toFixed(2)}`),
+        `"Total Expenses",${totalExpenses.toFixed(2)}`,
         `""`,
         `"--- CATEGORY SALES MIX ---"`,
         `"Category","Sales Revenue (Rs.)","Contribution Share (%)"`,
@@ -319,6 +380,62 @@ export const ReportsView: React.FC = () => {
     } catch (err) {
       console.error('Failed to export CSV:', err);
       setExportNotice('Failed to generate CSV export. Please try again.');
+    }
+  };
+
+  // Download Daily Financial Report: formatted exact text output with Income & Expenses
+  const handleDownloadDailyReport = () => {
+    try {
+      const currencySymbol = settings.currencySymbol || 'Rs.';
+      const restaurantName = (settings.restaurantName || settings.name || 'THE FAT BUDDHA DELIGHT RESTRO & CAFE').toUpperCase();
+      const effectiveDate = reportRange === 'custom'
+        ? selectedDate
+        : reportRange === 'today'
+        ? new Date().toISOString().slice(0, 10)
+        : `${reportRange.toUpperCase()} (${new Date().toISOString().slice(0, 10)})`;
+
+      const lines: string[] = [
+        restaurantName,
+        'Daily Financial Report',
+        `Date: ${effectiveDate}`,
+        '',
+        'INCOME',
+        `Total Sales: ${currencySymbol} ${totalSales.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
+        `Total Orders: ${filteredOrders.length}`,
+        '',
+        'EXPENSES'
+      ];
+
+      if (categoryExpenses.length === 0) {
+        lines.push(`No Expenses Recorded: ${currencySymbol} 0.00`);
+      } else {
+        categoryExpenses.forEach(c => {
+          lines.push(`${c.category}: ${currencySymbol} ${c.amount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`);
+        });
+      }
+      lines.push(`Total Expenses: ${currencySymbol} ${totalExpenses.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`);
+      lines.push('');
+      lines.push('FINANCIAL SUMMARY');
+      lines.push(`Total Income: ${currencySymbol} ${totalSales.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`);
+      lines.push(`Total Expenses: ${currencySymbol} ${totalExpenses.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`);
+      lines.push(`Balance After Expenses: ${currencySymbol} ${balanceAfterExpenses.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`);
+
+      const textContent = lines.join('\r\n');
+      const blob = new Blob([textContent], { type: 'text/plain;charset=utf-8;' });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `Daily_Financial_Report_${reportRange === 'custom' ? selectedDate : reportRange}.txt`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+
+      setExportNotice(`Daily Financial Report for ${effectiveDate} downloaded successfully!`);
+      setTimeout(() => setExportNotice(null), 3500);
+    } catch (err) {
+      console.error('Failed to download daily report:', err);
+      setExportNotice('Failed to download daily financial report. Please try again.');
     }
   };
 
@@ -428,7 +545,17 @@ export const ReportsView: React.FC = () => {
           </div>
 
           {/* Export Actions */}
-          <div className="flex items-center gap-1.5">
+          <div className="flex flex-wrap items-center gap-1.5">
+            <button
+              id="btn-download-daily-report"
+              onClick={handleDownloadDailyReport}
+              className="px-3.5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-bold flex items-center gap-1.5 shadow-xs transition"
+              title="Download formatted daily financial report with income, orders & categorized expenses"
+            >
+              <FileText className="w-3.5 h-3.5" />
+              <span>Download Daily Report</span>
+            </button>
+
             <button
               id="btn-export-csv"
               onClick={handleExportCSV}
@@ -448,6 +575,90 @@ export const ReportsView: React.FC = () => {
               <Printer className="w-3.5 h-3.5" />
               <span className="hidden sm:inline">Print / PDF</span>
             </button>
+          </div>
+        </div>
+      </div>
+
+      {/* Daily Financial Overview & Real-Time Expenses Summary */}
+      <div id="daily-financial-overview-card" className="p-5 bg-white rounded-xl border border-gray-200 shadow-xs space-y-4">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-gray-100">
+          <div className="flex items-center gap-2.5">
+            <div className="w-8 h-8 rounded-lg bg-amber-50 text-amber-600 border border-amber-200 flex items-center justify-center">
+              <Wallet className="w-4 h-4" />
+            </div>
+            <div>
+              <h3 className="text-sm font-bold text-gray-900 uppercase tracking-wider">
+                Daily Financial Overview &amp; Expenses
+              </h3>
+              <p className="text-xs text-gray-500">
+                {reportRange === 'custom'
+                  ? `Financial summary for date ${selectedDate}`
+                  : reportRange === 'today'
+                  ? "Today's financial breakdown"
+                  : `Financial summary (${reportRange})`} calculated strictly from real Firestore orders &amp; expenses
+              </p>
+            </div>
+          </div>
+          <span className="text-[11px] font-mono font-bold text-gray-600 bg-gray-100 px-2.5 py-1 rounded-md border border-gray-200 self-start sm:self-auto">
+            {reportRange === 'custom' ? `Date: ${selectedDate}` : `Period: ${reportRange.toUpperCase()}`}
+          </span>
+        </div>
+
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-6 gap-3">
+          {/* Total Sales / Daily Income */}
+          <div className="p-3.5 rounded-xl bg-gray-50/80 border border-gray-200">
+            <span className="text-[10px] font-bold uppercase tracking-wider text-gray-500 block">Total Sales / Income</span>
+            <span className="text-lg font-bold font-mono text-emerald-600 mt-1 block">
+              {currency} {totalSales.toFixed(2)}
+            </span>
+            <span className="text-[10px] text-gray-400 block mt-0.5">Gross revenue from settled bills</span>
+          </div>
+
+          {/* Total Orders */}
+          <div className="p-3.5 rounded-xl bg-gray-50/80 border border-gray-200">
+            <span className="text-[10px] font-bold uppercase tracking-wider text-gray-500 block">Total Orders</span>
+            <span className="text-lg font-bold font-mono text-blue-600 mt-1 block">
+              {filteredOrders.length}
+            </span>
+            <span className="text-[10px] text-gray-400 block mt-0.5">Orders in selected period</span>
+          </div>
+
+          {/* Total Expenses */}
+          <div className="p-3.5 rounded-xl bg-gray-50/80 border border-gray-200">
+            <span className="text-[10px] font-bold uppercase tracking-wider text-gray-500 block">Total Expenses</span>
+            <span className="text-lg font-bold font-mono text-rose-600 mt-1 block">
+              {currency} {totalExpenses.toFixed(2)}
+            </span>
+            <span className="text-[10px] text-gray-400 block mt-0.5">{filteredExpenses.length} recorded items</span>
+          </div>
+
+          {/* Cash Expenses */}
+          <div className="p-3.5 rounded-xl bg-gray-50/80 border border-gray-200">
+            <span className="text-[10px] font-bold uppercase tracking-wider text-gray-500 block">Cash Expenses</span>
+            <span className="text-lg font-bold font-mono text-gray-800 mt-1 block">
+              {currency} {cashExpenses.toFixed(2)}
+            </span>
+            <span className="text-[10px] text-gray-400 block mt-0.5">Physical cash outlays</span>
+          </div>
+
+          {/* Digital/Bank Expenses */}
+          <div className="p-3.5 rounded-xl bg-gray-50/80 border border-gray-200">
+            <span className="text-[10px] font-bold uppercase tracking-wider text-gray-500 block">Digital / Bank</span>
+            <span className="text-lg font-bold font-mono text-gray-800 mt-1 block">
+              {currency} {digitalExpenses.toFixed(2)}
+            </span>
+            <span className="text-[10px] text-gray-400 block mt-0.5">Bank, Card &amp; QR expenses</span>
+          </div>
+
+          {/* Balance After Expenses */}
+          <div className="p-3.5 rounded-xl bg-amber-50/80 border border-amber-200">
+            <span className="text-[10px] font-bold uppercase tracking-wider text-amber-800 block">Balance After Expenses</span>
+            <span className={`text-lg font-bold font-mono mt-1 block ${
+              balanceAfterExpenses >= 0 ? 'text-amber-800 font-black' : 'text-rose-600 font-black'
+            }`}>
+              {currency} {balanceAfterExpenses.toFixed(2)}
+            </span>
+            <span className="text-[10px] text-amber-700/80 block mt-0.5">Daily Balance (Sales - Expenses)</span>
           </div>
         </div>
       </div>
@@ -710,6 +921,51 @@ export const ReportsView: React.FC = () => {
         </div>
       </div>
 
+      {/* Expenses by Category Breakdown Card */}
+      <div id="expenses-by-category-report-card" className="p-5 bg-white rounded-xl border border-gray-200 shadow-xs space-y-4">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+          <div className="flex items-center gap-2">
+            <div className="w-6 h-6 rounded-md bg-rose-50 text-rose-700 flex items-center justify-center border border-rose-200/60">
+              <Wallet className="w-3.5 h-3.5" />
+            </div>
+            <div>
+              <h3 className="text-xs font-bold text-gray-900 uppercase tracking-wider">
+                Expenses by Category ({categoryExpenses.length} categories, {filteredExpenses.length} items)
+              </h3>
+              <p className="text-xs text-gray-500">Breakdown of operating expenditure for the selected period</p>
+            </div>
+          </div>
+          <span className="text-xs font-mono font-bold text-rose-600 bg-rose-50 px-2.5 py-1 rounded-md border border-rose-200 self-start sm:self-auto">
+            Total: {currency} {totalExpenses.toFixed(2)}
+          </span>
+        </div>
+
+        {categoryExpenses.length === 0 ? (
+          <div className="py-8 text-center text-gray-400 text-xs">
+            No expenses recorded for this period ({currency} 0.00).
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+            {categoryExpenses.map(c => {
+              const pct = totalExpenses > 0 ? Math.round((c.amount / totalExpenses) * 100) : 0;
+              return (
+                <div key={c.category} className="p-3 bg-gray-50 rounded-xl border border-gray-200/80 flex items-center justify-between">
+                  <div>
+                    <span className="text-xs font-bold text-gray-800 block">{c.category}</span>
+                    <span className="text-[10px] text-gray-400">{pct}% of total expenses</span>
+                  </div>
+                  <div className="text-right">
+                    <span className="text-xs font-mono font-bold text-rose-600 block">
+                      {currency} {c.amount.toFixed(2)}
+                    </span>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </div>
+
       {/* Orders Ledger Summary Table */}
       <div className="p-5 bg-white rounded-xl border border-gray-200 shadow-xs space-y-4">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
@@ -804,24 +1060,66 @@ export const ReportsView: React.FC = () => {
           </div>
         </div>
 
-        {/* Executive summary grid */}
-        <div className="grid grid-cols-4 gap-4 py-3 border-b border-gray-300">
-          <div className="p-3 border border-gray-300 rounded">
-            <div className="text-[11px] text-gray-600 font-semibold uppercase">Gross Sales</div>
-            <div className="text-lg font-bold font-mono mt-1">Rs. {totalSales.toFixed(2)}</div>
+        {/* Executive financial summary grid */}
+        <div className="grid grid-cols-3 sm:grid-cols-6 gap-2.5 py-3 border-b border-gray-300">
+          <div className="p-2.5 border border-gray-300 rounded bg-gray-50">
+            <div className="text-[10px] text-gray-600 font-semibold uppercase">Gross Sales</div>
+            <div className="text-base font-bold font-mono mt-0.5 text-emerald-800">Rs. {totalSales.toFixed(2)}</div>
           </div>
-          <div className="p-3 border border-gray-300 rounded">
-            <div className="text-[11px] text-gray-600 font-semibold uppercase">Total Orders</div>
-            <div className="text-lg font-bold font-mono mt-1">{filteredOrders.length}</div>
+          <div className="p-2.5 border border-gray-300 rounded bg-gray-50">
+            <div className="text-[10px] text-gray-600 font-semibold uppercase">Total Orders</div>
+            <div className="text-base font-bold font-mono mt-0.5">{filteredOrders.length}</div>
           </div>
-          <div className="p-3 border border-gray-300 rounded">
-            <div className="text-[11px] text-gray-600 font-semibold uppercase">Average Ticket (AOV)</div>
-            <div className="text-lg font-bold font-mono mt-1">Rs. {avgOrderValue.toFixed(2)}</div>
+          <div className="p-2.5 border border-gray-300 rounded bg-gray-50">
+            <div className="text-[10px] text-gray-600 font-semibold uppercase">Total Expenses</div>
+            <div className="text-base font-bold font-mono mt-0.5 text-rose-800">Rs. {totalExpenses.toFixed(2)}</div>
           </div>
-          <div className="p-3 border border-gray-300 rounded">
-            <div className="text-[11px] text-gray-600 font-semibold uppercase">Items Sold</div>
-            <div className="text-lg font-bold font-mono mt-1">{totalItemsSold}</div>
+          <div className="p-2.5 border border-gray-300 rounded bg-gray-50">
+            <div className="text-[10px] text-gray-600 font-semibold uppercase">Cash Outlay</div>
+            <div className="text-base font-bold font-mono mt-0.5">Rs. {cashExpenses.toFixed(2)}</div>
           </div>
+          <div className="p-2.5 border border-gray-300 rounded bg-gray-50">
+            <div className="text-[10px] text-gray-600 font-semibold uppercase">Digital/Bank</div>
+            <div className="text-base font-bold font-mono mt-0.5">Rs. {digitalExpenses.toFixed(2)}</div>
+          </div>
+          <div className="p-2.5 border border-amber-300 rounded bg-amber-50">
+            <div className="text-[10px] text-amber-900 font-bold uppercase">Balance After Exp.</div>
+            <div className="text-base font-bold font-mono mt-0.5 text-amber-900">Rs. {balanceAfterExpenses.toFixed(2)}</div>
+          </div>
+        </div>
+
+        {/* Expenses by Category Print Table */}
+        <div>
+          <h3 className="text-xs font-bold uppercase mb-2">Operating Expenses Breakdown</h3>
+          <table className="w-full text-left text-xs border border-gray-300 border-collapse">
+            <thead>
+              <tr className="bg-gray-100 border-b border-gray-300">
+                <th className="p-2">Expense Category</th>
+                <th className="p-2 text-right">Amount (Rs.)</th>
+                <th className="p-2 text-right">Share (%)</th>
+              </tr>
+            </thead>
+            <tbody>
+              {categoryExpenses.length === 0 ? (
+                <tr>
+                  <td colSpan={3} className="p-2 text-center text-gray-500">
+                    No operating expenses recorded for this period (Rs. 0.00)
+                  </td>
+                </tr>
+              ) : (
+                categoryExpenses.map((c, i) => {
+                  const pct = totalExpenses > 0 ? Math.round((c.amount / totalExpenses) * 100) : 0;
+                  return (
+                    <tr key={i} className="border-b border-gray-200">
+                      <td className="p-2 font-medium">{c.category}</td>
+                      <td className="p-2 text-right font-mono">Rs. {c.amount.toFixed(2)}</td>
+                      <td className="p-2 text-right">{pct}%</td>
+                    </tr>
+                  );
+                })
+              )}
+            </tbody>
+          </table>
         </div>
 
         {/* Category Sales Breakdown Table */}

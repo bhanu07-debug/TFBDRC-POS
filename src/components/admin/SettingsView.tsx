@@ -98,7 +98,7 @@ export const SettingsView: React.FC = () => {
   };
 
   const handleReset = async () => {
-    if (confirm('Reset all 10 tables to Available and clear test orders, payments, and KOTs for a clean initial development slate?')) {
+    if (confirm('Reset all 11 tables to Available and clear test orders, payments, and KOTs for a clean initial development slate?')) {
       setIsResetting(true);
       await resetToDemoData();
       setIsResetting(false);
@@ -880,7 +880,7 @@ export const SettingsView: React.FC = () => {
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-gray-200 print:hidden">
             <div>
               <h3 className="text-sm font-bold uppercase text-gray-900">
-                Ready-to-Print Standee QR Sheet (Table 01 to Table 10)
+                Ready-to-Print Standee QR Sheet (Table 01 to Table 11)
               </h3>
               <p className="text-xs text-gray-500">
                 Print on cardstock or acrylic standees. Diners scan to open menu and connect to Guest Wi-Fi directly.
@@ -924,7 +924,7 @@ export const SettingsView: React.FC = () => {
                 className="px-4 py-2 bg-gray-900 hover:bg-black text-white font-bold rounded-xl text-xs flex items-center gap-2 shadow-xs transition cursor-pointer"
               >
                 <Printer className="w-4 h-4" />
-                <span>Print All 10 Standees</span>
+                <span>Print All {tables.length} Standees</span>
               </button>
             </div>
           </div>

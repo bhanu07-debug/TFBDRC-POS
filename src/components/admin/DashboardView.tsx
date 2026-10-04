@@ -18,7 +18,8 @@ import {
   Receipt,
   Utensils,
   RotateCcw,
-  RefreshCw
+  RefreshCw,
+  Wallet
 } from 'lucide-react';
 import {
   AreaChart,
@@ -40,7 +41,8 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
   onOpenTable,
   onOpenReceipt
 }) => {
-  const { tables, orders, kots, inventory, payments, isCloudSynced, resetToDemoData } = usePOS();
+  const { tables, orders, kots, inventory, payments, expenses, settings, isCloudSynced, resetToDemoData } = usePOS();
+  const currency = settings.currencySymbol || 'Rs.';
   const [salesTimeframe, setSalesTimeframe] = useState<'today' | 'week' | 'month'>('today');
   const [isResetting, setIsResetting] = useState(false);
 
@@ -50,7 +52,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
 
   // Handle fresh slate reset
   const handleFreshReset = async () => {
-    if (window.confirm('Reset all 10 tables to Available and clear transaction orders/KOTs for a clean initial development slate?')) {
+    if (window.confirm(`Reset all ${tables.length || 11} tables to Available and clear transaction orders/KOTs for a clean initial development slate?`)) {
       try {
         setIsResetting(true);
         await resetToDemoData();
@@ -69,7 +71,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
     }
   ).length;
 
-  const totalTablesCount = 10;
+  const totalTablesCount = tables.length || 11;
   const occupiedPercent = Math.round((activeTablesCount / totalTablesCount) * 100);
 
   // Helper to strictly check if a date string/timestamp belongs to the present day
@@ -113,6 +115,23 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
       return sum;
     }, 0);
   }, [todayCompletedPayments, todayOrders]);
+
+  // Today's real recorded expenses from Firestore
+  const todayExpenses = useMemo(() => {
+    const now = new Date();
+    const todayYMD = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+
+    return (expenses || []).reduce((sum, exp) => {
+      const expDate = exp.date || (exp.createdAt ? exp.createdAt.slice(0, 10) : '');
+      if (expDate === todayYMD || isDateToday(exp.createdAt)) {
+        return sum + (Number(exp.amount) || 0);
+      }
+      return sum;
+    }, 0);
+  }, [expenses]);
+
+  // Formula: Balance After Expenses = Today's Sales - Today's Recorded Expenses
+  const todayBalanceAfterExpenses = todaySales - todayExpenses;
 
   // Pending KOTs in progress or awaiting preparation
   const pendingKots = kots.filter(k => {
@@ -282,7 +301,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
             </div>
           </div>
           <p className="text-xs sm:text-sm text-slate-400 mt-1">
-            Real-time live operational overview for <span className="text-amber-400 font-semibold">The Fat Buddha Delight Restro &amp; Cafe</span> (10 Tables).
+            Real-time live operational overview for <span className="text-amber-400 font-semibold">The Fat Buddha Delight Restro &amp; Cafe</span> ({totalTablesCount} Tables).
           </p>
         </div>
         <div className="flex items-center gap-2 self-start sm:self-auto flex-wrap">
@@ -305,6 +324,69 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                 day: 'numeric',
                 year: 'numeric'
               })}
+            </span>
+          </div>
+        </div>
+      </div>
+
+      {/* Financial Summary: Today's Sales, Today's Expenses, Balance After Expenses */}
+      <div id="dashboard-financial-summary" className="p-4 sm:p-5 rounded-2xl bg-gradient-to-r from-slate-900 via-[#131D2E] to-slate-900 border border-slate-800 shadow-md">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 mb-3.5">
+          <div className="flex items-center gap-2.5">
+            <div className="w-8 h-8 rounded-lg bg-amber-500/10 text-amber-400 border border-amber-500/20 flex items-center justify-center">
+              <Wallet className="w-4 h-4" />
+            </div>
+            <div>
+              <h2 className="text-sm font-bold text-white tracking-tight uppercase">
+                Today's Financial Summary
+              </h2>
+              <p className="text-[11px] text-slate-400">
+                Real-time income vs recorded operating expenses from Firestore
+              </p>
+            </div>
+          </div>
+          <button
+            onClick={() => onNavigateTab('expenses')}
+            className="text-xs text-amber-400 hover:text-amber-300 font-bold flex items-center gap-1 self-start sm:self-auto"
+          >
+            <span>Manage Expenses</span>
+            <ArrowRight className="w-3.5 h-3.5" />
+          </button>
+        </div>
+
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+          {/* Today's Sales */}
+          <div className="p-3.5 rounded-xl bg-slate-950/60 border border-slate-800/80">
+            <span className="text-xs text-slate-400 font-medium block">Today's Sales</span>
+            <span className="text-lg sm:text-xl font-bold font-mono text-emerald-400 mt-1 block">
+              {currency} {todaySales.toFixed(2)}
+            </span>
+            <span className="text-[10px] text-slate-500 block mt-0.5">
+              Gross income from today's orders &amp; payments
+            </span>
+          </div>
+
+          {/* Today's Expenses */}
+          <div className="p-3.5 rounded-xl bg-slate-950/60 border border-slate-800/80">
+            <span className="text-xs text-slate-400 font-medium block">Today's Expenses</span>
+            <span className="text-lg sm:text-xl font-bold font-mono text-rose-400 mt-1 block">
+              {currency} {todayExpenses.toFixed(2)}
+            </span>
+            <span className="text-[10px] text-slate-500 block mt-0.5">
+              Recorded outgoings in expenses collection
+            </span>
+          </div>
+
+          {/* Balance After Expenses */}
+          <div className="p-3.5 rounded-xl bg-slate-950/60 border border-slate-800/80">
+            <span className="text-xs text-slate-400 font-medium block">Balance After Expenses</span>
+            <span className={`text-lg sm:text-xl font-bold font-mono mt-1 block ${
+              todayBalanceAfterExpenses >= 0 ? 'text-amber-400' : 'text-rose-400'
+            }`}>
+              {currency} {todayBalanceAfterExpenses.toFixed(2)}
+            </span>
+            <span className="text-[10px] text-slate-500 block mt-0.5">
+              Today's Sales - Today's Recorded Expenses
             </span>
           </div>
         </div>
@@ -474,8 +556,8 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
               </div>
             </div>
 
-            {/* Table Grid for all 10 tables (T01 to T10) */}
-            <div className="grid grid-cols-2 sm:grid-cols-5 gap-2 pt-1">
+            {/* Table Grid for all 11 tables (T01 to T11) */}
+            <div className="grid grid-cols-2 sm:grid-cols-4 md:grid-cols-6 gap-2 pt-1">
               {tables.map(table => {
                 const style = getTableStatusStyle(table);
                 const num = table.tableNumber || table.number || parseInt(table.id.replace(/\D/g, ''), 10) || 1;

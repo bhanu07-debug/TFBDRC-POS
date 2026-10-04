@@ -59,27 +59,16 @@ export const ReceiptModal: React.FC<ReceiptModalProps> = ({
 
   const handlePrint = () => {
     setActivePrintDoc('receipt');
-    // Non-blocking background order status transition if in placed state
-    if (order && (order.status === 'placed' || (order.status as string) === 'pending')) {
-      try {
-        updateOrderStatus(order.id, 'preparing').catch(err => {
-          console.warn('[ReceiptModal] Non-blocking status update error:', err);
-        });
-      } catch (err) {
-        console.warn('[ReceiptModal] Non-blocking status update caught:', err);
-      }
-    }
-    // Immediately trigger thermal print while user gesture token is active
     setTimeout(() => {
       triggerThermalPrint(paperWidth);
-    }, 50);
+    }, 60);
   };
 
   const handlePrintKOT = () => {
     setActivePrintDoc('kot');
     setTimeout(() => {
       triggerThermalPrint(paperWidth);
-    }, 50);
+    }, 60);
   };
 
   const handleWhatsAppSend = () => {

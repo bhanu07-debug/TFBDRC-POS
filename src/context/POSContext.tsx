@@ -36,7 +36,8 @@ import {
   WalkieTalkieMessage,
   KOTDestination,
   AdminSession,
-  Department
+  Department,
+  Expense
 } from '../types';
 import {
   INITIAL_10_TABLES,
@@ -50,6 +51,10 @@ import {
   listenKOTs,
   listenPayments,
   listenInventory,
+  listenExpenses,
+  createExpenseRecord,
+  updateExpenseRecord,
+  deleteExpenseRecord,
   listenSettings,
   listenServiceRequests,
   listenTableNotifications,
@@ -247,6 +252,12 @@ interface POSContextType {
   updateInventoryStock: (id: string, newStock: number, unitCost?: number, minThreshold?: number, supplier?: string) => Promise<void>;
   adjustInventoryStock: (id: string, delta: number) => Promise<void>;
 
+  // Expenses management
+  expenses: Expense[];
+  addExpense: (data: Omit<Expense, 'id' | 'createdAt' | 'updatedAt'>) => Promise<string>;
+  editExpense: (id: string, updates: Partial<Omit<Expense, 'id' | 'createdAt'>>) => Promise<void>;
+  deleteExpense: (id: string) => Promise<void>;
+
   // Settings & Reset
   updateSettings: (newSettings: Partial<RestaurantSettings>) => Promise<void>;
   resetToDemoData: () => Promise<void>;
@@ -267,6 +278,7 @@ export const POSProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   const [orders, setOrders] = useState<Order[]>([]);
   const [kots, setKots] = useState<KOTTicket[]>([]);
   const [inventory, setInventory] = useState<InventoryItem[]>([]);
+  const [expenses, setExpenses] = useState<Expense[]>([]);
   const [payments, setPayments] = useState<PaymentRecord[]>([]);
   const [serviceRequests, setServiceRequests] = useState<ServiceRequest[]>([]);
   const [tableNotifications, setTableNotifications] = useState<TableNotification[]>([]);
@@ -283,7 +295,7 @@ export const POSProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       const tbl = params.get('table');
       if (tbl) {
         const p = parseInt(tbl, 10);
-        if (!isNaN(p) && p >= 1 && p <= 10) return p;
+        if (!isNaN(p) && p >= 1 && p <= 11) return p;
       }
     }
     return 1;
@@ -438,7 +450,7 @@ export const POSProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       const tblParam = params.get('table');
       if (tblParam) {
         const parsed = parseInt(tblParam, 10);
-        if (!isNaN(parsed) && parsed >= 1 && parsed <= 10) {
+        if (!isNaN(parsed) && parsed >= 1 && parsed <= 11) {
           setCurrentGuestTableNumber(parsed);
           setActiveInterface('guest');
         }
@@ -459,6 +471,7 @@ export const POSProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     let unsubscribeService: () => void = () => {};
     let unsubscribeNotifications: () => void = () => {};
     let unsubscribeWalkie: () => void = () => {};
+    let unsubscribeExpenses: () => void = () => {};
     let unsubscribeAuth: () => void = () => {};
 
     const initialize = async () => {
@@ -481,8 +494,12 @@ export const POSProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
 
       // Tables listener
       unsubscribeTables = listenTables(liveTables => {
-        if (liveTables.length > 0) {
-          setTables(liveTables);
+        const clean11 = (liveTables || []).filter(t => {
+          const num = t.tableNumber || t.number || parseInt(t.id.replace(/\D/g, ''), 10) || 0;
+          return num >= 1 && num <= 11;
+        });
+        if (clean11.length > 0) {
+          setTables(clean11);
         }
       });
 
@@ -518,6 +535,11 @@ export const POSProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       // Inventory listener
       unsubscribeInventory = listenInventory(liveInv => {
         setInventory(liveInv);
+      });
+
+      // Expenses listener
+      unsubscribeExpenses = listenExpenses(liveExpenses => {
+        setExpenses(liveExpenses);
       });
 
       // Service Requests listener
@@ -557,6 +579,7 @@ export const POSProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       unsubscribeKots();
       unsubscribePayments();
       unsubscribeInventory();
+      unsubscribeExpenses();
       unsubscribeService();
       unsubscribeNotifications();
       unsubscribeWalkie();
@@ -581,7 +604,9 @@ export const POSProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   // If guest hasn't ordered or admin hasn't punched an active order for a table,
   // the table will ALWAYS automatically be presented as AVAILABLE with 0 active orders & Rs. 0 bill.
   const enrichedTables: Table[] = useMemo(() => {
-    return Array.from({ length: 10 }, (_, i) => {
+    // Strictly and exclusively 11 tables (T01 to T11)
+    const tableLimit = 11;
+    return Array.from({ length: tableLimit }, (_, i) => {
       const num = i + 1;
       const numStr = num < 10 ? `0${num}` : `${num}`;
       const tableId = `T${numStr}`;
@@ -635,9 +660,12 @@ export const POSProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       } else if (num <= 9) {
         section = 'Cafe Patio';
         capacity = 4;
-      } else {
+      } else if (num === 10) {
         section = 'VIP Dining';
         capacity = 8;
+      } else {
+        section = 'Garden Cabana';
+        capacity = 6;
       }
 
       return {
@@ -2380,6 +2408,19 @@ export const POSProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     await updateInventoryStock(id, Math.max(0, item.currentStock + delta));
   };
 
+  // Expenses CRUD
+  const addExpense = async (data: Omit<Expense, 'id' | 'createdAt' | 'updatedAt'>): Promise<string> => {
+    return await createExpenseRecord(data);
+  };
+
+  const editExpense = async (id: string, updates: Partial<Omit<Expense, 'id' | 'createdAt'>>): Promise<void> => {
+    await updateExpenseRecord(id, updates);
+  };
+
+  const deleteExpense = async (id: string): Promise<void> => {
+    await deleteExpenseRecord(id);
+  };
+
   // Settings
   const updateSettings = async (newSettings: Partial<RestaurantSettings>) => {
     setSettings(prev => ({ ...prev, ...newSettings }));
@@ -2527,6 +2568,12 @@ export const POSProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         deleteInventoryItem,
         updateInventoryStock,
         adjustInventoryStock,
+
+        // Expenses
+        expenses,
+        addExpense,
+        editExpense,
+        deleteExpense,
 
         updateSettings,
         resetToDemoData,

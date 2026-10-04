@@ -7,6 +7,7 @@ export type AdminTab =
   | 'menu'
   | 'shop'
   | 'inventory'
+  | 'expenses'
   | 'payments'
   | 'reports'
   | 'settings';
@@ -26,11 +27,11 @@ export type TableStatus =
   | 'reserved'
   | 'cleaning';
 
-export type TableSection = 'Indoor AC' | 'Terrace Lounge' | 'Cafe Patio' | 'VIP Dining';
+export type TableSection = 'Indoor AC' | 'Terrace Lounge' | 'Cafe Patio' | 'VIP Dining' | 'Garden Cabana';
 
 export interface Table {
-  id: string; // e.g. "T01" ... "T10"
-  tableNumber: number; // 1 .. 10
+  id: string; // e.g. "T01" ... "T11"
+  tableNumber: number; // 1 .. 11
   name: string; // e.g. "Table T01"
   qrToken: string; // Unique QR verification token
   status: TableStatus;
@@ -553,3 +554,58 @@ export interface WalkieTalkieMessage {
   createdAt: string;
   status: 'unread' | 'listened' | 'resolved';
 }
+
+// ==========================================
+// 14. EXPENSES & FINANCIALS
+// ==========================================
+export type ExpenseCategory =
+  | 'Kitchen/Food Purchase'
+  | 'Beverage Purchase'
+  | 'General Purchase'
+  | 'Maintenance'
+  | 'Electricity'
+  | 'Water'
+  | 'Internet/Telephone'
+  | 'Cleaning'
+  | 'Transportation'
+  | 'Staff Expense'
+  | 'Packaging'
+  | 'IT/Office'
+  | 'Marketing'
+  | 'Miscellaneous';
+
+export const EXPENSE_CATEGORIES: ExpenseCategory[] = [
+  'Kitchen/Food Purchase',
+  'Beverage Purchase',
+  'General Purchase',
+  'Maintenance',
+  'Electricity',
+  'Water',
+  'Internet/Telephone',
+  'Cleaning',
+  'Transportation',
+  'Staff Expense',
+  'Packaging',
+  'IT/Office',
+  'Marketing',
+  'Miscellaneous'
+];
+
+export type ExpensePaymentMethod = 'Cash' | 'Bank' | 'Card' | 'QR';
+
+export interface Expense {
+  id: string;
+  title: string;
+  category: ExpenseCategory | string;
+  amount: number;
+  paymentMethod: ExpensePaymentMethod;
+  paidTo?: string; // Vendor / Payee
+  paidBy?: string; // Staff member who made the payment / used the expense
+  notes?: string; // Description / Note
+  date: string; // YYYY-MM-DD
+  receiptRef?: string; // Optional receipt number or reference
+  createdAt: string;
+  updatedAt: string;
+  createdBy?: string;
+}
+

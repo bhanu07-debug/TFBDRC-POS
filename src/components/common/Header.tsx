@@ -237,15 +237,15 @@ export const Header: React.FC = () => {
             <button
               id="btn-reset-demo"
               onClick={() => {
-                if (window.confirm('Reset all 10 restaurant tables to Available and clear transaction orders/KOTs in Firestore?')) {
+                if (window.confirm('Reset all 11 restaurant tables to Available and clear transaction orders/KOTs in Firestore?')) {
                   resetToDemoData();
                 }
               }}
               className="hidden lg:flex items-center gap-1 px-2.5 py-1.5 bg-gray-800 hover:bg-gray-700 text-gray-200 hover:text-white rounded-lg text-xs font-medium border border-gray-600 transition"
-              title="Reset 10 Tables to Available and clear test orders"
+              title="Reset 11 Tables to Available and clear test orders"
             >
               <RotateCcw className="w-3.5 h-3.5 text-gray-400" />
-              <span>Reset 10 Tables</span>
+              <span>Reset 11 Tables</span>
             </button>
           </div>
         </div>

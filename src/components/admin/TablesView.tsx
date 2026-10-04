@@ -281,7 +281,7 @@ export const TablesView: React.FC<TablesViewProps> = ({
               Table Management
             </h2>
             <span className="px-2.5 py-0.5 rounded-full text-xs font-black bg-gray-900 text-white font-mono shadow-xs">
-              10 Tables
+              {tables.length || 11} Tables
             </span>
           </div>
           <p className="text-xs text-gray-500 mt-1">
@@ -393,8 +393,8 @@ export const TablesView: React.FC<TablesViewProps> = ({
         </div>
       </div>
 
-      {/* 10 Tables Grid */}
-      <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
+      {/* 11 Tables Grid */}
+      <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-4 xl:grid-cols-6 gap-4">
         {filteredTables.map(table => {
           const isOccupied = (table.status || '').toUpperCase() === 'OCCUPIED' || (table.status || '').toUpperCase() === 'BILLING' ||
             Boolean((table.activeOrdersCount && table.activeOrdersCount > 0) || (table.totalBill && table.totalBill > 0));

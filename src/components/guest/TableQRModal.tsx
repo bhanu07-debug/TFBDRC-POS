@@ -1,5 +1,6 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { usePOS } from '../../context/POSContext';
+import { Table } from '../../types';
 import { QRCodeSVG } from 'qrcode.react';
 import { X, QrCode, Download, Printer, Check, Copy, Sparkles, ExternalLink, Wifi, Utensils } from 'lucide-react';
 import { FatBuddhaLogo } from '../common/FatBuddhaLogo';
@@ -28,8 +29,7 @@ export const TableQRModal: React.FC<TableQRModalProps> = ({
     activeInterface
   } = usePOS();
 
-  const isLocked = lockTable ?? (activeInterface === 'guest');
-  const targetTable = initialTableNum || tableNumber || currentGuestTableNumber;
+  const targetTable = initialTableNum || tableNumber || currentGuestTableNumber || 1;
   const [selectedTable, setSelectedTable] = useState(targetTable);
   const [copied, setCopied] = useState(false);
   const [cardMode, setCardMode] = useState<'order' | 'wifi' | 'dual'>('order');
@@ -41,9 +41,40 @@ export const TableQRModal: React.FC<TableQRModalProps> = ({
     }
   }, [targetTable]);
 
+  const availableTables: Table[] = useMemo(() => {
+    // Strictly and exclusively 11 tables (T01 through T11) - strictly no T12..T21
+    const validTables = (tables || []).filter(t => {
+      const num = t.tableNumber || t.number || parseInt(t.id.replace(/\D/g, ''), 10) || 0;
+      return num >= 1 && num <= 11;
+    });
+
+    const existing = new Map(validTables.map(t => [t.number || t.tableNumber, t]));
+    return Array.from({ length: 11 }, (_, i) => {
+      const num = i + 1;
+      const numStr = num < 10 ? `0${num}` : `${num}`;
+      return existing.get(num) || {
+        id: `T${numStr}`,
+        number: num,
+        tableNumber: num,
+        name: `Table T${numStr}`,
+        label: `Table ${numStr}`,
+        section: num === 11 ? 'Garden Cabana' : (num === 10 ? 'VIP Dining' : 'Indoor AC'),
+        capacity: num === 11 ? 6 : (num === 10 ? 8 : 4),
+        status: 'AVAILABLE',
+        activeSessionId: null,
+        isActive: true,
+        qrToken: `qr-tbl-t${numStr}`,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+        totalBill: 0,
+        activeOrdersCount: 0
+      } as Table;
+    });
+  }, [tables]);
+
   if (!isOpen) return null;
 
-  const activeTableNum = isLocked ? targetTable : selectedTable;
+  const activeTableNum = selectedTable || targetTable || 1;
   const originUrl = typeof window !== 'undefined' ? window.location.origin : 'https://fatbuddha.cafe';
   const tableUrl = `${originUrl}?table=${activeTableNum}`;
   
@@ -79,38 +110,62 @@ export const TableQRModal: React.FC<TableQRModalProps> = ({
                 Table {tableNumStr} QR Code
               </h3>
               <p className="text-[11px] text-gray-500">
-                {isLocked ? `Dedicated QR for Table ${tableNumStr} only` : 'Contactless Guest Ordering QR'}
+                Official Dine-In QR Standee (Tables T01 to T11)
               </p>
             </div>
           </div>
 
           <button
             onClick={onClose}
-            className="p-2 rounded-lg text-gray-400 hover:text-gray-700 hover:bg-gray-100 transition"
+            className="p-2 rounded-lg text-gray-400 hover:text-gray-700 hover:bg-gray-100 transition cursor-pointer"
           >
             <X className="w-5 h-5" />
           </button>
         </div>
 
-        {/* Table Selector (Only shown if NOT locked to a specific table) */}
-        {!isLocked && (
-          <div className="p-4 bg-white/60 border-b border-gray-200 flex items-center gap-2 overflow-x-auto py-2.5">
-            <span className="text-xs font-bold text-gray-600 flex-shrink-0">Select Table:</span>
-            {tables.map(tbl => (
-              <button
-                key={tbl.id}
-                onClick={() => setSelectedTable(tbl.number)}
-                className={`px-2.5 py-1 rounded-lg text-xs font-mono font-bold transition flex-shrink-0 ${
-                  activeTableNum === tbl.number
-                    ? 'bg-amber-500 text-white shadow-sm'
-                    : 'bg-gray-100 hover:bg-gray-200 text-gray-700'
-                }`}
-              >
-                T{tbl.number < 10 ? '0' + tbl.number : tbl.number}
-              </button>
-            ))}
+        {/* Table Selector - All 11 tables T01 to T11 clearly visible and switchable */}
+        <div className="p-3 bg-white/80 border-b border-gray-200 flex flex-col gap-1.5">
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-bold text-gray-700">
+              Select Table (T01 - T11):
+            </span>
+            <span className="text-[11px] font-mono font-bold text-amber-600 bg-amber-50 px-2 py-0.5 rounded-md border border-amber-200">
+              Active: Table {tableNumStr}
+            </span>
           </div>
-        )}
+          <div className="flex items-center gap-1.5 overflow-x-auto py-1 scrollbar-thin">
+            {availableTables.map(tbl => {
+              const num = tbl.number || tbl.tableNumber;
+              const isSelected = activeTableNum === num;
+              const label = num < 10 ? `T0${num}` : `T${num}`;
+              return (
+                <button
+                  key={tbl.id}
+                  type="button"
+                  onClick={() => {
+                    setSelectedTable(num);
+                    if (setCurrentGuestTableNumber && activeInterface === 'guest') {
+                      setCurrentGuestTableNumber(num);
+                    }
+                    if (typeof window !== 'undefined') {
+                      const url = new URL(window.location.href);
+                      url.searchParams.set('table', String(num));
+                      window.history.replaceState({}, '', url.toString());
+                    }
+                  }}
+                  className={`px-2.5 py-1 rounded-lg text-xs font-mono font-bold transition flex-shrink-0 cursor-pointer ${
+                    isSelected
+                      ? 'bg-amber-500 text-white shadow-sm ring-2 ring-amber-600'
+                      : 'bg-gray-100 hover:bg-gray-200 text-gray-700'
+                  }`}
+                  title={`View QR Code for ${label}`}
+                >
+                  {label}
+                </button>
+              );
+            })}
+          </div>
+        </div>
 
         {/* Standee Mode Switcher */}
         <div className="px-4 py-2 bg-amber-50 border-b border-amber-200 flex items-center justify-center gap-1.5 text-xs">
@@ -293,24 +348,32 @@ export const TableQRModal: React.FC<TableQRModalProps> = ({
 
         {/* Action Controls */}
         <div className="p-4 bg-white border-t border-gray-200 flex items-center justify-between gap-2">
-          {!isLocked ? (
+          {activeInterface !== 'guest' ? (
             <button
               onClick={() => {
                 setCurrentGuestTableNumber(activeTableNum);
                 setActiveInterface('guest');
                 onClose();
               }}
-              className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2.5 rounded-xl bg-amber-500 hover:bg-amber-600 text-white font-bold text-xs shadow-sm transition"
+              className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2.5 rounded-xl bg-amber-500 hover:bg-amber-600 text-white font-bold text-xs shadow-sm transition cursor-pointer"
             >
               <ExternalLink className="w-3.5 h-3.5" />
-              <span>Open This Table's Menu</span>
+              <span>Preview Table {tableNumStr} Guest Menu</span>
             </button>
           ) : (
             <button
-              onClick={onClose}
-              className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2.5 rounded-xl bg-gray-100 hover:bg-gray-200 text-gray-800 font-bold text-xs transition"
+              onClick={() => {
+                setCurrentGuestTableNumber(activeTableNum);
+                if (typeof window !== 'undefined') {
+                  const url = new URL(window.location.href);
+                  url.searchParams.set('table', String(activeTableNum));
+                  window.history.replaceState({}, '', url.toString());
+                }
+                onClose();
+              }}
+              className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2.5 rounded-xl bg-amber-500 hover:bg-amber-600 text-white font-bold text-xs shadow-sm transition cursor-pointer"
             >
-              <span>Back to Menu</span>
+              <span>Done • Order for Table {tableNumStr}</span>
             </button>
           )}
 

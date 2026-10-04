@@ -329,9 +329,11 @@
     break-inside: avoid !important;
   }
 
-  /* Crisp QR Code sizing */
+  /* Crisp QR Code sizing (SVG and Canvas) */
   #thermal-print-container svg,
-  #printable-receipt svg {
+  #thermal-print-container canvas,
+  #printable-receipt svg,
+  #printable-receipt canvas {
     display: block !important;
     margin: 0 auto !important;
     max-width: 60px !important;

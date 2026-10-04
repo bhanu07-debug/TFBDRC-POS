@@ -257,6 +257,27 @@
         "createdAt": { "type": "string", "maxLength": 64 }
       },
       "required": ["id", "tableNumber", "type", "title", "message", "read", "createdAt"]
+    },
+    "Expense": {
+      "title": "Expense",
+      "description": "Recorded restaurant expenditure and financial outgoings.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128 },
+        "title": { "type": "string", "maxLength": 256 },
+        "category": { "type": "string", "maxLength": 128 },
+        "amount": { "type": "number" },
+        "paymentMethod": { "type": "string", "enum": ["Cash", "Bank", "Card", "QR"] },
+        "paidTo": { "type": "string", "maxLength": 256 },
+        "paidBy": { "type": "string", "maxLength": 256 },
+        "createdBy": { "type": "string", "maxLength": 256 },
+        "notes": { "type": "string", "maxLength": 2000 },
+        "date": { "type": "string", "maxLength": 64 },
+        "receiptRef": { "type": "string", "maxLength": 128 },
+        "createdAt": { "type": "string", "maxLength": 64 },
+        "updatedAt": { "type": "string", "maxLength": 64 }
+      },
+      "required": ["id", "title", "category", "amount", "paymentMethod", "date", "createdAt"]
     }
   },
   "firestore": {
@@ -319,6 +340,10 @@
     "/table_notifications/{notificationId}": {
       "schema": { "$ref": "#/entities/TableNotification" },
       "description": "Real-time kitchen and reception alerts dispatched to guest tables."
+    },
+    "/expenses/{expenseId}": {
+      "schema": { "$ref": "#/entities/Expense" },
+      "description": "Daily restaurant expenses and financial outgoings."
     }
   }
 }

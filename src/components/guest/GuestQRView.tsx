@@ -26,7 +26,8 @@ import {
   AlertTriangle,
   X,
   UtensilsCrossed,
-  Radio
+  Radio,
+  ChevronDown
 } from 'lucide-react';
 import {
   playReadySound,
@@ -74,6 +75,7 @@ export const GuestQRView: React.FC = () => {
   const [isQRModalOpen, setIsQRModalOpen] = useState(false);
   const [isWifiModalOpen, setIsWifiModalOpen] = useState(false);
   const [isWalkieModalOpen, setIsWalkieModalOpen] = useState(false);
+  const [isTableSwitchModalOpen, setIsTableSwitchModalOpen] = useState(false);
 
   const currentTable = getCurrentTable();
   const activeOrders = getTableOrders(currentGuestTableNumber);
@@ -220,9 +222,15 @@ export const GuestQRView: React.FC = () => {
                 <FatBuddhaLogo size={58} className="mt-0.5" alt="The Fat Buddha Delight Logo" />
                 <div>
                   <div className="flex items-center gap-2 mb-1">
-                    <span className="px-2 py-0.5 rounded-md bg-amber-500 text-white font-black text-[10px] uppercase tracking-wider shadow-sm">
-                      Table {currentGuestTableNumber < 10 ? '0' + currentGuestTableNumber : currentGuestTableNumber}
-                    </span>
+                    <button
+                      type="button"
+                      onClick={() => setIsTableSwitchModalOpen(true)}
+                      className="flex items-center gap-1.5 px-2.5 py-0.5 rounded-md bg-amber-500 hover:bg-amber-600 text-white font-black text-[10px] uppercase tracking-wider shadow-sm transition cursor-pointer active:scale-95"
+                      title="Click to Switch Dining Table (11 Tables Available)"
+                    >
+                      <span>Table {currentGuestTableNumber < 10 ? '0' + currentGuestTableNumber : currentGuestTableNumber}</span>
+                      <ChevronDown className="w-3 h-3 text-amber-200" />
+                    </button>
                     <span className="text-[11px] text-amber-300 font-medium">
                       Dine-In
                     </span>
@@ -808,7 +816,7 @@ export const GuestQRView: React.FC = () => {
           isOpen={isQRModalOpen}
           onClose={() => setIsQRModalOpen(false)}
           initialTableNum={currentGuestTableNumber}
-          lockTable={true}
+          lockTable={false}
         />
 
         <WifiQRModal
@@ -816,6 +824,121 @@ export const GuestQRView: React.FC = () => {
           onClose={() => setIsWifiModalOpen(false)}
           tableNumber={currentGuestTableNumber}
         />
+
+        {/* 11 Tables Switcher Modal */}
+        {isTableSwitchModalOpen && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/65 backdrop-blur-sm animate-in fade-in duration-150">
+            <div
+              className="fixed inset-0"
+              onClick={() => setIsTableSwitchModalOpen(false)}
+            />
+            <div className="relative w-full max-w-md bg-white rounded-2xl shadow-2xl border border-gray-200 overflow-hidden flex flex-col max-h-[85vh] animate-in zoom-in-95 duration-150">
+              <div className="p-4 bg-gray-900 text-white flex items-center justify-between">
+                <div>
+                  <h3 className="font-bold text-sm tracking-wide text-amber-400 uppercase">
+                    Select Your Dining Table
+                  </h3>
+                  <p className="text-[11px] text-gray-300">
+                    11 Tables Available at The Fat Buddha Delight
+                  </p>
+                </div>
+                <button
+                  onClick={() => setIsTableSwitchModalOpen(false)}
+                  className="p-1.5 rounded-lg text-gray-400 hover:text-white hover:bg-gray-800 transition"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+
+              <div className="p-4 overflow-y-auto space-y-2">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                  {Array.from({ length: 11 }, (_, i) => {
+                    const num = i + 1;
+                    const isSelected = currentGuestTableNumber === num;
+                    const numStr = num < 10 ? `0${num}` : `${num}`;
+                    let section = 'Indoor AC';
+                    let capacity = 4;
+                    if (num <= 4) {
+                      section = 'Indoor AC';
+                      capacity = num <= 2 ? 2 : 4;
+                    } else if (num <= 7) {
+                      section = 'Terrace Lounge';
+                      capacity = 4;
+                    } else if (num <= 9) {
+                      section = 'Cafe Patio';
+                      capacity = 4;
+                    } else if (num === 10) {
+                      section = 'VIP Dining';
+                      capacity = 8;
+                    } else {
+                      section = 'Garden Cabana';
+                      capacity = 6;
+                    }
+
+                    return (
+                      <button
+                        key={num}
+                        type="button"
+                        onClick={() => {
+                          setCurrentGuestTableNumber(num);
+                          if (typeof window !== 'undefined') {
+                            const url = new URL(window.location.href);
+                            url.searchParams.set('table', String(num));
+                            window.history.replaceState({}, '', url.toString());
+                          }
+                          setIsTableSwitchModalOpen(false);
+                        }}
+                        className={`p-3 rounded-xl border text-left transition flex items-center justify-between cursor-pointer ${
+                          isSelected
+                            ? 'bg-amber-500 text-white border-amber-600 shadow-md ring-2 ring-amber-400/40'
+                            : 'bg-white hover:bg-amber-50/60 border-gray-200 text-gray-900 hover:border-amber-300'
+                        }`}
+                      >
+                        <div className="flex items-center gap-2.5">
+                          <div
+                            className={`w-9 h-9 rounded-lg font-mono font-black text-xs flex items-center justify-center ${
+                              isSelected ? 'bg-black/20 text-white' : 'bg-gray-100 text-gray-800'
+                            }`}
+                          >
+                            T{numStr}
+                          </div>
+                          <div>
+                            <div className="font-bold text-xs flex items-center gap-1.5">
+                              <span>Table {numStr}</span>
+                              {num === 11 && (
+                                <span
+                                  className={`text-[9px] px-1 py-0.2 rounded font-black uppercase ${
+                                    isSelected ? 'bg-white text-amber-700' : 'bg-amber-100 text-amber-800'
+                                  }`}
+                                >
+                                  Cabana
+                                </span>
+                              )}
+                            </div>
+                            <div
+                              className={`text-[10px] ${
+                                isSelected ? 'text-amber-100' : 'text-gray-500'
+                              }`}
+                            >
+                              {section} • {capacity} Guests
+                            </div>
+                          </div>
+                        </div>
+                        {isSelected && <Check className="w-4 h-4 text-white" />}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              <div className="p-3 bg-gray-50 border-t border-gray-200 text-center">
+                <span className="text-[11px] text-gray-500">
+                  Switching tables updates your cart, digital order, and service calls.
+                </span>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );

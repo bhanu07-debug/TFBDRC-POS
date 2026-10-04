@@ -30,7 +30,8 @@ import {
   VolumeX,
   Clock,
   ShoppingBag,
-  Radio
+  Radio,
+  Wallet
 } from 'lucide-react';
 import { DashboardView } from './DashboardView';
 import { TablesView } from './TablesView';
@@ -40,6 +41,7 @@ import { ManualPOSView } from './ManualPOSView';
 import { MenuView } from './MenuView';
 import { ShopView } from './ShopView';
 import { InventoryView } from './InventoryView';
+import { ExpensesView } from './ExpensesView';
 import { PaymentsView } from './PaymentsView';
 import { ReportsView } from './ReportsView';
 import { SettingsView } from './SettingsView';
@@ -214,13 +216,14 @@ export const AdminLayout: React.FC = () => {
     alert?: boolean;
   }[] = [
     { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
-    { id: 'tables', label: 'Tables', icon: Layers, badge: `${occupiedTableCount}/10` },
+    { id: 'tables', label: 'Tables', icon: Layers, badge: `${occupiedTableCount}/${tables.length || 11}` },
     { id: 'orders', label: 'Orders', icon: Receipt, badge: activeOrdersCount > 0 ? activeOrdersCount : null },
     { id: 'kot', label: 'KOT', icon: ChefHat, badge: activeKOTCount > 0 ? activeKOTCount : null, alert: activeKOTCount > 0 },
     { id: 'manual_order', label: 'Manual Order', icon: UtensilsCrossed },
     { id: 'menu', label: 'Menu', icon: BookOpen },
     { id: 'shop', label: 'Shop', icon: ShoppingBag },
     { id: 'inventory', label: 'Inventory', icon: Package },
+    { id: 'expenses', label: 'Expenses', icon: Wallet },
     { id: 'payments', label: 'Payments', icon: CreditCard },
     { id: 'reports', label: 'Reports', icon: BarChart3 },
     { id: 'settings', label: 'Settings', icon: Settings }
@@ -236,7 +239,7 @@ export const AdminLayout: React.FC = () => {
       case 'dashboard':
         return 'Dashboard Overview';
       case 'tables':
-        return 'Table Management (10 Tables)';
+        return `Table Management (${tables.length || 11} Tables)`;
       case 'orders':
         return 'Orders Management';
       case 'kot':
@@ -249,6 +252,8 @@ export const AdminLayout: React.FC = () => {
         return 'Clothing & Merchandise Shop';
       case 'inventory':
         return 'Inventory & Stock Control';
+      case 'expenses':
+        return 'Expense Management & Financial Outlays';
       case 'payments':
         return 'Payments & Transactions';
       case 'reports':
@@ -575,6 +580,8 @@ export const AdminLayout: React.FC = () => {
             {adminActiveTab === 'shop' && <ShopView />}
 
             {adminActiveTab === 'inventory' && <InventoryView />}
+
+            {adminActiveTab === 'expenses' && <ExpensesView />}
 
             {adminActiveTab === 'payments' && (
               <PaymentsView onOpenReceipt={order => setReceiptOrder(order)} />

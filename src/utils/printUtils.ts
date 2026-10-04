@@ -36,7 +36,7 @@ export const triggerThermalPrint = (paperWidth: ThermalPaperWidth = '80mm'): voi
       console.error('[ThermalPrint] window.print() failed:', err);
       cleanup();
     }
-  }, 50);
+  }, 80);
 
   // Safety fallback cleanup (3 minutes) in case afterprint doesn't fire in certain browsers
   setTimeout(cleanup, 180000);

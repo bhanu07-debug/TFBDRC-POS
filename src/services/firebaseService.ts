@@ -62,14 +62,15 @@ import {
   RestaurantSettings,
   ServiceRequest,
   TableNotification,
-  WalkieTalkieMessage
+  WalkieTalkieMessage,
+  Expense
 } from '../types';
 import { OFFICIAL_CATEGORIES, OFFICIAL_MENU_ITEMS } from '../data/restaurantMenu';
 
 // ====================================================
 // CONSTANTS & SEED DATA
 // ====================================================
-export const INITIAL_10_TABLES: Table[] = Array.from({ length: 10 }, (_, i) => {
+export const INITIAL_11_TABLES: Table[] = Array.from({ length: 11 }, (_, i) => {
   const num = i + 1;
   const numStr = num < 10 ? `0${num}` : `${num}`;
   const id = `T${numStr}`;
@@ -86,9 +87,12 @@ export const INITIAL_10_TABLES: Table[] = Array.from({ length: 10 }, (_, i) => {
   } else if (num <= 9) {
     section = 'Cafe Patio';
     capacity = 4;
-  } else {
+  } else if (num === 10) {
     section = 'VIP Dining';
     capacity = 8;
+  } else {
+    section = 'Garden Cabana';
+    capacity = 6;
   }
 
   return {
@@ -111,7 +115,8 @@ export const INITIAL_10_TABLES: Table[] = Array.from({ length: 10 }, (_, i) => {
   };
 });
 
-export const INITIAL_20_TABLES = INITIAL_10_TABLES;
+export const INITIAL_10_TABLES = INITIAL_11_TABLES;
+export const INITIAL_20_TABLES = INITIAL_11_TABLES;
 
 export const DEFAULT_SETTINGS: RestaurantSettings = {
   restaurantName: "The Fat Buddha Delight",
@@ -135,7 +140,7 @@ export const DEFAULT_SETTINGS: RestaurantSettings = {
   wifiPassword: "Newdelight@123",
   autoPrintKOT: true,
   soundAlerts: true,
-  tableCount: 10,
+  tableCount: 11,
   googleReviewUrl: "https://g.page/r/TheFatBuddhaDelight/review",
   googleReviewQrImage: "/google-review-qr.svg",
   adminUsername: "admin",
@@ -205,20 +210,41 @@ export const seedInitial10TablesIfEmpty = async (): Promise<boolean> => {
       }
     });
 
-    // Delete any obsolete legacy tables > 10
+    // Delete any obsolete legacy tables > 11 (T12..T25, etc.)
     snap.docs.forEach(d => {
-      const num = parseInt(d.id.replace(/\D/g, ''), 10);
-      if (num > 10) {
+      const data = d.data();
+      const numFromId = parseInt(d.id.replace(/\D/g, ''), 10);
+      const numFromData = data?.tableNumber || data?.number;
+      const effectiveNum = numFromData || numFromId;
+      if (effectiveNum > 11 || numFromId > 11) {
         needsBatch = true;
         batch.delete(doc(db, path, d.id));
       }
     });
 
-    // Seed settings doc if not present
+    // Also explicitly delete IDs T12 through T25 if present
+    for (let extra = 12; extra <= 25; extra++) {
+      const extraId = `T${extra < 10 ? '0' + extra : extra}`;
+      if (existingTableIds.has(extraId)) {
+        needsBatch = true;
+        batch.delete(doc(db, path, extraId));
+      }
+    }
+
+    // Seed settings doc if not present, or enforce tableCount: 11
     const settingsDoc = await getDoc(doc(db, 'settings', 'restaurant_config'));
     if (!settingsDoc.exists()) {
       needsBatch = true;
-      batch.set(doc(db, 'settings', 'restaurant_config'), cleanFirestoreData(DEFAULT_SETTINGS));
+      batch.set(doc(db, 'settings', 'restaurant_config'), cleanFirestoreData({
+        ...DEFAULT_SETTINGS,
+        tableCount: 11
+      }));
+    } else {
+      const sData = settingsDoc.data();
+      if (sData?.tableCount && sData.tableCount !== 11) {
+        needsBatch = true;
+        batch.update(doc(db, 'settings', 'restaurant_config'), { tableCount: 11 });
+      }
     }
 
     if (needsBatch) {
@@ -250,11 +276,11 @@ export const clearAllTestDataAndResetTables = async (): Promise<boolean> => {
         updatedAt: new Date().toISOString()
       });
     });
-    // Delete any legacy tables > 10
+    // Delete any legacy tables > 11
     const tablesSnap = await getDocs(collection(db, 'tables'));
     tablesSnap.docs.forEach(d => {
       const num = parseInt(d.id.replace(/\D/g, ''), 10);
-      if (num > 10) {
+      if (num > 11) {
         tablesBatch.delete(doc(db, 'tables', d.id));
       }
     });
@@ -315,6 +341,7 @@ export const clearAllTestDataAndResetTables = async (): Promise<boolean> => {
   }
 };
 
+export const seedInitial11TablesIfEmpty = seedInitial10TablesIfEmpty;
 export const seedInitial20TablesIfEmpty = seedInitial10TablesIfEmpty;
 
 export const listenTables = (
@@ -329,8 +356,8 @@ export const listenTables = (
       snapshot.forEach(docSnap => {
         const data = docSnap.data() as Table;
         const num = data.tableNumber || parseInt(docSnap.id.replace(/\D/g, ''), 10) || 1;
-        // Only include valid 1..10 tables
-        if (num <= 10) {
+        // Include valid 1..11 tables
+        if (num <= 11) {
           tablesList.push({
             ...data,
             id: docSnap.id,
@@ -340,7 +367,7 @@ export const listenTables = (
           });
         }
       });
-      // Sort numerically T01..T10
+      // Sort numerically T01..T11
       tablesList.sort((a, b) => a.tableNumber - b.tableNumber);
       onSuccess(tablesList);
     },
@@ -1449,6 +1476,7 @@ export const listenSettings = (
         onSuccess({
           ...DEFAULT_SETTINGS,
           ...raw,
+          tableCount: 11,
           restaurantName: raw?.restaurantName || raw?.name || DEFAULT_SETTINGS.restaurantName,
           name: raw?.name || raw?.restaurantName || DEFAULT_SETTINGS.name,
           panNumber: raw?.panNumber || raw?.panNo || DEFAULT_SETTINGS.panNumber,
@@ -1694,5 +1722,94 @@ export const clearTableNotifications = async (tableNumber: number): Promise<void
     handleFirestoreError(error, OperationType.DELETE, path);
   }
 };
+
+// ====================================================
+// 14. EXPENSES (Real Firestore collection `expenses`)
+// ====================================================
+export const listenExpenses = (
+  onSuccess: (expenses: Expense[]) => void,
+  onError?: (error: any) => void
+): (() => void) => {
+  const path = 'expenses';
+  return onSnapshot(
+    collection(db, path),
+    snapshot => {
+      const list: Expense[] = [];
+      snapshot.forEach(docSnap => {
+        const data = docSnap.data() as Expense;
+        list.push({
+          ...data,
+          id: docSnap.id,
+          amount: Number(data.amount || 0)
+        });
+      });
+      // Sort newest date and created time first
+      list.sort((a, b) => {
+        const dateA = a.date ? new Date(a.date).getTime() : 0;
+        const dateB = b.date ? new Date(b.date).getTime() : 0;
+        if (dateB !== dateA) return dateB - dateA;
+        return (new Date(b.createdAt || 0).getTime()) - (new Date(a.createdAt || 0).getTime());
+      });
+      onSuccess(list);
+    },
+    error => {
+      handleFirestoreError(error, OperationType.LIST, path);
+      if (onError) onError(error);
+    }
+  );
+};
+
+export const createExpenseRecord = async (
+  data: Omit<Expense, 'id' | 'createdAt' | 'updatedAt'>
+): Promise<string> => {
+  const path = 'expenses';
+  const id = `EXP-${Date.now().toString(36).toUpperCase()}-${Math.floor(100 + Math.random() * 900)}`;
+  const now = new Date().toISOString();
+
+  const newExpense: Expense = {
+    ...data,
+    id,
+    amount: Number(data.amount) || 0,
+    createdAt: now,
+    updatedAt: now
+  };
+
+  try {
+    await setDoc(doc(db, path, id), cleanFirestoreData(newExpense));
+    return id;
+  } catch (error) {
+    handleFirestoreError(error, OperationType.CREATE, path);
+    throw error;
+  }
+};
+
+export const updateExpenseRecord = async (
+  id: string,
+  updates: Partial<Omit<Expense, 'id' | 'createdAt'>>
+): Promise<void> => {
+  const path = 'expenses';
+  const docRef = doc(db, path, id);
+  try {
+    const payload = cleanFirestoreData({
+      ...updates,
+      updatedAt: new Date().toISOString()
+    });
+    await setDoc(docRef, payload, { merge: true });
+  } catch (error) {
+    handleFirestoreError(error, OperationType.UPDATE, path);
+    throw error;
+  }
+};
+
+export const deleteExpenseRecord = async (id: string): Promise<void> => {
+  const path = 'expenses';
+  try {
+    await deleteDoc(doc(db, path, id));
+  } catch (error) {
+    handleFirestoreError(error, OperationType.DELETE, path);
+    throw error;
+  }
+};
+
 
 
