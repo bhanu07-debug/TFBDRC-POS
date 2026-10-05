@@ -271,10 +271,36 @@ interface POSContextType {
 const POSContext = createContext<POSContextType | undefined>(undefined);
 
 export const POSProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
-  // Real Firestore state
+  // Real Firestore state with robust local persistence fallback
   const [tables, setTables] = useState<Table[]>(INITIAL_10_TABLES);
-  const [menuItems, setMenuItems] = useState<MenuItem[]>(OFFICIAL_MENU_ITEMS);
-  const [categories, setCategories] = useState<Category[]>(OFFICIAL_CATEGORIES);
+  const [menuItems, setMenuItems] = useState<MenuItem[]>(() => {
+    if (typeof window !== 'undefined') {
+      try {
+        const saved = localStorage.getItem('fat_buddha_menu_items');
+        if (saved) {
+          const parsed = JSON.parse(saved);
+          if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+        }
+      } catch (e) {
+        console.warn('Error loading cached menu items:', e);
+      }
+    }
+    return OFFICIAL_MENU_ITEMS;
+  });
+  const [categories, setCategories] = useState<Category[]>(() => {
+    if (typeof window !== 'undefined') {
+      try {
+        const saved = localStorage.getItem('fat_buddha_categories');
+        if (saved) {
+          const parsed = JSON.parse(saved);
+          if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+        }
+      } catch (e) {
+        console.warn('Error loading cached categories:', e);
+      }
+    }
+    return OFFICIAL_CATEGORIES;
+  });
   const [orders, setOrders] = useState<Order[]>([]);
   const [kots, setKots] = useState<KOTTicket[]>([]);
   const [inventory, setInventory] = useState<InventoryItem[]>([]);
@@ -507,6 +533,9 @@ export const POSProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       unsubscribeCats = listenCategories(liveCats => {
         if (liveCats.length > 0) {
           setCategories(liveCats);
+          try {
+            localStorage.setItem('fat_buddha_categories', JSON.stringify(liveCats));
+          } catch (e) {}
         }
       });
 
@@ -514,6 +543,9 @@ export const POSProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       unsubscribeMenu = listenMenuItems(liveMenu => {
         if (liveMenu.length > 0) {
           setMenuItems(liveMenu);
+          try {
+            localStorage.setItem('fat_buddha_menu_items', JSON.stringify(liveMenu));
+          } catch (e) {}
         }
       });
 

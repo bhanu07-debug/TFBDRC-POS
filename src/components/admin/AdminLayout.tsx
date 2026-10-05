@@ -429,13 +429,18 @@ export const AdminLayout: React.FC = () => {
               <span>Firebase Cloud Live</span>
             </div>
 
-            {/* Batch QR Codes Modal Trigger */}
+            {/* Table & WiFi QRs Modal & ZIP Trigger */}
             <button
+              id="btn-admin-topbar-qr-flyers"
               onClick={() => setIsBatchQrModalOpen(true)}
-              className="p-2 rounded-xl text-slate-400 hover:text-amber-400 hover:bg-slate-800 border border-slate-700 transition"
-              title="Table QR Codes for Guest Scanning"
+              className="px-2.5 py-1.5 rounded-xl bg-amber-500/10 hover:bg-amber-500/20 text-amber-400 border border-amber-500/30 transition flex items-center gap-1.5 text-xs font-bold cursor-pointer"
+              title="Download & Print All 11 Table & WiFi QRs in ZIP"
             >
-              <QrCode className="w-4 h-4" />
+              <QrCode className="w-4 h-4 text-amber-400" />
+              <span className="hidden sm:inline">Table QRs</span>
+              <span className="px-1.5 py-0.2 rounded bg-amber-500 text-slate-950 text-[10px] font-mono font-black uppercase shadow-2xs">
+                ZIP
+              </span>
             </button>
 
             {/* Quick Audio Alerts Toggle in Admin Topbar */}

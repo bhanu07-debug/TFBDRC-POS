@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { usePOS } from '../../context/POSContext';
 import { Table, TableSection, TableStatus, Order } from '../../types';
 import {
@@ -19,12 +19,22 @@ import {
   UtensilsCrossed,
   CreditCard,
   Flame,
-  Sparkles
+  Sparkles,
+  LayoutGrid,
+  List,
+  Eye,
+  EyeOff,
+  SlidersHorizontal,
+  Search,
+  Download,
+  Printer,
+  FileArchive
 } from 'lucide-react';
 import { SettleBillModal } from './SettleBillModal';
 import { TableTransferModal } from './TableTransferModal';
 import { TableQRModal } from '../guest/TableQRModal';
 import { OrderElapsedTimer } from '../common/OrderElapsedTimer';
+import { downloadAllTableQRsZip } from '../../utils/qrDownloadUtils';
 
 interface TablesViewProps {
   onPunchOrder: (tableNumber: number) => void;
@@ -37,6 +47,7 @@ export const TablesView: React.FC<TablesViewProps> = ({
 }) => {
   const {
     tables,
+    settings,
     setTableStatus,
     occupyTable,
     getTableOrders,
@@ -49,12 +60,38 @@ export const TablesView: React.FC<TablesViewProps> = ({
 
   // Status Filter for real-time monitoring
   const [selectedStatus, setSelectedStatus] = useState<string>('all');
+  const [selectedSection, setSelectedSection] = useState<string>('all');
+  const [tableSearch, setTableSearch] = useState<string>('');
+
+  // Adjustable Layout & Density Settings
+  const [viewLayout, setViewLayout] = useState<'grid' | 'table'>('grid');
+  const [cardDensity, setCardDensity] = useState<'compact' | 'standard' | 'spacious'>('standard');
+  const [showKitchenControls, setShowKitchenControls] = useState<boolean>(true);
+  const [showQuickStatus, setShowQuickStatus] = useState<boolean>(true);
+  const [columnsCount, setColumnsCount] = useState<2 | 3 | 4 | 6>(3);
 
   // Modals & Drawers
   const [settleTable, setSettleTable] = useState<Table | null>(null);
   const [transferFromTable, setTransferFromTable] = useState<Table | null>(null);
   const [qrModalTableNum, setQrModalTableNum] = useState<number | null>(null);
   const [inspectTable, setInspectTable] = useState<Table | null>(null);
+  const [isDownloadingAllZip, setIsDownloadingAllZip] = useState(false);
+
+  const handleDownloadQRsZip = async () => {
+    try {
+      setIsDownloadingAllZip(true);
+      await downloadAllTableQRsZip({
+        restaurantName: settings.restaurantName || 'The Fat Buddha Delight',
+        wifiSsid: settings.wifiSsid || 'FatBuddha_Guest_5G',
+        wifiPassword: settings.wifiPassword || 'Newdelight@123',
+        tableCount: 11
+      });
+    } catch (err) {
+      console.error('Failed to download QRs ZIP:', err);
+    } finally {
+      setIsDownloadingAllZip(false);
+    }
+  };
 
   const getEffectiveTableOrderStatus = (activeOrders: Order[], tableNumber?: number): 'placed' | 'confirmed' | 'served' => {
     const tableKots = tableNumber !== undefined ? kots.filter(
@@ -119,7 +156,26 @@ export const TablesView: React.FC<TablesViewProps> = ({
     }
   };
 
+  const sectionsList = useMemo(() => {
+    const s = new Set<string>();
+    tables.forEach(t => {
+      if (t.section) s.add(t.section);
+    });
+    return Array.from(s);
+  }, [tables]);
+
   const filteredTables = tables.filter(t => {
+    if (selectedSection !== 'all' && (t.section || 'Indoor AC') !== selectedSection) {
+      return false;
+    }
+    if (tableSearch.trim()) {
+      const q = tableSearch.toLowerCase().replace('table', '').trim();
+      const numStr = String(t.number || t.tableNumber || '');
+      const secStr = (t.section || '').toLowerCase();
+      if (!numStr.includes(q) && !secStr.includes(q)) {
+        return false;
+      }
+    }
     if (selectedStatus === 'all') return true;
     const isOccupied = (t.status || '').toUpperCase() === 'OCCUPIED' || (t.status || '').toUpperCase() === 'BILLING' ||
       Boolean((t.activeOrdersCount && t.activeOrdersCount > 0) || (t.totalBill && t.totalBill > 0));
@@ -243,9 +299,9 @@ export const TablesView: React.FC<TablesViewProps> = ({
     }
     return {
       key: 'available',
-      label: 'Active / Available',
-      indicatorTag: 'ACTIVE',
-      subLabel: 'Clean & Ready',
+      label: 'Available',
+      indicatorTag: 'AVAILABLE',
+      subLabel: 'Ready for Guests',
       statusColor: 'emerald',
       Icon: UtensilsCrossed,
       iconBg: 'bg-emerald-50 border-2 border-emerald-300 ring-4 ring-emerald-500/10 shadow-sm shadow-emerald-500/10',
@@ -273,6 +329,62 @@ export const TablesView: React.FC<TablesViewProps> = ({
 
   return (
     <div className="space-y-6">
+      {/* Banner for Quick Printable Flyers & ZIP Download */}
+      <div className="bg-gradient-to-r from-amber-500 via-amber-600 to-amber-700 p-4 sm:p-5 rounded-3xl text-white shadow-lg flex flex-col md:flex-row md:items-center justify-between gap-4">
+        <div className="flex items-center gap-3.5">
+          <div className="w-11 h-11 rounded-2xl bg-white/20 backdrop-blur-xs flex items-center justify-center flex-shrink-0 shadow-inner">
+            <FileArchive className="w-6 h-6 text-white" />
+          </div>
+          <div>
+            <div className="flex items-center gap-2 flex-wrap">
+              <h3 className="font-extrabold text-base sm:text-lg tracking-wide">
+                All 11 Table &amp; WiFi QR Codes (.ZIP)
+              </h3>
+              <span className="px-2.5 py-0.5 rounded-full bg-white text-amber-950 font-black text-[10px] uppercase font-mono shadow-xs">
+                Flyer Ready
+              </span>
+            </div>
+            <p className="text-xs text-amber-100 font-medium mt-0.5">
+              High-resolution PNGs (1000x1000), SVGs, WiFi credentials, and pre-formatted flyers for Tables T01 to T11 ready to print today.
+            </p>
+          </div>
+        </div>
+
+        <div className="flex items-center gap-2 flex-wrap flex-shrink-0">
+          <button
+            type="button"
+            onClick={handleDownloadQRsZip}
+            disabled={isDownloadingAllZip}
+            className="px-4 py-2.5 rounded-xl bg-white hover:bg-amber-50 text-amber-950 text-xs font-black shadow-md transition flex items-center gap-2 cursor-pointer active:scale-95 disabled:opacity-75"
+            title="Download all Table & WiFi QRs in a single ZIP file"
+          >
+            <Download className="w-4 h-4 text-amber-600" />
+            <span>{isDownloadingAllZip ? 'Preparing ZIP...' : 'Download All QRs (.ZIP)'}</span>
+          </button>
+
+          <a
+            href="/all_table_qr_flyers.html"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="px-3.5 py-2.5 rounded-xl bg-amber-800/80 hover:bg-amber-900 text-white text-xs font-bold transition flex items-center gap-1.5 shadow-sm"
+            title="Open all 11 flyers formatted for immediate printing"
+          >
+            <Printer className="w-4 h-4 text-amber-200" />
+            <span>Print All Flyers</span>
+          </a>
+
+          <button
+            type="button"
+            onClick={() => setQrModalTableNum(1)}
+            className="px-3.5 py-2.5 rounded-xl bg-black/25 hover:bg-black/35 text-white text-xs font-bold transition flex items-center gap-1.5 cursor-pointer"
+            title="Preview QR standee modal"
+          >
+            <QrCode className="w-4 h-4 text-amber-300" />
+            <span>QR Standees</span>
+          </button>
+        </div>
+      </div>
+
       {/* Floor Overview Header & Real-time Status Monitoring Bar */}
       <div className="bg-white p-4 sm:p-5 rounded-2xl border border-gray-200 shadow-xs flex flex-col lg:flex-row lg:items-center justify-between gap-4">
         <div>
@@ -393,276 +505,555 @@ export const TablesView: React.FC<TablesViewProps> = ({
         </div>
       </div>
 
-      {/* 11 Tables Grid */}
-      <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-4 xl:grid-cols-6 gap-4">
-        {filteredTables.map(table => {
-          const isOccupied = (table.status || '').toUpperCase() === 'OCCUPIED' || (table.status || '').toUpperCase() === 'BILLING' ||
-            Boolean((table.activeOrdersCount && table.activeOrdersCount > 0) || (table.totalBill && table.totalBill > 0));
-          const meta = getTableStatusMeta(table.status, isOccupied);
-          const tableOrders = getTableOrders(table.number);
-          const activeKots = getTableActiveKots(table.number);
-          const effectiveOrderStatus = getEffectiveTableOrderStatus(tableOrders, table.number);
-          const hasHighPriority = activeKots.some(k => k.priority === 'HIGH' || k.items?.some(i => i.priority === 'HIGH')) ||
-            tableOrders.some(o => o.priority === 'HIGH' || o.items?.some(i => i.priority === 'HIGH'));
-
-          return (
-            <div
-              key={table.id}
-              onClick={() => setInspectTable(table)}
-              className={`bg-white rounded-2xl border p-4 transition-all duration-200 cursor-pointer hover:shadow-md flex flex-col justify-between ${
-                hasHighPriority
-                  ? 'border-2 border-rose-500 shadow-md shadow-rose-500/10 ring-2 ring-rose-500/20'
-                  : meta.border
+      {/* Visual Adjustments Toolbar: View Mode, Density, Columns, Section Filter, Search, and Detail Toggles */}
+      <div className="bg-white p-3 sm:px-4 sm:py-3 rounded-2xl border border-gray-200 shadow-2xs flex flex-wrap items-center justify-between gap-3 text-xs">
+        {/* Left: View Mode, Density, Columns, and Table Search */}
+        <div className="flex flex-wrap items-center gap-2.5">
+          {/* Grid vs Board View */}
+          <div className="flex items-center gap-1 bg-gray-100 p-1 rounded-xl border border-gray-200">
+            <button
+              onClick={() => setViewLayout('grid')}
+              className={`px-2.5 py-1 rounded-lg font-bold transition flex items-center gap-1.5 cursor-pointer ${
+                viewLayout === 'grid' ? 'bg-white text-gray-900 shadow-2xs' : 'text-gray-600 hover:text-gray-900'
               }`}
+              title="Visual Dining Floor Grid"
             >
-              {/* Top Row: Table Number & Status Badge */}
-              <div>
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <span className="text-base font-black text-gray-900 tracking-tight">
-                      Table {table.number < 10 ? `0${table.number}` : table.number}
-                    </span>
-                    {hasHighPriority && (
-                      <span className="inline-flex items-center gap-0.5 text-[9px] font-black uppercase bg-rose-600 text-white px-1.5 py-0.2 rounded-full shadow-2xs animate-pulse">
-                        <Flame className="w-2.5 h-2.5 fill-current" />
-                        <span>RUSH</span>
+              <LayoutGrid className="w-3.5 h-3.5 text-amber-500" />
+              <span>Grid</span>
+            </button>
+            <button
+              onClick={() => setViewLayout('table')}
+              className={`px-2.5 py-1 rounded-lg font-bold transition flex items-center gap-1.5 cursor-pointer ${
+                viewLayout === 'table' ? 'bg-white text-gray-900 shadow-2xs' : 'text-gray-600 hover:text-gray-900'
+              }`}
+              title="Table Spreadsheet / List View"
+            >
+              <List className="w-3.5 h-3.5 text-amber-500" />
+              <span>List</span>
+            </button>
+          </div>
+
+          {/* Quick Table Search */}
+          <div className="relative">
+            <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400 pointer-events-none" />
+            <input
+              type="text"
+              placeholder="Find table #..."
+              value={tableSearch}
+              onChange={e => setTableSearch(e.target.value)}
+              className="pl-8 pr-6 py-1 bg-gray-50 border border-gray-200 rounded-lg text-xs font-semibold text-gray-900 placeholder:text-gray-400 focus:bg-white focus:border-amber-500 focus:outline-none w-28 sm:w-36 transition"
+            />
+            {tableSearch && (
+              <button
+                type="button"
+                onClick={() => setTableSearch('')}
+                className="absolute right-1.5 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-700 cursor-pointer"
+                title="Clear table filter"
+              >
+                <X className="w-3 h-3" />
+              </button>
+            )}
+          </div>
+
+          {/* Section Filter Tabs */}
+          {sectionsList.length > 0 && (
+            <div className="hidden md:flex items-center gap-1 bg-gray-100 p-1 rounded-xl border border-gray-200">
+              <button
+                type="button"
+                onClick={() => setSelectedSection('all')}
+                className={`px-2 py-1 rounded-lg font-bold transition cursor-pointer text-xs ${
+                  selectedSection === 'all' ? 'bg-white text-gray-900 shadow-2xs' : 'text-gray-600 hover:text-gray-900'
+                }`}
+              >
+                All Areas
+              </button>
+              {sectionsList.map(sec => (
+                <button
+                  key={sec}
+                  type="button"
+                  onClick={() => setSelectedSection(sec)}
+                  className={`px-2 py-1 rounded-lg font-bold transition cursor-pointer text-xs ${
+                    selectedSection === sec ? 'bg-white text-gray-900 shadow-2xs' : 'text-gray-600 hover:text-gray-900'
+                  }`}
+                >
+                  {sec}
+                </button>
+              ))}
+            </div>
+          )}
+
+          {/* Card Density (Compact / Standard / Spacious) */}
+          {viewLayout === 'grid' && (
+            <div className="flex items-center gap-1 bg-gray-100 p-1 rounded-xl border border-gray-200">
+              <span className="text-[11px] font-bold text-gray-400 px-1">Density:</span>
+              <button
+                onClick={() => setCardDensity('compact')}
+                className={`px-2 py-1 rounded-lg font-bold transition cursor-pointer text-xs ${
+                  cardDensity === 'compact' ? 'bg-white text-gray-900 shadow-2xs' : 'text-gray-500 hover:text-gray-900'
+                }`}
+                title="Dense compact cards"
+              >
+                Compact
+              </button>
+              <button
+                onClick={() => setCardDensity('standard')}
+                className={`px-2 py-1 rounded-lg font-bold transition cursor-pointer text-xs ${
+                  cardDensity === 'standard' ? 'bg-white text-gray-900 shadow-2xs' : 'text-gray-500 hover:text-gray-900'
+                }`}
+                title="Standard balanced cards"
+              >
+                Standard
+              </button>
+              <button
+                onClick={() => setCardDensity('spacious')}
+                className={`px-2 py-1 rounded-lg font-bold transition cursor-pointer text-xs ${
+                  cardDensity === 'spacious' ? 'bg-white text-gray-900 shadow-2xs' : 'text-gray-500 hover:text-gray-900'
+                }`}
+                title="Spacious large cards with maximum breathing room"
+              >
+                Spacious
+              </button>
+            </div>
+          )}
+
+          {/* Columns Selector: 2, 3, 4, 6 */}
+          {viewLayout === 'grid' && (
+            <div className="hidden sm:flex items-center gap-1 bg-gray-100 p-1 rounded-xl border border-gray-200">
+              <span className="text-[11px] font-bold text-gray-400 px-1">Cols:</span>
+              {[2, 3, 4, 6].map(cols => (
+                <button
+                  key={cols}
+                  onClick={() => setColumnsCount(cols as 2 | 3 | 4 | 6)}
+                  className={`w-6 h-6 rounded-md font-mono font-bold text-xs transition cursor-pointer flex items-center justify-center ${
+                    columnsCount === cols ? 'bg-white text-gray-900 shadow-2xs' : 'text-gray-500 hover:text-gray-900'
+                  }`}
+                  title={`${cols} tables per row ${cols === 2 ? '(Extra Wide & Clear)' : ''}`}
+                >
+                  {cols}
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+
+        {/* Right: Kitchen Stepper Toggle & Status Switcher Toggle */}
+        <div className="flex items-center gap-2">
+          {/* Quick Status Bar Toggle */}
+          <button
+            type="button"
+            onClick={() => setShowQuickStatus(!showQuickStatus)}
+            className={`px-2.5 py-1.5 rounded-xl border font-bold transition flex items-center gap-1.5 cursor-pointer text-xs ${
+              showQuickStatus
+                ? 'bg-purple-50 text-purple-900 border-purple-200'
+                : 'bg-gray-50 text-gray-600 border-gray-200 hover:bg-gray-100'
+            }`}
+            title="Toggle Status Switcher buttons directly on table cards"
+          >
+            <span>Status Bar</span>
+            <span className={`text-[10px] font-bold px-1.5 py-0.2 rounded-full ${showQuickStatus ? 'bg-purple-200 text-purple-900' : 'bg-gray-200 text-gray-600'}`}>
+              {showQuickStatus ? 'ON' : 'OFF'}
+            </span>
+          </button>
+
+          {/* Kitchen Stepper Toggle */}
+          <button
+            type="button"
+            onClick={() => setShowKitchenControls(!showKitchenControls)}
+            className={`px-2.5 py-1.5 rounded-xl border font-bold transition flex items-center gap-1.5 cursor-pointer text-xs ${
+              showKitchenControls
+                ? 'bg-amber-50 text-amber-900 border-amber-300'
+                : 'bg-gray-50 text-gray-600 border-gray-200 hover:bg-gray-100'
+            }`}
+            title="Toggle kitchen order status (Placed / Confirmed / Served) on table cards"
+          >
+            {showKitchenControls ? (
+              <Eye className="w-3.5 h-3.5 text-amber-600" />
+            ) : (
+              <EyeOff className="w-3.5 h-3.5 text-gray-400" />
+            )}
+            <span className="hidden sm:inline">Kitchen</span>
+            <span>Progress</span>
+            <span className={`text-[10px] font-bold px-1.5 py-0.2 rounded-full ${showKitchenControls ? 'bg-amber-200 text-amber-900' : 'bg-gray-200 text-gray-600'}`}>
+              {showKitchenControls ? 'ON' : 'OFF'}
+            </span>
+          </button>
+        </div>
+      </div>
+
+      {/* 11 Tables Grid View */}
+      {viewLayout === 'grid' && (
+        <div
+          className={`grid gap-4 ${
+            columnsCount === 2
+              ? 'grid-cols-1 md:grid-cols-2'
+              : columnsCount === 3
+              ? 'grid-cols-1 sm:grid-cols-2 lg:grid-cols-3'
+              : columnsCount === 6
+              ? 'grid-cols-2 sm:grid-cols-3 md:grid-cols-4 xl:grid-cols-6'
+              : 'grid-cols-1 sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-4'
+          }`}
+        >
+          {filteredTables.map(table => {
+            const isOccupied = (table.status || '').toUpperCase() === 'OCCUPIED' || (table.status || '').toUpperCase() === 'BILLING' ||
+              Boolean((table.activeOrdersCount && table.activeOrdersCount > 0) || (table.totalBill && table.totalBill > 0));
+            const meta = getTableStatusMeta(table.status, isOccupied);
+            const tableOrders = getTableOrders(table.number);
+            const activeKots = getTableActiveKots(table.number);
+            const effectiveOrderStatus = getEffectiveTableOrderStatus(tableOrders, table.number);
+            const hasHighPriority = activeKots.some(k => k.priority === 'HIGH' || k.items?.some(i => i.priority === 'HIGH')) ||
+              tableOrders.some(o => o.priority === 'HIGH' || o.items?.some(i => i.priority === 'HIGH'));
+
+            return (
+              <div
+                key={table.id}
+                onClick={() => setInspectTable(table)}
+                className={`bg-white rounded-2xl border transition-all duration-200 cursor-pointer hover:shadow-md flex flex-col justify-between ${
+                  cardDensity === 'compact' ? 'p-3.5 gap-2.5' : cardDensity === 'spacious' ? 'p-5 gap-4' : 'p-4 gap-3'
+                } ${
+                  hasHighPriority
+                    ? 'border-2 border-rose-500 shadow-md shadow-rose-500/10 ring-2 ring-rose-500/20'
+                    : meta.border
+                }`}
+              >
+                {/* Header: Table Number & Status Pill */}
+                <div>
+                  <div className="flex items-center justify-between pb-2 border-b border-gray-100">
+                    <div className="flex items-center gap-2">
+                      <span className="text-lg sm:text-xl font-black text-gray-900 font-mono tracking-tight">
+                        Table {table.number < 10 ? `0${table.number}` : table.number}
                       </span>
-                    )}
-                  </div>
-                  <span className={`text-[10px] px-2 py-0.5 rounded-full font-bold border flex items-center gap-1 ${meta.badge}`}>
-                    <span className={`w-1.5 h-1.5 rounded-full ${meta.beaconDot}`} />
-                    <span>{meta.label}</span>
-                  </span>
-                </div>
-
-                {/* Enhanced Visual Table Icon with Status Indicator Beacon & Layout */}
-                <div className={`my-2.5 flex items-center gap-3 p-2.5 rounded-xl border transition-all ${meta.glow} bg-gray-50/90 border-gray-100`}>
-                  {/* Visual Restaurant Table Graphic with 4 Chairs & Status Theme */}
-                  <div className="relative flex flex-col items-center flex-shrink-0">
-                    <div className={`relative w-12 h-12 rounded-xl flex items-center justify-center p-1 transition-all ${meta.iconBg}`}>
-                      {/* 4 Surrounding Table Chairs Representation */}
-                      <span className={`absolute -top-1 w-4 h-1 rounded-full ${meta.chairColor}`} />
-                      <span className={`absolute -bottom-1 w-4 h-1 rounded-full ${meta.chairColor}`} />
-                      <span className={`absolute -left-1 h-4 w-1 rounded-full ${meta.chairColor}`} />
-                      <span className={`absolute -right-1 h-4 w-1 rounded-full ${meta.chairColor}`} />
-
-                      {/* Central Table Top Surface with Status Icon & Table ID */}
-                      <div className={`w-full h-full rounded-lg flex flex-col items-center justify-center ${meta.surfaceBg}`}>
-                        <meta.Icon className="w-4 h-4" />
-                        <span className="text-[8px] font-mono font-black leading-none mt-0.5">
-                          T{table.number < 10 ? `0${table.number}` : table.number}
-                        </span>
-                      </div>
-
-                      {/* Real-time Status Beacon on Table Icon */}
-                      <span className="absolute -top-1.5 -right-1.5 flex h-3.5 w-3.5 items-center justify-center z-10">
-                        <span className={`animate-ping absolute inline-flex h-full w-full rounded-full opacity-75 ${meta.beaconPing}`} />
-                        <span className={`relative inline-flex rounded-full h-2 w-2 ${meta.beaconDot} ring-2 ring-white shadow-xs`} />
-                      </span>
-                    </div>
-
-                    {/* Prominent Visual Status Tag attached directly to Table Icon */}
-                    <span className={`mt-1 text-[8px] font-black uppercase tracking-wider px-1.5 py-0.2 rounded shadow-2xs ${meta.indicatorChip}`}>
-                      {meta.indicatorTag}
-                    </span>
-                  </div>
-
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center justify-between">
-                      <span className={`text-xs font-black ${meta.textColor}`}>
-                        {meta.label}
-                      </span>
-                      <span className="text-[10px] font-medium text-gray-400">
-                        {meta.subLabel}
-                      </span>
-                    </div>
-
-                    {/* Quick Status Selector Pills */}
-                    <div className="flex items-center gap-1 mt-1.5" onClick={e => e.stopPropagation()}>
-                      {(['AVAILABLE', 'OCCUPIED', 'BILLING', 'RESERVED'] as TableStatus[]).map(st => {
-                        const isCurrent = (table.status || 'AVAILABLE').toUpperCase() === st;
-                        const labelShort = st === 'AVAILABLE' ? 'Active' : st === 'OCCUPIED' ? 'Occ' : st === 'BILLING' ? 'Bill' : 'Res';
-                        const activeColor = st === 'AVAILABLE'
-                          ? 'bg-emerald-600 text-white shadow-xs border-emerald-600'
-                          : st === 'OCCUPIED'
-                          ? 'bg-rose-600 text-white shadow-xs border-rose-600'
-                          : st === 'BILLING'
-                          ? 'bg-purple-600 text-white shadow-xs border-purple-600'
-                          : 'bg-blue-600 text-white shadow-xs border-blue-600';
-
-                        return (
-                          <button
-                            key={st}
-                            type="button"
-                            onClick={(e) => handleQuickStatusChange(table.number, st, e)}
-                            className={`px-1.5 py-0.5 rounded text-[9px] font-bold transition cursor-pointer border ${
-                              isCurrent
-                                ? activeColor
-                                : 'bg-white hover:bg-gray-100 text-gray-500 border-gray-200'
-                            }`}
-                            title={`Switch Table ${table.number} to ${st}`}
-                          >
-                            {labelShort}
-                          </button>
-                        );
-                      })}
-                    </div>
-                  </div>
-                </div>
-
-                {/* Running Tab Details / Available State */}
-                {isOccupied ? (
-                  <div className="mb-3 pt-2 border-t border-gray-100 space-y-1">
-                    <div className="flex items-center justify-between font-mono font-bold text-gray-900 text-sm">
-                      <span className="text-gray-500 font-sans text-xs font-normal">Current Tab</span>
-                      <span>Rs. {(table.totalBill || 0).toLocaleString()}.00</span>
-                    </div>
-                    <div className="flex items-center justify-between text-[10px] text-gray-500">
-                      <span>{tableOrders.length} {tableOrders.length === 1 ? 'order' : 'orders'}</span>
-                      {activeKots.length > 0 && (
-                        <span className="text-amber-600 font-bold flex items-center gap-1">
-                          <ChefHat className="w-3 h-3" />
-                          <span>{activeKots.length} KOT</span>
+                      {hasHighPriority && (
+                        <span className="inline-flex items-center gap-1 text-[10px] font-black uppercase bg-rose-600 text-white px-2 py-0.5 rounded-md shadow-xs animate-pulse">
+                          <Flame className="w-3 h-3 fill-current" />
+                          <span>RUSH</span>
                         </span>
                       )}
                     </div>
-                  </div>
-                ) : (
-                  <div className="mb-3 pt-2 border-t border-gray-100 text-[11px] text-emerald-600 font-semibold flex items-center gap-1.5">
-                    <CheckCircle2 className="w-3.5 h-3.5" />
-                    <span>Ready for guests</span>
-                  </div>
-                )}
-              </div>
 
-              {/* Status Management Section (Placed, Confirmed, Served) */}
-              <div className="space-y-2 pt-2 border-t border-gray-100" onClick={e => e.stopPropagation()}>
-                <div className="flex items-center justify-between">
-                  <span className="text-[10px] font-bold uppercase tracking-wider text-gray-400">
-                    Order Status
-                  </span>
-                  {isOccupied && (
-                    <span className={`text-[10px] font-bold uppercase px-1.5 py-0.2 rounded ${
-                      effectiveOrderStatus === 'served'
-                        ? 'text-emerald-700 bg-emerald-50'
-                        : effectiveOrderStatus === 'confirmed'
-                        ? 'text-blue-700 bg-blue-50'
-                        : 'text-amber-700 bg-amber-50'
-                    }`}>
-                      {effectiveOrderStatus}
+                    {/* Single, Clear Status Pill with Live Beacon */}
+                    <span className={`text-xs px-2.5 py-1 rounded-full font-bold border flex items-center gap-1.5 whitespace-nowrap shadow-2xs ${meta.badge}`}>
+                      <span className={`w-2 h-2 rounded-full flex-shrink-0 ${meta.beaconDot}`} />
+                      <span>{meta.label}</span>
                     </span>
-                  )}
+                  </div>
+
+                  {/* Section & Capacity Subtitle */}
+                  <div className="flex items-center justify-between text-xs text-gray-500 mt-2">
+                    <span className="font-bold text-gray-700 bg-gray-100 px-2 py-0.5 rounded-md border border-gray-200">
+                      {table.section || 'Indoor AC'}
+                    </span>
+                    <span className="flex items-center gap-1.5 text-xs font-semibold text-gray-500 bg-gray-50 px-2 py-0.5 rounded-md border border-gray-100">
+                      <Users className="w-3.5 h-3.5 text-gray-400" />
+                      <span>{table.capacity || 4} Guests</span>
+                    </span>
+                  </div>
+
+                  {/* Central Details: Financial Tab or Available Notice */}
+                  <div className="mt-2.5">
+                    {isOccupied ? (
+                      <div className="p-3 rounded-xl bg-gray-50/90 border border-gray-200/70 space-y-2">
+                        <div className="flex items-baseline justify-between">
+                          <span className="text-[11px] font-bold uppercase tracking-wider text-gray-500">Current Tab</span>
+                          <span className="text-lg sm:text-xl font-black font-mono text-gray-900">
+                            Rs. {(table.totalBill || 0).toLocaleString()}.00
+                          </span>
+                        </div>
+                        <div className="flex items-center justify-between text-xs pt-1.5 border-t border-gray-200/60">
+                          <span className="font-bold text-gray-800">
+                            {tableOrders.length} {tableOrders.length === 1 ? 'Order Placed' : 'Orders Placed'}
+                          </span>
+                          {activeKots.length > 0 && (
+                            <span className="text-amber-800 font-extrabold flex items-center gap-1 bg-amber-100/90 border border-amber-200 px-2 py-0.5 rounded text-[11px]">
+                              <ChefHat className="w-3.5 h-3.5 text-amber-600" />
+                              <span>{activeKots.length} KOT Live</span>
+                            </span>
+                          )}
+                        </div>
+                        {tableOrders.length > 0 && (
+                          <div className="flex items-center gap-1.5 text-[11px] font-medium text-gray-500 pt-0.5">
+                            <Clock className="w-3.5 h-3.5 text-gray-400 flex-shrink-0" />
+                            <OrderElapsedTimer order={tableOrders[0]} />
+                          </div>
+                        )}
+                      </div>
+                    ) : (
+                      <div className="p-3.5 rounded-xl bg-emerald-50/70 border border-emerald-200 flex items-center gap-2.5 text-emerald-900">
+                        <CheckCircle2 className="w-4.5 h-4.5 text-emerald-600 flex-shrink-0" />
+                        <div>
+                          <p className="text-xs font-bold text-emerald-800">Clean & Ready for Seating</p>
+                          <p className="text-[11px] text-emerald-600/90">Walk-in guests welcome</p>
+                        </div>
+                      </div>
+                    )}
+                  </div>
                 </div>
 
-                <div className="grid grid-cols-3 gap-1 p-0.5 bg-gray-100 rounded-lg border border-gray-200">
-                  <button
-                    type="button"
-                    disabled={!isOccupied && tableOrders.length === 0}
-                    onClick={(e) => handleSetTableOrderStatus(table.number, 'placed', e)}
-                    className={`py-1 rounded-md text-[10px] font-bold transition flex items-center justify-center gap-1 ${
-                      isOccupied && effectiveOrderStatus === 'placed'
-                        ? 'bg-amber-500 text-white shadow-xs'
-                        : isOccupied
-                        ? 'text-gray-700 hover:bg-gray-200'
-                        : 'text-gray-400 opacity-40 cursor-not-allowed'
-                    }`}
-                    title="Mark all active orders on Table as Placed"
-                  >
-                    Placed
-                  </button>
+                {/* Controls & Actions Container */}
+                <div className="space-y-2 pt-2 border-t border-gray-100" onClick={e => e.stopPropagation()}>
+                  {/* Kitchen Stepper (Placed / Confirmed / Served) - Toggleable & Clean */}
+                  {showKitchenControls && isOccupied && (
+                    <div className="space-y-1.5">
+                      <div className="flex items-center justify-between text-[11px]">
+                        <span className="font-bold text-gray-400 uppercase tracking-wider text-[10px]">Kitchen Progress</span>
+                        <span className={`font-bold uppercase px-2 py-0.5 rounded text-[10px] ${
+                          effectiveOrderStatus === 'served'
+                            ? 'text-emerald-700 bg-emerald-100 border border-emerald-200'
+                            : effectiveOrderStatus === 'confirmed'
+                            ? 'text-blue-700 bg-blue-100 border border-blue-200'
+                            : 'text-amber-700 bg-amber-100 border border-amber-200'
+                        }`}>
+                          {effectiveOrderStatus}
+                        </span>
+                      </div>
 
-                  <button
-                    type="button"
-                    disabled={!isOccupied && tableOrders.length === 0}
-                    onClick={(e) => handleSetTableOrderStatus(table.number, 'confirmed', e)}
-                    className={`py-1 rounded-md text-[10px] font-bold transition flex items-center justify-center gap-1 ${
-                      isOccupied && effectiveOrderStatus === 'confirmed'
-                        ? 'bg-blue-600 text-white shadow-xs'
-                        : isOccupied
-                        ? 'text-gray-700 hover:bg-gray-200'
-                        : 'text-gray-400 opacity-40 cursor-not-allowed'
-                    }`}
-                    title="Mark all active orders on Table as Confirmed"
-                  >
-                    Confirmed
-                  </button>
-
-                  <button
-                    type="button"
-                    disabled={!isOccupied && tableOrders.length === 0 && activeKots.length === 0}
-                    onClick={(e) => handleSetTableOrderStatus(table.number, 'served', e)}
-                    className={`py-1 rounded-md text-[10px] font-bold transition flex items-center justify-center gap-1 cursor-pointer ${
-                      effectiveOrderStatus === 'served'
-                        ? 'bg-emerald-600 text-white shadow-xs font-bold'
-                        : isOccupied || tableOrders.length > 0 || activeKots.length > 0
-                        ? 'text-gray-700 hover:bg-gray-200 hover:text-emerald-700'
-                        : 'text-gray-400 opacity-40 cursor-not-allowed'
-                    }`}
-                    title="Mark all active orders on Table as Served (syncs with KOT section)"
-                  >
-                    {effectiveOrderStatus === 'served' && <CheckCircle2 className="w-3 h-3 text-white" />}
-                    <span>Served</span>
-                  </button>
-                </div>
-
-                {/* Bottom Quick Actions */}
-                <div className="flex items-center justify-between gap-1.5 pt-1">
-                  {isOccupied ? (
-                    <>
-                      <button
-                        onClick={() => onPunchOrder(table.number)}
-                        className="flex-1 py-1.5 bg-amber-50 hover:bg-amber-100 text-amber-800 rounded-lg text-xs font-bold transition flex items-center justify-center gap-1"
-                        title="Add more items to this table"
-                      >
-                        <Plus className="w-3.5 h-3.5" />
-                        <span>Order</span>
-                      </button>
-                      <button
-                        onClick={() => setSettleTable(table)}
-                        className="flex-1 py-1.5 bg-purple-50 hover:bg-purple-100 text-purple-800 rounded-lg text-xs font-bold transition flex items-center justify-center gap-1"
-                        title="Settle Bill"
-                      >
-                        <CreditCard className="w-3.5 h-3.5" />
-                        <span>Settle</span>
-                      </button>
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          setQrModalTableNum(table.number);
-                        }}
-                        className="p-1.5 bg-gray-50 hover:bg-gray-100 text-gray-600 rounded-lg border border-gray-200 transition"
-                        title="Table & WiFi QR"
-                      >
-                        <QrCode className="w-3.5 h-3.5" />
-                      </button>
-                    </>
-                  ) : (
-                    <>
-                      <button
-                        onClick={() => onPunchOrder(table.number)}
-                        className="flex-1 py-1.5 bg-amber-500 hover:bg-amber-600 text-white rounded-lg text-xs font-bold transition flex items-center justify-center gap-1 shadow-xs"
-                      >
-                        <Plus className="w-3.5 h-3.5" />
-                        <span>Punch Order</span>
-                      </button>
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          setQrModalTableNum(table.number);
-                        }}
-                        className="p-1.5 bg-gray-50 hover:bg-gray-100 text-gray-600 rounded-lg border border-gray-200 transition"
-                        title="View Table & WiFi QR"
-                      >
-                        <QrCode className="w-3.5 h-3.5" />
-                      </button>
-                    </>
+                      <div className="grid grid-cols-3 gap-1 p-0.5 bg-gray-100 rounded-lg border border-gray-200">
+                        <button
+                          type="button"
+                          disabled={!isOccupied && tableOrders.length === 0}
+                          onClick={(e) => handleSetTableOrderStatus(table.number, 'placed', e)}
+                          className={`py-1.5 rounded-md text-xs font-bold transition flex items-center justify-center gap-1 cursor-pointer ${
+                            effectiveOrderStatus === 'placed'
+                              ? 'bg-amber-500 text-white shadow-xs'
+                              : 'text-gray-600 hover:bg-gray-200'
+                          }`}
+                        >
+                          Placed
+                        </button>
+                        <button
+                          type="button"
+                          disabled={!isOccupied && tableOrders.length === 0}
+                          onClick={(e) => handleSetTableOrderStatus(table.number, 'confirmed', e)}
+                          className={`py-1.5 rounded-md text-xs font-bold transition flex items-center justify-center gap-1 cursor-pointer ${
+                            effectiveOrderStatus === 'confirmed'
+                              ? 'bg-blue-600 text-white shadow-xs'
+                              : 'text-gray-600 hover:bg-gray-200'
+                          }`}
+                        >
+                          Confirmed
+                        </button>
+                        <button
+                          type="button"
+                          disabled={!isOccupied && tableOrders.length === 0 && activeKots.length === 0}
+                          onClick={(e) => handleSetTableOrderStatus(table.number, 'served', e)}
+                          className={`py-1.5 rounded-md text-xs font-bold transition flex items-center justify-center gap-1 cursor-pointer ${
+                            effectiveOrderStatus === 'served'
+                              ? 'bg-emerald-600 text-white shadow-xs font-bold'
+                              : 'text-gray-600 hover:bg-gray-200 hover:text-emerald-700'
+                          }`}
+                        >
+                          {effectiveOrderStatus === 'served' && <CheckCircle2 className="w-3.5 h-3.5 text-white" />}
+                          <span>Served</span>
+                        </button>
+                      </div>
+                    </div>
                   )}
+
+                  {/* Status Switcher Bar - Dedicated Row with Ample Room */}
+                  {showQuickStatus && (
+                    <div>
+                      <div className="flex items-center justify-between mb-1">
+                        <span className="text-[10px] font-bold uppercase tracking-wider text-gray-400">Change Status</span>
+                      </div>
+                      <div className="grid grid-cols-4 gap-1 p-0.5 bg-gray-100 rounded-lg border border-gray-200 text-xs">
+                        {(['AVAILABLE', 'OCCUPIED', 'BILLING', 'RESERVED'] as TableStatus[]).map(st => {
+                          const isCurrent = (table.status || 'AVAILABLE').toUpperCase() === st;
+                          const labelShort = st === 'AVAILABLE' ? 'Active' : st === 'OCCUPIED' ? 'Occupy' : st === 'BILLING' ? 'Bill' : 'Hold';
+                          const activeColor = st === 'AVAILABLE'
+                            ? 'bg-emerald-600 text-white shadow-xs'
+                            : st === 'OCCUPIED'
+                            ? 'bg-rose-600 text-white shadow-xs'
+                            : st === 'BILLING'
+                            ? 'bg-purple-600 text-white shadow-xs'
+                            : 'bg-blue-600 text-white shadow-xs';
+
+                          return (
+                            <button
+                              key={st}
+                              type="button"
+                              onClick={(e) => handleQuickStatusChange(table.number, st, e)}
+                              className={`py-1 rounded-md text-xs font-bold transition cursor-pointer text-center ${
+                                isCurrent
+                                  ? activeColor
+                                  : 'text-gray-600 hover:bg-gray-200'
+                              }`}
+                              title={`Set Table ${table.number} to ${st}`}
+                            >
+                              {labelShort}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Bottom Quick Actions */}
+                  <div className="flex items-center justify-between gap-1.5 pt-1.5 border-t border-gray-100">
+                    {isOccupied ? (
+                      <>
+                        <button
+                          onClick={() => onPunchOrder(table.number)}
+                          className="flex-1 py-2 bg-amber-500 hover:bg-amber-600 text-white rounded-xl text-xs font-bold transition flex items-center justify-center gap-1 shadow-2xs cursor-pointer active:scale-95"
+                          title="Add more items to this table"
+                        >
+                          <Plus className="w-3.5 h-3.5" />
+                          <span>+ Order</span>
+                        </button>
+                        <button
+                          onClick={() => setSettleTable(table)}
+                          className="flex-1 py-2 bg-purple-600 hover:bg-purple-700 text-white rounded-xl text-xs font-bold transition flex items-center justify-center gap-1 shadow-2xs cursor-pointer active:scale-95"
+                          title="Settle Bill"
+                        >
+                          <CreditCard className="w-3.5 h-3.5" />
+                          <span>Settle</span>
+                        </button>
+                        <button
+                          onClick={() => setQrModalTableNum(table.number)}
+                          className="p-2 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-xl border border-gray-200 transition cursor-pointer"
+                          title="Table & WiFi QR"
+                        >
+                          <QrCode className="w-4 h-4" />
+                        </button>
+                      </>
+                    ) : (
+                      <>
+                        <button
+                          onClick={() => onPunchOrder(table.number)}
+                          className="flex-1 py-2 bg-amber-500 hover:bg-amber-600 text-white rounded-xl text-xs font-bold transition flex items-center justify-center gap-1 shadow-2xs cursor-pointer active:scale-95"
+                        >
+                          <Plus className="w-3.5 h-3.5" />
+                          <span>Punch Order</span>
+                        </button>
+                        <button
+                          onClick={() => setQrModalTableNum(table.number)}
+                          className="px-2.5 py-2 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-xl text-xs font-semibold border border-gray-200 transition flex items-center gap-1 cursor-pointer"
+                          title="Guest QR"
+                        >
+                          <QrCode className="w-3.5 h-3.5" />
+                          <span>QR</span>
+                        </button>
+                      </>
+                    )}
+                  </div>
                 </div>
               </div>
-            </div>
-          );
-        })}
-      </div>
+            );
+          })}
+        </div>
+      )}
+
+      {/* Alternative Board / Table List View */}
+      {viewLayout === 'table' && (
+        <div className="bg-white rounded-2xl border border-gray-200 shadow-xs overflow-hidden">
+          <div className="overflow-x-auto">
+            <table className="w-full text-left text-xs border-collapse">
+              <thead>
+                <tr className="bg-gray-50 border-b border-gray-200 text-[11px] font-bold text-gray-500 uppercase tracking-wider">
+                  <th className="py-3 px-4">Table</th>
+                  <th className="py-3 px-3">Section</th>
+                  <th className="py-3 px-3">Seats</th>
+                  <th className="py-3 px-3">Status</th>
+                  <th className="py-3 px-3">Current Tab</th>
+                  <th className="py-3 px-3">Orders & KOT</th>
+                  <th className="py-3 px-3">Kitchen Progress</th>
+                  <th className="py-3 px-4 text-right">Actions</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-100">
+                {filteredTables.map(table => {
+                  const isOccupied = (table.status || '').toUpperCase() === 'OCCUPIED' || (table.status || '').toUpperCase() === 'BILLING' ||
+                    Boolean((table.activeOrdersCount && table.activeOrdersCount > 0) || (table.totalBill && table.totalBill > 0));
+                  const meta = getTableStatusMeta(table.status, isOccupied);
+                  const tableOrders = getTableOrders(table.number);
+                  const activeKots = getTableActiveKots(table.number);
+                  const effectiveOrderStatus = getEffectiveTableOrderStatus(tableOrders, table.number);
+
+                  return (
+                    <tr
+                      key={table.id}
+                      onClick={() => setInspectTable(table)}
+                      className="hover:bg-amber-50/30 transition cursor-pointer"
+                    >
+                      <td className="py-3.5 px-4 font-mono font-black text-gray-900 text-sm">
+                        Table {table.number < 10 ? `0${table.number}` : table.number}
+                      </td>
+                      <td className="py-3.5 px-3 text-gray-600 font-medium">
+                        {table.section || 'Indoor AC'}
+                      </td>
+                      <td className="py-3.5 px-3 text-gray-500 font-semibold">
+                        {table.capacity || 4}
+                      </td>
+                      <td className="py-3.5 px-3">
+                        <span className={`text-[10px] px-2 py-0.5 rounded-full font-bold border inline-flex items-center gap-1.5 ${meta.badge}`}>
+                          <span className={`w-1.5 h-1.5 rounded-full ${meta.beaconDot}`} />
+                          <span>{meta.label}</span>
+                        </span>
+                      </td>
+                      <td className="py-3.5 px-3 font-mono font-bold text-gray-900">
+                        {isOccupied ? `Rs. ${(table.totalBill || 0).toLocaleString()}.00` : <span className="text-gray-400 font-normal">-</span>}
+                      </td>
+                      <td className="py-3.5 px-3 text-gray-600">
+                        {isOccupied ? (
+                          <div className="flex items-center gap-2">
+                            <span>{tableOrders.length} orders</span>
+                            {activeKots.length > 0 && (
+                              <span className="px-1.5 py-0.2 rounded bg-amber-100 text-amber-800 font-bold text-[10px]">
+                                {activeKots.length} KOT
+                              </span>
+                            )}
+                          </div>
+                        ) : (
+                          <span className="text-emerald-600 font-medium">Available</span>
+                        )}
+                      </td>
+                      <td className="py-3.5 px-3">
+                        {isOccupied ? (
+                          <span className={`font-bold uppercase px-2 py-0.5 rounded text-[10px] ${
+                            effectiveOrderStatus === 'served'
+                              ? 'text-emerald-700 bg-emerald-100'
+                              : effectiveOrderStatus === 'confirmed'
+                              ? 'text-blue-700 bg-blue-100'
+                              : 'text-amber-700 bg-amber-100'
+                          }`}>
+                            {effectiveOrderStatus}
+                          </span>
+                        ) : (
+                          <span className="text-gray-400">-</span>
+                        )}
+                      </td>
+                      <td className="py-3.5 px-4 text-right" onClick={e => e.stopPropagation()}>
+                        <div className="flex items-center justify-end gap-1.5">
+                          <button
+                            onClick={() => onPunchOrder(table.number)}
+                            className="px-2.5 py-1 bg-amber-500 hover:bg-amber-600 text-white rounded-lg text-xs font-bold transition flex items-center gap-1 cursor-pointer"
+                          >
+                            <Plus className="w-3 h-3" />
+                            <span>Order</span>
+                          </button>
+                          {isOccupied && (
+                            <button
+                              onClick={() => setSettleTable(table)}
+                              className="px-2.5 py-1 bg-purple-600 hover:bg-purple-700 text-white rounded-lg text-xs font-bold transition cursor-pointer"
+                            >
+                              Settle
+                            </button>
+                          )}
+                          <button
+                            onClick={() => setQrModalTableNum(table.number)}
+                            className="p-1 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-lg border border-gray-200 transition cursor-pointer"
+                            title="Table & WiFi QR"
+                          >
+                            <QrCode className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
 
       {/* Table Details Slide-over Drawer */}
       {inspectTable && (

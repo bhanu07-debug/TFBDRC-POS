@@ -54,7 +54,7 @@ service cloud.firestore {
       return data.id is string && data.id.size() <= 128 &&
         data.name is string && data.name.size() > 0 && data.name.size() <= 128 &&
         data.price is number && data.price >= 0 &&
-        data.kotDestination in ['KITCHEN', 'RECEPTION', 'kitchen', 'reception'] &&
+        (!('kotDestination' in data) || data.kotDestination in ['KITCHEN', 'RECEPTION', 'kitchen', 'reception']) &&
         (!('department' in data) || data.department in ['RESTAURANT', 'SHOP', 'restaurant', 'shop']) &&
         (!('sku' in data) || (data.sku is string && data.sku.size() <= 64)) &&
         (!('costPrice' in data) || (data.costPrice is number && data.costPrice >= 0)) &&

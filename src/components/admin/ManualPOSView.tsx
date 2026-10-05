@@ -21,6 +21,8 @@ import {
   Coffee,
   ChefHat,
   ShoppingBag,
+  LayoutGrid,
+  List,
   X
 } from 'lucide-react';
 
@@ -52,6 +54,8 @@ export const ManualPOSView: React.FC<ManualPOSViewProps> = ({
   const [selectedDepartment, setSelectedDepartment] = useState<'ALL' | Department>('ALL');
   const [searchQuery, setSearchQuery] = useState('');
   const [dietaryFilter, setDietaryFilter] = useState<'all' | 'veg' | 'non-veg'>('all');
+  const [viewMode, setViewMode] = useState<'cards' | 'list'>('cards');
+  const [dishGridCols, setDishGridCols] = useState<1 | 2 | 3>(1);
 
   // Punch Cart
   interface PunchItem {
@@ -103,9 +107,11 @@ export const ManualPOSView: React.FC<ManualPOSViewProps> = ({
     if (searchQuery.trim()) {
       const q = searchQuery.toLowerCase();
       const matchName = item.name.toLowerCase().includes(q);
+      const matchDesc = (item.description || '').toLowerCase().includes(q);
+      const matchCat = (item.category || '').toLowerCase().includes(q);
       const matchCode = (item.code || '').toLowerCase().includes(q);
       const matchSku = (item.sku || '').toLowerCase().includes(q);
-      if (!matchName && !matchCode && !matchSku) return false;
+      if (!matchName && !matchDesc && !matchCat && !matchCode && !matchSku) return false;
     }
     return true;
   });
@@ -256,9 +262,9 @@ export const ManualPOSView: React.FC<ManualPOSViewProps> = ({
                     : 'text-gray-700 hover:bg-gray-50'
                 }`}
               >
-                <span className="truncate">{cat}</span>
+                <span className="break-words leading-tight">{cat}</span>
                 <span
-                  className={`text-[10px] px-1.5 py-0.2 rounded-full font-mono font-bold ${
+                  className={`text-[10px] px-1.5 py-0.2 rounded-full font-mono font-bold flex-shrink-0 ${
                     isSelected ? 'bg-white/25 text-white' : 'bg-gray-100 text-gray-500'
                   }`}
                 >
@@ -272,161 +278,381 @@ export const ManualPOSView: React.FC<ManualPOSViewProps> = ({
 
       {/* CENTER COLUMN: Search & Menu Items Grid */}
       <div className="flex-1 flex flex-col bg-white rounded-xl border border-gray-200 shadow-xs overflow-hidden">
-        {/* Top Filter Bar */}
-        <div className="p-3.5 border-b border-gray-200 flex flex-col sm:flex-row items-center justify-between gap-3 bg-gray-50/50">
-          {/* Search Bar */}
-          <div className="relative flex-1 w-full">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+        {/* Top Filter & Search Bar */}
+        <div className="p-3 sm:p-4 border-b border-gray-200 flex flex-col gap-3 bg-gray-50/60">
+          {/* Big, Spacious Search Bar - Ample space, large high-contrast text */}
+          <div className="relative w-full">
+            <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-amber-500 pointer-events-none" />
             <input
+              id="pos-dish-search-input"
               type="text"
-              placeholder="Search dish or item code..."
+              placeholder="Search dishes by full name, ingredients, category, or item code..."
               value={searchQuery}
               onChange={e => setSearchQuery(e.target.value)}
-              className="w-full pl-9 pr-3 py-1.5 bg-white border border-gray-200 rounded-lg text-xs text-gray-800 placeholder-gray-400 focus:outline-none focus:border-amber-500"
+              className="w-full h-13 sm:h-14 pl-12 pr-12 py-3 bg-white border-2 border-gray-300 focus:border-amber-500 focus:ring-4 focus:ring-amber-500/20 rounded-xl text-base sm:text-lg font-bold text-gray-950 placeholder:text-gray-400 placeholder:font-normal transition shadow-xs focus:outline-none"
+              autoComplete="off"
             />
+            {/* Clear Button */}
+            {searchQuery && (
+              <button
+                type="button"
+                onClick={() => setSearchQuery('')}
+                className="absolute right-3.5 top-1/2 -translate-y-1/2 w-8 h-8 rounded-lg bg-gray-100 hover:bg-gray-200 text-gray-700 hover:text-gray-950 flex items-center justify-center transition cursor-pointer"
+                title="Clear search text"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            )}
           </div>
 
-          {/* Department Filter Toggle */}
-          <div className="flex items-center gap-1 bg-white p-1 rounded-lg border border-gray-200 text-xs">
-            <button
-              onClick={() => {
-                setSelectedDepartment('ALL');
-                setSelectedCategory('All');
-              }}
-              className={`px-2.5 py-1 rounded-md transition font-semibold ${
-                selectedDepartment === 'ALL' ? 'bg-amber-600 text-white' : 'text-gray-600 hover:text-gray-900'
-              }`}
-            >
-              All Depts
-            </button>
-            <button
-              onClick={() => {
-                setSelectedDepartment('RESTAURANT');
-                setSelectedCategory('All');
-              }}
-              className={`px-2.5 py-1 rounded-md transition font-semibold flex items-center gap-1 ${
-                selectedDepartment === 'RESTAURANT' ? 'bg-amber-600 text-white' : 'text-gray-600 hover:text-gray-900'
-              }`}
-            >
-              <UtensilsCrossed className="w-3.5 h-3.5" />
-              Restaurant
-            </button>
-            <button
-              onClick={() => {
-                setSelectedDepartment('SHOP');
-                setSelectedCategory('All');
-              }}
-              className={`px-2.5 py-1 rounded-md transition font-semibold flex items-center gap-1 ${
-                selectedDepartment === 'SHOP' ? 'bg-indigo-600 text-white' : 'text-gray-600 hover:text-gray-900'
-              }`}
-            >
-              <ShoppingBag className="w-3.5 h-3.5" />
-              Shop
-            </button>
-          </div>
+          {/* Secondary Controls: Departments, Dietary Filters, Count Badge, and Grid Density Switcher */}
+          <div className="flex flex-wrap items-center justify-between gap-2.5">
+            <div className="flex flex-wrap items-center gap-2">
+              {/* Department Filter Toggle */}
+              <div className="flex items-center gap-1 bg-white p-1 rounded-lg border border-gray-200 text-xs">
+                <button
+                  onClick={() => {
+                    setSelectedDepartment('ALL');
+                    setSelectedCategory('All');
+                  }}
+                  className={`px-2.5 py-1 rounded-md transition font-semibold cursor-pointer ${
+                    selectedDepartment === 'ALL' ? 'bg-amber-600 text-white shadow-2xs' : 'text-gray-600 hover:text-gray-900'
+                  }`}
+                >
+                  All Depts
+                </button>
+                <button
+                  onClick={() => {
+                    setSelectedDepartment('RESTAURANT');
+                    setSelectedCategory('All');
+                  }}
+                  className={`px-2.5 py-1 rounded-md transition font-semibold flex items-center gap-1 cursor-pointer ${
+                    selectedDepartment === 'RESTAURANT' ? 'bg-amber-600 text-white shadow-2xs' : 'text-gray-600 hover:text-gray-900'
+                  }`}
+                >
+                  <UtensilsCrossed className="w-3.5 h-3.5" />
+                  Restaurant
+                </button>
+                <button
+                  onClick={() => {
+                    setSelectedDepartment('SHOP');
+                    setSelectedCategory('All');
+                  }}
+                  className={`px-2.5 py-1 rounded-md transition font-semibold flex items-center gap-1 cursor-pointer ${
+                    selectedDepartment === 'SHOP' ? 'bg-indigo-600 text-white shadow-2xs' : 'text-gray-600 hover:text-gray-900'
+                  }`}
+                >
+                  <ShoppingBag className="w-3.5 h-3.5" />
+                  Shop
+                </button>
+              </div>
 
-          {/* Dietary Filter (Only for Restaurant) */}
-          {selectedDepartment !== 'SHOP' && (
-            <div className="flex items-center gap-1 bg-white p-1 rounded-lg border border-gray-200 text-xs">
-              <button
-                onClick={() => setDietaryFilter('all')}
-                className={`px-2.5 py-1 rounded-md transition font-semibold ${
-                  dietaryFilter === 'all' ? 'bg-gray-900 text-white' : 'text-gray-600 hover:text-gray-900'
-                }`}
-              >
-                All
-              </button>
-              <button
-                onClick={() => setDietaryFilter('veg')}
-                className={`px-2.5 py-1 rounded-md transition font-semibold flex items-center gap-1 ${
-                  dietaryFilter === 'veg' ? 'bg-emerald-600 text-white' : 'text-emerald-700 hover:bg-emerald-50'
-                }`}
-              >
-                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
-                <span>Veg</span>
-              </button>
-              <button
-                onClick={() => setDietaryFilter('non-veg')}
-                className={`px-2.5 py-1 rounded-md transition font-semibold flex items-center gap-1 ${
-                  dietaryFilter === 'non-veg' ? 'bg-rose-600 text-white' : 'text-rose-700 hover:bg-rose-50'
-                }`}
-              >
-                <span className="w-1.5 h-1.5 rounded-full bg-rose-500" />
-                <span>Non-Veg</span>
-              </button>
+              {/* Dietary Filter (Only for Restaurant) */}
+              {selectedDepartment !== 'SHOP' && (
+                <div className="flex items-center gap-1 bg-white p-1 rounded-lg border border-gray-200 text-xs">
+                  <button
+                    onClick={() => setDietaryFilter('all')}
+                    className={`px-2.5 py-1 rounded-md transition font-semibold cursor-pointer ${
+                      dietaryFilter === 'all' ? 'bg-gray-900 text-white' : 'text-gray-600 hover:text-gray-900'
+                    }`}
+                  >
+                    All
+                  </button>
+                  <button
+                    onClick={() => setDietaryFilter('veg')}
+                    className={`px-2.5 py-1 rounded-md transition font-semibold flex items-center gap-1 cursor-pointer ${
+                      dietaryFilter === 'veg' ? 'bg-emerald-600 text-white' : 'text-emerald-700 hover:bg-emerald-50'
+                    }`}
+                  >
+                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
+                    <span>Veg</span>
+                  </button>
+                  <button
+                    onClick={() => setDietaryFilter('non-veg')}
+                    className={`px-2.5 py-1 rounded-md transition font-semibold flex items-center gap-1 cursor-pointer ${
+                      dietaryFilter === 'non-veg' ? 'bg-rose-600 text-white' : 'text-rose-700 hover:bg-rose-50'
+                    }`}
+                  >
+                    <span className="w-1.5 h-1.5 rounded-full bg-rose-500" />
+                    <span>Non-Veg</span>
+                  </button>
+                </div>
+              )}
+
+              {/* Match Counter Badge */}
+              <span className="text-xs font-bold px-2.5 py-1 rounded-lg bg-amber-100/70 text-amber-900 border border-amber-300 font-mono shadow-2xs">
+                {filteredMenuItems.length} {filteredMenuItems.length === 1 ? 'dish' : 'dishes'}
+              </span>
             </div>
-          )}
+
+            {/* Adjustable View Controls: 1 Col (Wide/Clear), 2 Cols, 3 Cols, List */}
+            <div className="flex items-center gap-1.5">
+              {/* Density / Column Selector for Cards */}
+              {viewMode === 'cards' && (
+                <div className="flex items-center gap-1 bg-white p-1 rounded-lg border border-gray-200 text-xs">
+                  <span className="text-[11px] font-bold text-gray-400 px-1">Layout:</span>
+                  <button
+                    type="button"
+                    onClick={() => setDishGridCols(1)}
+                    className={`px-2 py-1 rounded-md transition font-bold cursor-pointer text-xs ${
+                      dishGridCols === 1 ? 'bg-amber-500 text-white shadow-2xs' : 'text-gray-600 hover:bg-gray-100'
+                    }`}
+                    title="1 Column - Full width, largest readable text & complete descriptions"
+                  >
+                    Wide (1 Col)
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setDishGridCols(2)}
+                    className={`px-2 py-1 rounded-md transition font-bold cursor-pointer text-xs ${
+                      dishGridCols === 2 ? 'bg-amber-500 text-white shadow-2xs' : 'text-gray-600 hover:bg-gray-100'
+                    }`}
+                    title="2 Columns - Balanced card view"
+                  >
+                    2 Cols
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setDishGridCols(3)}
+                    className={`px-2 py-1 rounded-md transition font-bold cursor-pointer text-xs ${
+                      dishGridCols === 3 ? 'bg-amber-500 text-white shadow-2xs' : 'text-gray-600 hover:bg-gray-100'
+                    }`}
+                    title="3 Columns - Compact cards"
+                  >
+                    3 Cols
+                  </button>
+                </div>
+              )}
+
+              {/* View Mode Toggle (Cards vs List) */}
+              <div className="flex items-center gap-1 bg-white p-1 rounded-lg border border-gray-200 text-xs">
+                <button
+                  type="button"
+                  onClick={() => setViewMode('cards')}
+                  className={`px-2.5 py-1 rounded-md transition font-semibold flex items-center gap-1 cursor-pointer ${
+                    viewMode === 'cards' ? 'bg-amber-500 text-white shadow-xs' : 'text-gray-600 hover:text-gray-900'
+                  }`}
+                  title="Comfortable Cards View with Dish Images & Full Descriptions"
+                >
+                  <LayoutGrid className="w-3.5 h-3.5" />
+                  <span className="hidden sm:inline">Cards</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setViewMode('list')}
+                  className={`px-2.5 py-1 rounded-md transition font-semibold flex items-center gap-1 cursor-pointer ${
+                    viewMode === 'list' ? 'bg-amber-500 text-white shadow-xs' : 'text-gray-600 hover:text-gray-900'
+                  }`}
+                  title="Detailed Full-Width List View"
+                >
+                  <List className="w-3.5 h-3.5" />
+                  <span className="hidden sm:inline">List</span>
+                </button>
+              </div>
+            </div>
+          </div>
         </div>
 
         {/* Menu Items Scroll Grid */}
-        <div className="flex-1 overflow-y-auto p-4 grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-3">
-          {filteredMenuItems.map(item => {
-            const inCart = punchCart.find(p => p.menuItem.id === item.id);
+        <div
+          id="pos-dishes-grid"
+          className={`flex-1 overflow-y-auto p-4 ${
+            viewMode === 'cards'
+              ? dishGridCols === 1
+                ? 'grid grid-cols-1 gap-4'
+                : dishGridCols === 2
+                ? 'grid grid-cols-1 md:grid-cols-2 gap-3.5'
+                : 'grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3'
+              : 'flex flex-col gap-3'
+          }`}
+        >
+          {filteredMenuItems.length === 0 ? (
+            <div className="col-span-full py-16 text-center text-gray-400">
+              <UtensilsCrossed className="w-10 h-10 mx-auto mb-2 opacity-30" />
+              <p className="text-sm font-bold text-gray-600">No dishes match your filter</p>
+              <p className="text-xs text-gray-400 mt-1">Try searching a different item or resetting the category.</p>
+            </div>
+          ) : (
+            filteredMenuItems.map(item => {
+              const inCart = punchCart.find(p => p.menuItem.id === item.id);
 
-            return (
-              <div
-                key={item.id}
-                onClick={() => handleAddItem(item)}
-                className={`bg-white rounded-xl border p-3 flex items-center justify-between gap-3 cursor-pointer transition hover:shadow-xs ${
-                  item.inStock ? 'hover:border-amber-400 border-gray-200' : 'opacity-50 border-gray-200 bg-gray-50 cursor-not-allowed'
-                }`}
-              >
-                <img
-                  src={normalizeImageUrl(item.image) || DEFAULT_DISH_IMAGE}
-                  alt={item.name}
-                  className="w-16 h-16 rounded-lg object-cover flex-shrink-0 bg-gray-100 border border-gray-200"
-                  referrerPolicy="no-referrer"
-                  onError={(e) => {
-                    e.currentTarget.src = DEFAULT_DISH_IMAGE;
-                  }}
-                />
-
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-1.5">
-                    {item.department === 'SHOP' ? (
-                      <span className="w-2 h-2 rounded-full bg-indigo-500 flex-shrink-0" />
-                    ) : (
-                      <span
-                        className={`w-2 h-2 rounded-full flex-shrink-0 ${
-                          item.dietary === 'veg' ? 'bg-emerald-500' : 'bg-rose-500'
-                        }`}
+              return (
+                <div
+                  key={item.id}
+                  className={`rounded-2xl border transition-all flex flex-col justify-between gap-3 shadow-xs ${
+                    dishGridCols === 1 ? 'p-4 sm:p-5' : 'p-3.5 sm:p-4'
+                  } ${
+                    inCart
+                      ? 'bg-amber-50/50 border-amber-400 ring-2 ring-amber-400/40 shadow-sm'
+                      : item.inStock
+                      ? 'bg-white border-gray-200 hover:border-amber-400 hover:shadow-md'
+                      : 'bg-gray-50 border-gray-200 opacity-60'
+                  }`}
+                >
+                  {/* Top Section: Photo + Full Name + Badges */}
+                  <div className="flex items-start gap-3.5">
+                    {/* Dish Image */}
+                    <div className="relative flex-shrink-0">
+                      <img
+                        src={normalizeImageUrl(item.image || item.imageUrl) || DEFAULT_DISH_IMAGE}
+                        alt={item.name}
+                        className={`${
+                          dishGridCols === 1 ? 'w-24 h-24 sm:w-28 sm:h-28' : 'w-20 h-20 sm:w-22 sm:h-22'
+                        } rounded-xl object-cover bg-gray-100 border border-gray-200 shadow-2xs`}
+                        referrerPolicy="no-referrer"
+                        onError={(e) => {
+                          e.currentTarget.src = DEFAULT_DISH_IMAGE;
+                        }}
                       />
-                    )}
-                    <h4 className="text-xs font-bold text-gray-900 truncate">
-                      {item.name}
-                    </h4>
+                      {/* In Ticket Quantity Pill */}
+                      {inCart && (
+                        <span className="absolute -top-1.5 -right-1.5 px-2 py-0.5 rounded-full bg-amber-600 text-white font-mono font-black text-xs shadow-sm ring-2 ring-white">
+                          x{inCart.quantity}
+                        </span>
+                      )}
+                    </div>
+
+                    {/* Dish Details: Name & Badges */}
+                    <div className="flex-1 min-w-0">
+                      {/* Dietary & Category Badges */}
+                      <div className="flex flex-wrap items-center gap-1.5 mb-1.5">
+                        {item.department === 'SHOP' ? (
+                          <span className="px-2 py-0.5 rounded-md text-[10px] font-black uppercase tracking-wider bg-indigo-100 text-indigo-800 border border-indigo-200">
+                            SHOP
+                          </span>
+                        ) : (
+                          <span
+                            className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md text-[11px] font-bold border ${
+                              item.dietary === 'veg'
+                                ? 'bg-emerald-50 text-emerald-700 border-emerald-300'
+                                : 'bg-rose-50 text-rose-700 border-rose-300'
+                            }`}
+                          >
+                            <span
+                              className={`w-2 h-2 rounded-full ${
+                                item.dietary === 'veg' ? 'bg-emerald-600' : 'bg-rose-600'
+                              }`}
+                            />
+                            <span>{item.dietary === 'veg' ? 'Pure Veg' : 'Non-Veg'}</span>
+                          </span>
+                        )}
+
+                        <span className="px-2 py-0.5 rounded-md text-[11px] font-bold bg-gray-100 text-gray-700 border border-gray-200">
+                          {item.category}
+                        </span>
+
+                        {item.isChefSpecial && (
+                          <span className="px-2 py-0.5 rounded-md text-[11px] font-bold bg-amber-100 text-amber-900 border border-amber-300 flex items-center gap-1">
+                            <Sparkles className="w-3 h-3 text-amber-600" />
+                            <span>Chef's Special</span>
+                          </span>
+                        )}
+
+                        {item.variants && item.variants.length > 1 && (
+                          <span className="px-2 py-0.5 rounded-md text-[11px] font-bold bg-sky-100 text-sky-800 border border-sky-200">
+                            {item.variants.length} Portions
+                          </span>
+                        )}
+                      </div>
+
+                      {/* Full Dish Name - Prominent, Bold, High Contrast, Never Truncated */}
+                      <h4 className="text-base sm:text-lg font-black text-gray-950 leading-snug tracking-tight break-words">
+                        {item.name}
+                      </h4>
+
+                      {/* Size or Code if available */}
+                      {(item.size || item.code) && (
+                        <div className="flex items-center gap-2 mt-1 text-xs text-gray-500 font-medium">
+                          {item.code && <span className="font-mono font-bold bg-gray-100 px-1.5 py-0.2 rounded border border-gray-200 text-gray-700">Item #{item.code}</span>}
+                          {item.size && <span>• Size: {item.size}</span>}
+                        </div>
+                      )}
+                    </div>
                   </div>
-                  <div className="flex items-center gap-1 mt-0.5">
-                    <p className="text-[11px] text-gray-400 truncate">
-                      {item.category}
-                    </p>
-                    {item.department === 'SHOP' && (
-                      <span className="text-[9px] font-bold px-1 py-0.2 rounded bg-indigo-100 text-indigo-800">
-                        SHOP
-                      </span>
-                    )}
-                    {item.size && (
-                      <span className="text-[9px] font-bold px-1 py-0.2 rounded bg-gray-100 text-gray-700">
-                        {item.size}
-                      </span>
-                    )}
-                  </div>
-                  <div className="mt-1 flex items-center justify-between">
-                    <span className="text-xs font-bold font-mono text-gray-900">
-                      Rs. {item.price.toLocaleString()}
-                    </span>
+
+                  {/* Full Description - High contrast, readable, with comfortable background and zero clipping */}
+                  {item.description ? (
+                    <div className="bg-amber-50/60 p-3 rounded-xl border border-amber-200/70 text-xs sm:text-sm text-gray-800 leading-relaxed break-words font-medium">
+                      {item.description}
+                    </div>
+                  ) : (
+                    <div className="text-xs text-gray-400 italic px-1">
+                      Chef specialty prepared fresh in our {item.category} station.
+                    </div>
+                  )}
+
+                  {/* Portion / Variant Options Directly on Card */}
+                  {item.variants && item.variants.length > 1 && (
+                    <div className="flex flex-wrap items-center gap-1.5 pt-1">
+                      <span className="text-[11px] font-bold text-gray-500 uppercase tracking-wider">Portions:</span>
+                      {item.variants.map(v => (
+                        <button
+                          key={v.id}
+                          type="button"
+                          onClick={() => addVariantItemToCart(item, v)}
+                          className="px-2.5 py-1 rounded-lg text-xs font-semibold bg-amber-50 hover:bg-amber-100 text-amber-950 border border-amber-300 transition cursor-pointer flex items-center gap-1 active:scale-95"
+                          title={`Select ${v.name} portion for Rs. ${v.price}`}
+                        >
+                          <span className="font-bold">{v.name}</span>
+                          <span className="text-gray-400">•</span>
+                          <span className="font-mono font-extrabold text-amber-900">Rs.{v.price}</span>
+                        </button>
+                      ))}
+                    </div>
+                  )}
+
+                  {/* Bottom Row: Price & Add to Cart Controls */}
+                  <div className="flex items-center justify-between pt-2.5 border-t border-gray-100 mt-auto">
+                    <div>
+                      <div className="text-[10px] font-bold uppercase tracking-wider text-gray-400">Unit Price</div>
+                      <div className="text-base sm:text-lg font-black font-mono text-gray-950">
+                        {settings.currencySymbol || 'Rs.'} {item.price.toLocaleString()}
+                      </div>
+                    </div>
+
                     {item.inStock ? (
-                      <span className="w-6 h-6 rounded-md bg-amber-50 text-amber-700 border border-amber-200 flex items-center justify-center font-bold text-xs hover:bg-amber-500 hover:text-white transition">
-                        +
-                      </span>
+                      inCart ? (
+                        <div className="flex items-center gap-1.5 bg-amber-100/70 border border-amber-300 rounded-xl p-1">
+                          <button
+                            type="button"
+                            onClick={() => updateQuantity(inCart.id, -1)}
+                            className="w-8 h-8 rounded-lg bg-white hover:bg-amber-50 text-amber-950 flex items-center justify-center font-bold text-xs shadow-2xs transition cursor-pointer"
+                            title="Reduce quantity"
+                          >
+                            <Minus className="w-4 h-4" />
+                          </button>
+                          <span className="w-8 text-center font-mono font-black text-sm text-amber-950">
+                            {inCart.quantity}
+                          </span>
+                          <button
+                            type="button"
+                            onClick={() => updateQuantity(inCart.id, 1)}
+                            className="w-8 h-8 rounded-lg bg-amber-500 hover:bg-amber-600 text-white flex items-center justify-center font-bold text-xs shadow-2xs transition cursor-pointer"
+                            title="Add another"
+                          >
+                            <Plus className="w-4 h-4" />
+                          </button>
+                        </div>
+                      ) : (
+                        <button
+                          type="button"
+                          onClick={() => handleAddItem(item)}
+                          className="px-4 py-2 rounded-xl bg-amber-500 hover:bg-amber-600 text-white font-bold text-xs sm:text-sm flex items-center gap-2 shadow-xs transition cursor-pointer active:scale-95"
+                        >
+                          <Plus className="w-4 h-4" />
+                          <span>Add to Ticket</span>
+                        </button>
+                      )
                     ) : (
-                      <span className="text-[10px] text-rose-500 font-bold">86 (Out)</span>
+                      <span className="px-3 py-1.5 rounded-lg bg-rose-50 text-rose-600 border border-rose-200 text-xs font-bold">
+                        Out of Stock (86)
+                      </span>
                     )}
                   </div>
                 </div>
-              </div>
-            );
-          })}
+              );
+            })
+          )}
         </div>
       </div>
 
@@ -512,7 +738,7 @@ export const ManualPOSView: React.FC<ManualPOSViewProps> = ({
               <div key={item.id} className="pt-2 first:pt-0 space-y-1.5">
                 <div className="flex items-start justify-between">
                   <div className="flex-1 min-w-0 pr-2">
-                    <p className="text-xs font-bold text-gray-900 truncate">
+                    <p className="text-xs font-bold text-gray-900 leading-snug break-words">
                       {item.menuItem.name}
                     </p>
                     {item.menuItem.variants && item.menuItem.variants.length > 1 ? (
@@ -650,18 +876,36 @@ export const ManualPOSView: React.FC<ManualPOSViewProps> = ({
       {variantModalItem && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs">
           <div className="bg-white border border-gray-200 rounded-2xl w-full max-w-sm overflow-hidden shadow-2xl p-5 space-y-4 animate-in fade-in">
-            <div className="flex items-start justify-between">
-              <div>
-                <h3 className="text-sm font-bold text-gray-900">{variantModalItem.name}</h3>
-                <p className="text-xs text-gray-500">Select portion / bottle size:</p>
+            <div className="flex items-start justify-between gap-3">
+              <div className="flex items-start gap-2.5 min-w-0">
+                <img
+                  src={normalizeImageUrl(variantModalItem.image || variantModalItem.imageUrl) || DEFAULT_DISH_IMAGE}
+                  alt={variantModalItem.name}
+                  className="w-12 h-12 rounded-lg object-cover bg-gray-100 border border-gray-200 flex-shrink-0"
+                  onError={(e) => {
+                    e.currentTarget.src = DEFAULT_DISH_IMAGE;
+                  }}
+                />
+                <div className="min-w-0">
+                  <h3 className="text-sm font-bold text-gray-900 leading-snug break-words">
+                    {variantModalItem.name}
+                  </h3>
+                  <p className="text-xs text-gray-500 mt-0.5">Select portion / size to punch:</p>
+                </div>
               </div>
               <button
                 onClick={() => setVariantModalItem(null)}
-                className="p-1 text-gray-400 hover:text-gray-700 rounded-lg hover:bg-gray-100"
+                className="p-1 text-gray-400 hover:text-gray-700 rounded-lg hover:bg-gray-100 cursor-pointer"
               >
                 <X className="w-4 h-4" />
               </button>
             </div>
+
+            {variantModalItem.description && (
+              <div className="bg-gray-50 p-2 rounded-lg border border-gray-100 text-xs text-gray-600 leading-relaxed break-words">
+                {variantModalItem.description}
+              </div>
+            )}
 
             <div className="space-y-2">
               {variantModalItem.variants?.map(v => (
