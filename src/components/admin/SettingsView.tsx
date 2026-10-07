@@ -868,6 +868,32 @@ export const SettingsView: React.FC = () => {
               <Save className="w-4 h-4" />
               <span>Save Hardware & Review Settings</span>
             </button>
+
+            {/* System Clean Slate & Reset Tables */}
+            <div className="pt-4 border-t border-gray-200">
+              <div className="p-4 rounded-xl bg-amber-50/70 border border-amber-200 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                <div>
+                  <h4 className="text-xs font-bold text-gray-900 flex items-center gap-1.5">
+                    <RotateCcw className="w-3.5 h-3.5 text-amber-600" />
+                    <span>Fresh Slate (Reset Tables &amp; Clear Test Transactions)</span>
+                  </h4>
+                  <p className="text-[11px] text-gray-600 mt-0.5">
+                    Resets all 11 tables to Available and clears active test orders, payments, and KOTs. All custom menu items and categories are safely preserved.
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  id="btn-settings-fresh-slate"
+                  onClick={handleReset}
+                  disabled={isResetting}
+                  className="px-3.5 py-2 bg-amber-600 hover:bg-amber-700 text-white rounded-xl text-xs font-bold transition flex items-center gap-1.5 shadow-xs cursor-pointer flex-shrink-0 disabled:opacity-50"
+                  title="Reset tables to Available and clear test transactions"
+                >
+                  <RotateCcw className={`w-3.5 h-3.5 ${isResetting ? 'animate-spin' : ''}`} />
+                  <span>{isResetting ? 'Resetting...' : 'Fresh Slate Reset'}</span>
+                </button>
+              </div>
+            </div>
           </div>
         </form>
       )}

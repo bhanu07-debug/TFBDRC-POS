@@ -19,7 +19,8 @@ import {
   Utensils,
   RotateCcw,
   RefreshCw,
-  Wallet
+  Wallet,
+  Settings
 } from 'lucide-react';
 import {
   AreaChart,
@@ -306,14 +307,13 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
         </div>
         <div className="flex items-center gap-2 self-start sm:self-auto flex-wrap">
           <button
-            id="btn-dashboard-fresh-slate"
-            onClick={handleFreshReset}
-            disabled={isResetting}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold bg-[#161F30] hover:bg-[#1f2b42] text-slate-200 border border-slate-700 hover:border-amber-500/40 shadow-xs transition cursor-pointer active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed"
-            title="Reset tables to Available and clear test orders (Preserves all your menu items and changes)"
+            id="btn-dashboard-settings"
+            onClick={() => onNavigateTab('settings')}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold bg-[#161F30] hover:bg-[#1f2b42] text-slate-200 border border-slate-700 hover:border-amber-500/40 shadow-xs transition cursor-pointer active:scale-95"
+            title="Open POS & Restaurant Settings"
           >
-            <RotateCcw className={`w-3.5 h-3.5 ${isResetting ? 'animate-spin text-amber-400' : 'text-amber-400'}`} />
-            <span>{isResetting ? 'Resetting Tables...' : 'Fresh Slate'}</span>
+            <Settings className="w-3.5 h-3.5 text-amber-400" />
+            <span>Settings</span>
           </button>
           <div className="flex items-center gap-2 text-xs text-amber-400/90 font-medium px-3 py-1.5 rounded-xl bg-amber-500/10 border border-amber-500/20">
             <Clock className="w-3.5 h-3.5" />
