@@ -111,9 +111,6 @@ export const ThermalReceiptDocument: React.FC<ThermalReceiptDocumentProps> = ({
         <div className={`font-black uppercase tracking-tight leading-tight ${is58mm ? 'text-xs' : 'text-sm'}`}>
           {settings.restaurantName || settings.name || 'The Fat Buddha Delight'}
         </div>
-        <div className={`font-black uppercase tracking-tight leading-tight ${is58mm ? 'text-[9.5px]' : 'text-xs'}`}>
-          Restro & Cafe
-        </div>
         {settings.tagline && (
           <div className={`font-sans text-neutral-800 mt-0.5 font-medium ${is58mm ? 'text-[8px]' : 'text-[9px]'}`}>
             {settings.tagline}
