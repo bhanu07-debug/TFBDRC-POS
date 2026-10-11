@@ -55,6 +55,10 @@ export const OrdersView: React.FC<OrdersViewProps> = ({ onOpenReceipt }) => {
       const f = statusFilter.toLowerCase();
       if (f === 'placed' && (s === 'placed' || s === 'new')) {
         // Match placed/new
+      } else if (f === 'pending_cashier' && (s === 'pending_cashier' || s === 'pending_cashier')) {
+        // Match pending cashier
+      } else if (f === 'rejected' && s === 'rejected') {
+        // Match rejected
       } else if (f === 'preparing' && (s === 'preparing' || s === 'confirmed' || s === 'in_progress' || s === 'cooking' || s === 'printing')) {
         // Match preparing / in_progress / confirmed
       } else if (f === 'served' && (s === 'served' || s === 'ready' || s === 'completed')) {
@@ -82,10 +86,17 @@ export const OrdersView: React.FC<OrdersViewProps> = ({ onOpenReceipt }) => {
 
   const getOrderStatusStyle = (status: OrderStatus) => {
     switch (status) {
-      case 'placed':
-        return 'bg-amber-50 text-amber-700 border-amber-200';
+      case 'PENDING_CASHIER':
+      case 'pending_cashier':
+        return 'bg-purple-50 text-purple-700 border-purple-200 animate-pulse';
+      case 'REJECTED':
+      case 'rejected':
+        return 'bg-rose-50 text-rose-700 border-rose-200';
+      case 'CONFIRMED':
       case 'confirmed':
         return 'bg-blue-50 text-blue-700 border-blue-200';
+      case 'placed':
+        return 'bg-amber-50 text-amber-700 border-amber-200';
       case 'preparing':
         return 'bg-orange-50 text-orange-700 border-orange-200';
       case 'ready':
@@ -230,12 +241,14 @@ export const OrdersView: React.FC<OrdersViewProps> = ({ onOpenReceipt }) => {
               className="w-full px-3 py-2 bg-gray-50 border border-gray-200 rounded-lg text-xs text-gray-800 focus:outline-none focus:border-amber-500 font-semibold"
             >
               <option value="all">Kitchen/Order Status: All</option>
+              <option value="pending_cashier">Pending Cashier Approval</option>
               <option value="placed">Placed (New)</option>
               <option value="confirmed">Confirmed</option>
               <option value="preparing">Preparing</option>
               <option value="ready">Ready</option>
               <option value="served">Served to Table</option>
               <option value="completed">Completed</option>
+              <option value="rejected">Rejected by Cashier</option>
               <option value="cancelled">Cancelled</option>
             </select>
           </div>

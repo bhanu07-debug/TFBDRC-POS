@@ -4,9 +4,10 @@ import { GuestQRView } from './components/guest/GuestQRView';
 import { AdminLayout } from './components/admin/AdminLayout';
 import { AdminLoginPage } from './components/admin/AdminLoginPage';
 import { GuestDigitalReceiptView } from './components/guest/GuestDigitalReceiptView';
+import { WaiterOrderView } from './components/waiter/WaiterOrderView';
 
 const MainApp: React.FC = () => {
-  const { activeInterface, isAdminAuthenticated } = usePOS();
+  const { activeInterface, isAdminAuthenticated, isWaiterAuthenticated } = usePOS();
   const [receiptParam, setReceiptParam] = useState<string | null>(null);
 
   useEffect(() => {
@@ -40,8 +41,14 @@ const MainApp: React.FC = () => {
     <div className="min-h-screen bg-[#F8F9FA] text-[#1E293B] flex flex-col font-sans selection:bg-amber-500 selection:text-white">
       {activeInterface === 'guest' ? (
         <GuestQRView />
+      ) : activeInterface === 'waiter' ? (
+        !isWaiterAuthenticated ? (
+          <AdminLoginPage defaultPortal="waiter" />
+        ) : (
+          <WaiterOrderView />
+        )
       ) : !isAdminAuthenticated ? (
-        <AdminLoginPage />
+        <AdminLoginPage defaultPortal="admin" />
       ) : (
         <AdminLayout />
       )}

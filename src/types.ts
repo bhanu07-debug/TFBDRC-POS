@@ -10,6 +10,7 @@ export type AdminTab =
   | 'expenses'
   | 'payments'
   | 'reports'
+  | 'staff'
   | 'settings';
 
 // ==========================================
@@ -167,9 +168,11 @@ export interface TableSession {
 // ==========================================
 // 5. ORDERS & ORDER ITEMS
 // ==========================================
-export type OrderSource = 'GUEST_QR' | 'ADMIN_MANUAL';
+export type OrderSource = 'GUEST_QR' | 'ADMIN_MANUAL' | 'WAITER_MOBILE';
 export type OrderStatus =
   | 'NEW'
+  | 'PENDING_CASHIER'
+  | 'REJECTED'
   | 'CONFIRMED'
   | 'PREPARING'
   | 'READY'
@@ -181,7 +184,9 @@ export type OrderStatus =
   | 'ready'
   | 'served'
   | 'completed'
-  | 'cancelled';
+  | 'cancelled'
+  | 'pending_cashier'
+  | 'rejected';
 
 export interface OrderItemSnapshot {
   id: string;
@@ -231,6 +236,8 @@ export interface Order {
   createdAt: string;
   updatedAt: string;
   createdBy: string;
+  notes?: string;
+  rejectionReason?: string;
 
   // Compatibility fields
   guestName?: string;
@@ -607,5 +614,35 @@ export interface Expense {
   createdAt: string;
   updatedAt: string;
   createdBy?: string;
+}
+
+// ==========================================
+// 15. STAFF MANAGEMENT & AUTHENTICATION
+// ==========================================
+export type StaffRole = 'admin' | 'cashier' | 'waiter' | 'kitchen';
+
+export interface StaffMember {
+  id: string;
+  name: string;
+  username: string;
+  password?: string;
+  role: StaffRole;
+  phone?: string;
+  email?: string;
+  isActive: boolean;
+  avatar?: string;
+  pin?: string;
+  joinedDate?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface StaffSession {
+  staffId: string;
+  username: string;
+  name: string;
+  role: StaffRole;
+  loginTimestamp: number;
+  expiresAt: number;
 }
 

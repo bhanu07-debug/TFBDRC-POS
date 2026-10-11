@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect, useMemo } from 'react';
+import React, { useState, useRef, useEffect, useMemo, useCallback } from 'react';
 import { usePOS } from '../../context/POSContext';
 import { KOTTicket, KOTItem, KOTDestination } from '../../types';
 import {
@@ -123,6 +123,47 @@ export const KOTView: React.FC = () => {
     }
   }, [kots, settings.soundAlerts]);
 
+  // Helper to determine if an item belongs to Reception/Cafe or Kitchen
+  const isReceptionItem = useCallback((item: any) => {
+    // 1. Explicit kotDestination check
+    if (item.kotDestination === 'RECEPTION') return true;
+    if (item.kotDestination === 'KITCHEN') return false;
+
+    // 2. Department check: SHOP items always route to RECEPTION
+    if (item.department === 'SHOP') return true;
+
+    const cat = (item.category || '').toLowerCase();
+    const name = (item.name || item.nameSnapshot || '').toLowerCase();
+    
+    // Check linked menuItem in catalog if category is missing
+    let catalogCat = '';
+    if (item.menuItemId) {
+      const found = menuItems.find(m => m.id === item.menuItemId);
+      if (found) {
+        if (found.kotDestination === 'RECEPTION') return true;
+        if (found.kotDestination === 'KITCHEN') return false;
+        if (found.department === 'SHOP') return true;
+        catalogCat = (found.category || '').toLowerCase();
+      }
+    }
+
+    const fullCategory = `${cat} ${catalogCat}`;
+    return (
+      fullCategory.includes('cafe') ||
+      fullCategory.includes('drink') ||
+      fullCategory.includes('beverage') ||
+      fullCategory.includes('dessert') ||
+      fullCategory.includes('barista') ||
+      name.includes('coffee') ||
+      name.includes('shake') ||
+      name.includes('tea') ||
+      name.includes('ice cream') ||
+      name.includes('lassi') ||
+      name.includes('smoothie') ||
+      name.includes('cake')
+    );
+  }, [menuItems]);
+
   // Combine official kots with any active/preparing orders that don't yet have a KOT ticket
   const allTickets: KOTTicket[] = useMemo(() => {
     const list = [...kots];
@@ -233,48 +274,7 @@ export const KOTView: React.FC = () => {
     });
 
     return list;
-  }, [kots, orders]);
-
-  // Helper to determine if an item belongs to Reception/Cafe or Kitchen
-  const isReceptionItem = (item: any) => {
-    // 1. Explicit kotDestination check
-    if (item.kotDestination === 'RECEPTION') return true;
-    if (item.kotDestination === 'KITCHEN') return false;
-
-    // 2. Department check: SHOP items always route to RECEPTION
-    if (item.department === 'SHOP') return true;
-
-    const cat = (item.category || '').toLowerCase();
-    const name = (item.name || item.nameSnapshot || '').toLowerCase();
-    
-    // Check linked menuItem in catalog if category is missing
-    let catalogCat = '';
-    if (item.menuItemId) {
-      const found = menuItems.find(m => m.id === item.menuItemId);
-      if (found) {
-        if (found.kotDestination === 'RECEPTION') return true;
-        if (found.kotDestination === 'KITCHEN') return false;
-        if (found.department === 'SHOP') return true;
-        catalogCat = (found.category || '').toLowerCase();
-      }
-    }
-
-    const fullCategory = `${cat} ${catalogCat}`;
-    return (
-      fullCategory.includes('cafe') ||
-      fullCategory.includes('drink') ||
-      fullCategory.includes('beverage') ||
-      fullCategory.includes('dessert') ||
-      fullCategory.includes('barista') ||
-      name.includes('coffee') ||
-      name.includes('shake') ||
-      name.includes('tea') ||
-      name.includes('ice cream') ||
-      name.includes('lassi') ||
-      name.includes('smoothie') ||
-      name.includes('cake')
-    );
-  };
+  }, [kots, orders, isReceptionItem]);
 
   // Helper for effective status matching across KOT and linked Order
   const getEffectiveTicketStatus = (kot: KOTTicket): string => {

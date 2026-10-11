@@ -31,7 +31,8 @@ import {
   Clock,
   ShoppingBag,
   Radio,
-  Wallet
+  Wallet,
+  Users
 } from 'lucide-react';
 import { DashboardView } from './DashboardView';
 import { TablesView } from './TablesView';
@@ -44,6 +45,7 @@ import { InventoryView } from './InventoryView';
 import { ExpensesView } from './ExpensesView';
 import { PaymentsView } from './PaymentsView';
 import { ReportsView } from './ReportsView';
+import { StaffView } from './StaffView';
 import { SettingsView } from './SettingsView';
 import { ReceiptModal } from './ReceiptModal';
 import { TableQRModal } from '../guest/TableQRModal';
@@ -70,7 +72,8 @@ export const AdminLayout: React.FC = () => {
     setIsWalkieTalkieAdminOpen,
     selectedWalkieTable,
     setSelectedWalkieTable,
-    markWalkieTalkieStatus
+    markWalkieTalkieStatus,
+    staffList
   } = usePOS();
 
   const formatRemainingTime = (seconds: number) => {
@@ -226,6 +229,7 @@ export const AdminLayout: React.FC = () => {
     { id: 'expenses', label: 'Expenses', icon: Wallet },
     { id: 'payments', label: 'Payments', icon: CreditCard },
     { id: 'reports', label: 'Reports', icon: BarChart3 },
+    { id: 'staff', label: 'Staff', icon: Users, badge: staffList.length },
     { id: 'settings', label: 'Settings', icon: Settings }
   ];
 
@@ -258,6 +262,8 @@ export const AdminLayout: React.FC = () => {
         return 'Payments & Transactions';
       case 'reports':
         return 'Reports & Analytics';
+      case 'staff':
+        return 'Staff Roster & Mobile Access Management';
       case 'settings':
         return 'POS & Restaurant Settings';
       default:
@@ -525,12 +531,22 @@ export const AdminLayout: React.FC = () => {
               <span>{formatRemainingTime(adminSessionRemainingSeconds)}</span>
             </div>
 
+            {/* Waiter Mobile Order Quick Action */}
+            <button
+              onClick={() => setActiveInterface('waiter')}
+              className="hidden sm:flex items-center gap-1.5 px-3 py-1.5 bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 border border-amber-500/40 font-bold text-xs rounded-xl shadow-xs transition"
+              title="Open Waiter Mobile Ordering"
+            >
+              <Smartphone className="w-3.5 h-3.5 text-amber-400" />
+              <span>Waiter App</span>
+            </button>
+
             {/* Guest View Quick Action */}
             <button
               onClick={() => setActiveInterface('guest')}
-              className="hidden sm:flex items-center gap-1.5 px-3 py-1.5 bg-amber-500 hover:bg-amber-600 text-white font-bold text-xs rounded-xl shadow-md shadow-amber-500/20 transition"
+              className="hidden sm:flex items-center gap-1.5 px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 font-bold text-xs rounded-xl shadow-xs transition"
             >
-              <Smartphone className="w-3.5 h-3.5" />
+              <Smartphone className="w-3.5 h-3.5 text-slate-400" />
               <span>Guest QR</span>
             </button>
 
@@ -593,6 +609,8 @@ export const AdminLayout: React.FC = () => {
             )}
 
             {adminActiveTab === 'reports' && <ReportsView />}
+
+            {adminActiveTab === 'staff' && <StaffView />}
 
             {adminActiveTab === 'settings' && <SettingsView />}
           </div>

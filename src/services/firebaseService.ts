@@ -63,7 +63,8 @@ import {
   ServiceRequest,
   TableNotification,
   WalkieTalkieMessage,
-  Expense
+  Expense,
+  StaffMember
 } from '../types';
 import { OFFICIAL_CATEGORIES, OFFICIAL_MENU_ITEMS } from '../data/restaurantMenu';
 
@@ -1139,6 +1140,542 @@ export const createOrderWithKOTs = async (
   }
 };
 
+// ====================================================
+// 5b. WAITER MOBILE ORDERS & CASHIER APPROVAL
+// ====================================================
+function resolveItemDestination(
+  menuItem?: MenuItem,
+  itemSnapshot?: { kotDestination?: KOTDestination; department?: Department; category?: string; nameSnapshot?: string }
+): KOTDestination {
+  const department = menuItem?.department || itemSnapshot?.department || 'RESTAURANT';
+  // Rule: Drinks and non-food/clothing items go to RECEPTION.
+  if (department === 'SHOP') {
+    return 'RECEPTION';
+  }
+  if (menuItem?.kotDestination) {
+    return (menuItem.kotDestination.toUpperCase() === 'RECEPTION') ? 'RECEPTION' : 'KITCHEN';
+  }
+  if (itemSnapshot?.kotDestination) {
+    return (itemSnapshot.kotDestination.toUpperCase() === 'RECEPTION') ? 'RECEPTION' : 'KITCHEN';
+  }
+  const cat = (menuItem?.category || itemSnapshot?.category || '').toLowerCase();
+  const name = (menuItem?.name || itemSnapshot?.nameSnapshot || '').toLowerCase();
+  const isReception =
+    cat.includes('drink') || cat.includes('beverage') || cat.includes('cafe') || cat.includes('barista') ||
+    cat.includes('dessert') || cat.includes('bakery') || cat.includes('juice') || cat.includes('shake') ||
+    cat.includes('tea') || cat.includes('coffee') || cat.includes('lassi') || cat.includes('beer') ||
+    cat.includes('liquor') || cat.includes('wine') || cat.includes('mocktail') || cat.includes('cocktail') ||
+    name.includes('coffee') || name.includes('tea') || name.includes('lassi') || name.includes('shake') ||
+    name.includes('beer') || name.includes('cold drink') || name.includes('soda') || name.includes('water');
+
+  return isReception ? 'RECEPTION' : 'KITCHEN';
+}
+
+export interface CreateWaiterOrderParams {
+  tableNumber: number;
+  waiterName: string;
+  items: Array<{
+    menuItemId: string;
+    quantity: number;
+    variantId?: string;
+    variantName?: string;
+    notes?: string;
+  }>;
+  notes?: string;
+  vatEnabled?: boolean;
+  vatRate?: number;
+  serviceChargeEnabled?: boolean;
+  serviceChargePercent?: number;
+}
+
+export const createWaiterOrder = async (
+  params: CreateWaiterOrderParams
+): Promise<Order> => {
+  const path = 'orders';
+  try {
+    const tableNumber = Math.max(1, Math.min(10, params.tableNumber));
+    const numStr = tableNumber < 10 ? `0${tableNumber}` : `${tableNumber}`;
+    const tableId = `T${numStr}`;
+
+    // Get or create active session for this table
+    const tableDoc = await getDoc(doc(db, 'tables', tableId));
+    let sessionId: string | null = null;
+    if (tableDoc.exists()) {
+      sessionId = tableDoc.data()?.activeSessionId || null;
+    }
+
+    if (!sessionId) {
+      const newSession = await createTableSession(tableId, tableNumber, params.waiterName || 'Waiter');
+      sessionId = newSession.id;
+    }
+
+    // Fetch trusted menu items from Firestore to guarantee trusted prices (waiters cannot tamper with pricing)
+    let menuMap = new Map<string, MenuItem>();
+    try {
+      const menuDocs = await getDocs(collection(db, 'menu_items'));
+      menuDocs.forEach(d => menuMap.set(d.id, d.data() as MenuItem));
+    } catch (err) {
+      console.warn("Could not query menu_items collection:", err);
+    }
+
+    const orderNumber = await getNextOrderNumber();
+    const orderId = `${orderNumber}-${Date.now().toString(36).toUpperCase()}`;
+
+    let subtotal = 0;
+    const orderItemSnapshots: OrderItemSnapshot[] = [];
+
+    params.items.forEach((it, idx) => {
+      const trustedMenu = menuMap.get(it.menuItemId);
+      const matchedVariant = trustedMenu?.variants?.find(v =>
+        (it.variantId && v.id === it.variantId) ||
+        (it.variantName && v.name.toLowerCase().trim() === it.variantName.toLowerCase().trim())
+      );
+
+      let price = 0;
+      if (matchedVariant && matchedVariant.price > 0) {
+        price = matchedVariant.price;
+      } else if (trustedMenu?.price !== undefined) {
+        price = trustedMenu.price;
+      }
+
+      let baseName = trustedMenu?.name || `Item ${it.menuItemId}`;
+      baseName = baseName.replace(/\s*\([^)]*60ml[^)]*\)/gi, '').trim();
+      const variantName = matchedVariant?.name || it.variantName;
+      const variantId = matchedVariant?.id || it.variantId;
+      const displayName = variantName ? `${baseName} (${variantName})` : baseName;
+
+      const department: Department = trustedMenu?.department || 'RESTAURANT';
+      const destination = resolveItemDestination(trustedMenu, { department, nameSnapshot: displayName });
+      const category = trustedMenu?.category || '';
+
+      const lineTotal = price * it.quantity;
+      subtotal += lineTotal;
+
+      const orderItemId = `${orderId}-it-${idx + 1}`;
+      orderItemSnapshots.push({
+        id: orderItemId,
+        orderId,
+        menuItemId: it.menuItemId,
+        nameSnapshot: displayName,
+        priceSnapshot: price,
+        quantity: it.quantity,
+        notes: it.notes || '',
+        kotDestination: destination,
+        department,
+        sku: trustedMenu?.sku,
+        size: matchedVariant?.size || trustedMenu?.size,
+        color: matchedVariant?.color || trustedMenu?.color,
+        variantId,
+        variantName,
+        status: 'PENDING',
+        cancelled: false,
+        cancelledBy: null,
+        cancelledAt: null,
+        cancellationReason: null,
+        createdAt: new Date().toISOString(),
+        name: displayName,
+        price,
+        instructions: it.notes,
+        category
+      });
+    });
+
+    const serviceCharge = params.serviceChargeEnabled
+      ? Math.round((subtotal * (params.serviceChargePercent ?? 10)) / 100)
+      : 0;
+    const vat = params.vatEnabled
+      ? Math.round(((subtotal + serviceCharge) * (params.vatRate ?? 13)) / 100)
+      : 0;
+    const total = subtotal + serviceCharge + vat;
+
+    const newOrder: Order = {
+      id: orderId,
+      orderNumber,
+      sessionId,
+      tableId,
+      tableNumber,
+      source: 'WAITER_MOBILE',
+      status: 'PENDING_CASHIER',
+      subtotal,
+      discount: 0,
+      vat,
+      serviceCharge,
+      total,
+      items: orderItemSnapshots,
+      notes: params.notes || '',
+      waiterName: params.waiterName || 'Waiter',
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+      createdBy: params.waiterName || 'Waiter',
+      paymentStatus: 'unpaid',
+      orderType: 'dine_in',
+      finalAmount: total,
+      taxAmount: vat,
+      discountAmount: 0
+    };
+
+    // Save order in Firestore - WITHOUT creating KOTs or print jobs
+    await setDoc(doc(db, 'orders', orderId), cleanFirestoreData(newOrder));
+
+    // Update table status to OCCUPIED
+    await setDoc(
+      doc(db, 'tables', tableId),
+      cleanFirestoreData({
+        status: 'OCCUPIED',
+        activeSessionId: sessionId,
+        updatedAt: new Date().toISOString()
+      }),
+      { merge: true }
+    );
+
+    // Create table notification so cashier dashboard gets real-time notification
+    try {
+      const notifId = `NOTIF-${Date.now().toString(36).toUpperCase()}`;
+      await setDoc(doc(db, 'tableNotifications', notifId), cleanFirestoreData({
+        id: notifId,
+        tableNumber,
+        type: 'order_placed',
+        title: `Pending Waiter Order - Table T${numStr}`,
+        message: `${params.waiterName || 'Waiter'} submitted order ${orderNumber} (Rs. ${total}) awaiting Cashier approval.`,
+        read: false,
+        orderId,
+        createdAt: new Date().toISOString()
+      }));
+    } catch (e) {
+      console.warn("Table notification error:", e);
+    }
+
+    return newOrder;
+  } catch (error) {
+    handleFirestoreError(error, OperationType.CREATE, path);
+    throw error;
+  }
+};
+
+export const confirmWaiterOrder = async (
+  orderId: string,
+  cashierName?: string
+): Promise<{ order: Order; kots: KOTTicket[] }> => {
+  const path = `orders/${orderId}`;
+  try {
+    const orderDocRef = doc(db, 'orders', orderId);
+    const snap = await getDoc(orderDocRef);
+    if (!snap.exists()) {
+      throw new Error(`Order ${orderId} does not exist.`);
+    }
+
+    const orderData = snap.data() as Order;
+    const currentStatus = (orderData.status || '').toUpperCase();
+    if (currentStatus !== 'PENDING_CASHIER' && (orderData.status as any) !== 'pending_cashier') {
+      console.warn(`Order ${orderId} is not in PENDING_CASHIER state (current: ${orderData.status}).`);
+      return { order: orderData, kots: [] };
+    }
+
+    // Guard against duplicate KOTs if KOTs already exist for this order
+    const existingKotsSnap = await getDocs(query(collection(db, 'kots'), where('orderId', '==', orderId)));
+    if (!existingKotsSnap.empty) {
+      console.warn(`KOTs already exist for order ${orderId}, skipping duplicate generation.`);
+      const existingKots: KOTTicket[] = [];
+      existingKotsSnap.forEach(d => existingKots.push(d.data() as KOTTicket));
+      await updateDoc(orderDocRef, {
+        status: 'CONFIRMED',
+        cashierName: cashierName || 'Cashier',
+        updatedAt: new Date().toISOString()
+      });
+      return { order: { ...orderData, status: 'CONFIRMED' }, kots: existingKots };
+    }
+
+    // Fetch trusted menu items
+    let menuMap = new Map<string, MenuItem>();
+    try {
+      const menuDocs = await getDocs(collection(db, 'menu_items'));
+      menuDocs.forEach(d => menuMap.set(d.id, d.data() as MenuItem));
+    } catch (err) {
+      console.warn("Could not query menu_items:", err);
+    }
+
+    const kitchenItems: Array<{ orderItemId: string; menuItemId: string; nameSnapshot: string; quantity: number; notes?: string; category?: string }> = [];
+    const receptionItems: Array<{ orderItemId: string; menuItemId: string; nameSnapshot: string; quantity: number; notes?: string; category?: string }> = [];
+    const stockUpdates: Array<{ menuItemId: string; variantId?: string; quantitySold: number }> = [];
+
+    (orderData.items || []).forEach(it => {
+      const trusted = menuMap.get(it.menuItemId);
+      const destination = resolveItemDestination(trusted, it);
+
+      if (destination === 'RECEPTION') {
+        receptionItems.push({
+          orderItemId: it.id,
+          menuItemId: it.menuItemId,
+          nameSnapshot: it.nameSnapshot || it.name || 'Item',
+          quantity: it.quantity,
+          notes: it.notes || it.instructions || '',
+          category: it.category || trusted?.category
+        });
+      } else {
+        kitchenItems.push({
+          orderItemId: it.id,
+          menuItemId: it.menuItemId,
+          nameSnapshot: it.nameSnapshot || it.name || 'Item',
+          quantity: it.quantity,
+          notes: it.notes || it.instructions || '',
+          category: it.category || trusted?.category
+        });
+      }
+
+      const dep = trusted?.department || it.department;
+      if (dep === 'SHOP') {
+        stockUpdates.push({
+          menuItemId: it.menuItemId,
+          variantId: it.variantId,
+          quantitySold: it.quantity
+        });
+      }
+    });
+
+    const createdKOTs: KOTTicket[] = [];
+    const createdPrintJobs: PrintJob[] = [];
+    const batch = writeBatch(db);
+
+    const tableDisplayLabel = orderData.tableNumber === 0
+      ? 'Walk-In / Retail'
+      : `Table T${orderData.tableNumber < 10 ? '0' + orderData.tableNumber : orderData.tableNumber}`;
+
+    // 1. Kitchen KOT if any food items
+    if (kitchenItems.length > 0) {
+      const kotId = `KOT-K-${Date.now().toString(36).toUpperCase()}-${Math.floor(100 + Math.random() * 900)}`;
+      const kotNumber = `KOT-${Math.floor(100 + Math.random() * 900)}`;
+      const kot: KOTTicket = {
+        id: kotId,
+        kotNumber,
+        orderId,
+        sessionId: orderData.sessionId,
+        tableId: orderData.tableId,
+        tableNumber: orderData.tableNumber,
+        destination: 'KITCHEN',
+        status: 'PENDING',
+        items: kitchenItems.map(k => ({
+          id: `kot-it-${k.orderItemId}`,
+          orderItemId: k.orderItemId,
+          menuItemId: k.menuItemId,
+          nameSnapshot: k.nameSnapshot,
+          quantity: k.quantity,
+          notes: k.notes,
+          status: 'PENDING',
+          name: k.nameSnapshot,
+          category: k.category
+        })),
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+        tableLabel: tableDisplayLabel,
+        orderNumber: orderData.orderNumber
+      };
+      createdKOTs.push(kot);
+      batch.set(doc(db, 'kots', kotId), cleanFirestoreData(kot));
+
+      const printJobId = `PRN-${kotId}`;
+      const printJob: PrintJob = {
+        id: printJobId,
+        kotId,
+        destination: 'KITCHEN',
+        printerType: 'KITCHEN',
+        status: 'PENDING',
+        payload: {
+          kotNumber,
+          tableNumber: orderData.tableNumber,
+          destination: 'KITCHEN',
+          items: kitchenItems.map(k => ({ name: k.nameSnapshot, quantity: k.quantity, notes: k.notes })),
+          timestamp: new Date().toISOString()
+        },
+        attempts: 0,
+        createdAt: new Date().toISOString(),
+        printedAt: null,
+        error: null
+      };
+      createdPrintJobs.push(printJob);
+      batch.set(doc(db, 'printJobs', printJobId), cleanFirestoreData(printJob));
+    }
+
+    // 2. Reception KOT if any drinks or shop items
+    if (receptionItems.length > 0) {
+      const kotId = `KOT-R-${Date.now().toString(36).toUpperCase()}-${Math.floor(100 + Math.random() * 900)}`;
+      const kotNumber = `KOT-${Math.floor(100 + Math.random() * 900)}`;
+      const kot: KOTTicket = {
+        id: kotId,
+        kotNumber,
+        orderId,
+        sessionId: orderData.sessionId,
+        tableId: orderData.tableId,
+        tableNumber: orderData.tableNumber,
+        destination: 'RECEPTION',
+        status: 'PENDING',
+        items: receptionItems.map(k => ({
+          id: `kot-it-${k.orderItemId}`,
+          orderItemId: k.orderItemId,
+          menuItemId: k.menuItemId,
+          nameSnapshot: k.nameSnapshot,
+          quantity: k.quantity,
+          notes: k.notes,
+          status: 'PENDING',
+          name: k.nameSnapshot,
+          category: k.category
+        })),
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+        tableLabel: tableDisplayLabel,
+        orderNumber: orderData.orderNumber
+      };
+      createdKOTs.push(kot);
+      batch.set(doc(db, 'kots', kotId), cleanFirestoreData(kot));
+
+      const printJobId = `PRN-${kotId}`;
+      const printJob: PrintJob = {
+        id: printJobId,
+        kotId,
+        destination: 'RECEPTION',
+        printerType: 'RECEPTION',
+        status: 'PENDING',
+        payload: {
+          kotNumber,
+          tableNumber: orderData.tableNumber,
+          destination: 'RECEPTION',
+          items: receptionItems.map(k => ({ name: k.nameSnapshot, quantity: k.quantity, notes: k.notes })),
+          timestamp: new Date().toISOString()
+        },
+        attempts: 0,
+        createdAt: new Date().toISOString(),
+        printedAt: null,
+        error: null
+      };
+      createdPrintJobs.push(printJob);
+      batch.set(doc(db, 'printJobs', printJobId), cleanFirestoreData(printJob));
+    }
+
+    // 3. Deduct stock for shop items
+    for (const su of stockUpdates) {
+      const itemDoc = menuMap.get(su.menuItemId);
+      if (itemDoc) {
+        if (su.variantId && itemDoc.variants && itemDoc.variants.length > 0) {
+          const updatedVariants = itemDoc.variants.map(v => {
+            if (v.id === su.variantId && typeof v.stockQuantity === 'number') {
+              return { ...v, stockQuantity: Math.max(0, v.stockQuantity - su.quantitySold) };
+            }
+            return v;
+          });
+          batch.update(doc(db, 'menu_items', su.menuItemId), {
+            variants: updatedVariants,
+            updatedAt: new Date().toISOString()
+          });
+        } else if (typeof itemDoc.stockQuantity === 'number') {
+          const newStock = Math.max(0, itemDoc.stockQuantity - su.quantitySold);
+          batch.update(doc(db, 'menu_items', su.menuItemId), {
+            stockQuantity: newStock,
+            inStock: newStock > 0,
+            updatedAt: new Date().toISOString()
+          });
+        }
+      }
+    }
+
+    // 4. Update the order status to CONFIRMED
+    const updatedOrder: Order = {
+      ...orderData,
+      status: 'CONFIRMED',
+      cashierName: cashierName || 'Cashier',
+      updatedAt: new Date().toISOString()
+    };
+    batch.update(orderDocRef, {
+      status: 'CONFIRMED',
+      cashierName: cashierName || 'Cashier',
+      updatedAt: new Date().toISOString()
+    });
+
+    // 5. Update table session and status
+    batch.set(
+      doc(db, 'tables', orderData.tableId),
+      cleanFirestoreData({
+        status: 'OCCUPIED',
+        activeSessionId: orderData.sessionId,
+        updatedAt: new Date().toISOString()
+      }),
+      { merge: true }
+    );
+
+    // 6. Table notification for staff
+    const notifId = `NOTIF-${Date.now().toString(36).toUpperCase()}`;
+    batch.set(doc(db, 'tableNotifications', notifId), cleanFirestoreData({
+      id: notifId,
+      tableNumber: orderData.tableNumber,
+      type: 'order_preparing',
+      title: `Order Confirmed - Table T${orderData.tableNumber < 10 ? '0' + orderData.tableNumber : orderData.tableNumber}`,
+      message: `Cashier confirmed order ${orderData.orderNumber}. KOT sent to ${createdKOTs.map(k => k.destination).join(' & ')}.`,
+      read: false,
+      orderId,
+      createdAt: new Date().toISOString()
+    }));
+
+    await batch.commit();
+
+    return { order: updatedOrder, kots: createdKOTs };
+  } catch (error) {
+    handleFirestoreError(error, OperationType.UPDATE, path);
+    throw error;
+  }
+};
+
+export const rejectWaiterOrder = async (
+  orderId: string,
+  rejectionReason: string,
+  cashierName?: string
+): Promise<Order> => {
+  const path = `orders/${orderId}`;
+  try {
+    const orderDocRef = doc(db, 'orders', orderId);
+    const snap = await getDoc(orderDocRef);
+    if (!snap.exists()) {
+      throw new Error(`Order ${orderId} does not exist.`);
+    }
+
+    const orderData = snap.data() as Order;
+    const nowIso = new Date().toISOString();
+    const reasonText = rejectionReason.trim() || 'Rejected by cashier';
+
+    const updatedOrder: Order = {
+      ...orderData,
+      status: 'REJECTED',
+      rejectionReason: reasonText,
+      cashierName: cashierName || 'Cashier',
+      updatedAt: nowIso
+    };
+
+    const batch = writeBatch(db);
+    batch.update(orderDocRef, {
+      status: 'REJECTED',
+      rejectionReason: reasonText,
+      cashierName: cashierName || 'Cashier',
+      updatedAt: nowIso
+    });
+
+    // Send table notification so waiter / floor staff is alerted
+    const notifId = `NOTIF-${Date.now().toString(36).toUpperCase()}`;
+    batch.set(doc(db, 'tableNotifications', notifId), cleanFirestoreData({
+      id: notifId,
+      tableNumber: orderData.tableNumber,
+      type: 'order_cancelled',
+      title: `Order Rejected - Table T${orderData.tableNumber < 10 ? '0' + orderData.tableNumber : orderData.tableNumber}`,
+      message: `Order ${orderData.orderNumber} rejected by cashier. Reason: ${reasonText}`,
+      read: false,
+      orderId,
+      createdAt: nowIso
+    }));
+
+    await batch.commit();
+    return updatedOrder;
+  } catch (error) {
+    handleFirestoreError(error, OperationType.UPDATE, path);
+    throw error;
+  }
+};
+
 export const listenOrders = (
   onSuccess: (orders: Order[]) => void,
   onError?: (err: any) => void
@@ -1796,6 +2333,127 @@ export const updateExpenseRecord = async (
 
 export const deleteExpenseRecord = async (id: string): Promise<void> => {
   const path = 'expenses';
+  try {
+    await deleteDoc(doc(db, path, id));
+  } catch (error) {
+    handleFirestoreError(error, OperationType.DELETE, path);
+    throw error;
+  }
+};
+
+// ====================================================
+// 15. STAFF MANAGEMENT & ACCESS CONTROL
+// ====================================================
+export const INITIAL_STAFF: StaffMember[] = [
+  {
+    id: 'staff-admin',
+    name: 'General Manager',
+    username: 'admin',
+    password: 'buddhaadmin@123',
+    role: 'admin',
+    phone: '+977-9800000001',
+    email: 'vanuchdry05@gmail.com',
+    isActive: true,
+    joinedDate: '2024-01-01',
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString()
+  },
+  {
+    id: 'staff-waiter',
+    name: 'Floor Waiter',
+    username: 'waiter',
+    password: 'buddhaadmin@123',
+    role: 'waiter',
+    phone: '+977-9800000002',
+    email: 'waiter@fatbuddha.com',
+    isActive: true,
+    joinedDate: '2024-01-01',
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString()
+  }
+];
+
+export const listenStaff = (
+  onSuccess: (staffList: StaffMember[]) => void,
+  onError?: (err: any) => void
+) => {
+  const path = 'staff';
+  return onSnapshot(
+    collection(db, path),
+    snapshot => {
+      if (snapshot.empty) {
+        // Seed default staff accounts
+        INITIAL_STAFF.forEach(member => {
+          setDoc(doc(db, path, member.id), cleanFirestoreData(member)).catch(e => {
+            console.warn(`Could not seed staff ${member.username}:`, e);
+          });
+        });
+        onSuccess(INITIAL_STAFF);
+        return;
+      }
+
+      const list: StaffMember[] = [];
+      snapshot.forEach(docSnap => {
+        list.push({ ...docSnap.data(), id: docSnap.id } as StaffMember);
+      });
+      list.sort((a, b) => a.name.localeCompare(b.name));
+      onSuccess(list);
+    },
+    error => {
+      handleFirestoreError(error, OperationType.LIST, path);
+      if (onError) onError(error);
+    }
+  );
+};
+
+export const createStaffMember = async (
+  data: Omit<StaffMember, 'id' | 'createdAt' | 'updatedAt'>
+): Promise<StaffMember> => {
+  const path = 'staff';
+  const cleanUser = (data.username || '').toLowerCase().trim();
+  const id = `staff-${cleanUser || Date.now().toString(36)}`;
+  const now = new Date().toISOString();
+
+  const newStaff: StaffMember = {
+    ...data,
+    id,
+    username: cleanUser,
+    password: data.password || 'buddhaadmin@123',
+    isActive: data.isActive !== false,
+    createdAt: now,
+    updatedAt: now
+  };
+
+  try {
+    await setDoc(doc(db, path, id), cleanFirestoreData(newStaff));
+    return newStaff;
+  } catch (error) {
+    handleFirestoreError(error, OperationType.CREATE, path);
+    throw error;
+  }
+};
+
+export const updateStaffMember = async (
+  id: string,
+  updates: Partial<Omit<StaffMember, 'id' | 'createdAt'>>
+): Promise<void> => {
+  const path = 'staff';
+  const docRef = doc(db, path, id);
+  try {
+    const payload = cleanFirestoreData({
+      ...updates,
+      ...(updates.username ? { username: updates.username.toLowerCase().trim() } : {}),
+      updatedAt: new Date().toISOString()
+    });
+    await setDoc(docRef, payload, { merge: true });
+  } catch (error) {
+    handleFirestoreError(error, OperationType.UPDATE, path);
+    throw error;
+  }
+};
+
+export const deleteStaffMember = async (id: string): Promise<void> => {
+  const path = 'staff';
   try {
     await deleteDoc(doc(db, path, id));
   } catch (error) {

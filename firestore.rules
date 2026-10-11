@@ -80,9 +80,12 @@ service cloud.firestore {
         data.sessionId is string && data.sessionId.size() <= 128 &&
         data.tableId is string && data.tableId.size() <= 128 &&
         data.tableNumber is number && data.tableNumber >= 0 && data.tableNumber <= 100 &&
-        data.source in ['GUEST_QR', 'ADMIN_MANUAL', 'guest_qr', 'pos_manual'] &&
-        data.status in ['NEW', 'CONFIRMED', 'PREPARING', 'READY', 'SERVED', 'COMPLETED', 'CANCELLED', 'placed', 'confirmed', 'preparing', 'ready', 'served', 'completed', 'cancelled'] &&
+        data.source in ['GUEST_QR', 'ADMIN_MANUAL', 'WAITER_MOBILE', 'guest_qr', 'pos_manual', 'waiter_mobile'] &&
+        data.status in ['NEW', 'PENDING_CASHIER', 'REJECTED', 'CONFIRMED', 'PREPARING', 'READY', 'SERVED', 'COMPLETED', 'CANCELLED', 'placed', 'confirmed', 'preparing', 'ready', 'served', 'completed', 'cancelled', 'pending_cashier', 'rejected'] &&
         (!('priority' in data) || data.priority in ['HIGH', 'STANDARD', 'high', 'standard']) &&
+        (!('waiterName' in data) || (data.waiterName is string && data.waiterName.size() <= 128)) &&
+        (!('rejectionReason' in data) || (data.rejectionReason is string && data.rejectionReason.size() <= 500)) &&
+        (!('notes' in data) || (data.notes is string && data.notes.size() <= 1000)) &&
         data.subtotal is number && data.subtotal >= 0 &&
         data.total is number && data.total >= 0 &&
         data.items is list && data.items.size() > 0 && data.items.size() <= 100;
@@ -149,6 +152,14 @@ service cloud.firestore {
       return (data.restaurantName is string || data.name is string) &&
         (!('vatRate' in data) || (data.vatRate is number && data.vatRate >= 0 && data.vatRate <= 100)) &&
         (!('gstPercent' in data) || (data.gstPercent is number && data.gstPercent >= 0 && data.gstPercent <= 100));
+    }
+
+    function isValidStaff(data) {
+      return data.id is string && data.id.size() <= 128 &&
+        data.name is string && data.name.size() > 0 && data.name.size() <= 128 &&
+        data.username is string && data.username.size() > 0 && data.username.size() <= 64 &&
+        data.role in ['admin', 'cashier', 'waiter', 'kitchen'] &&
+        data.isActive is bool;
     }
 
     function isValidTableNotification(data) {
@@ -280,6 +291,13 @@ service cloud.firestore {
       allow read: if true;
       allow create, update: if isValidId(expenseId) && isValidExpense(incoming());
       allow delete: if isValidId(expenseId);
+    }
+
+    // 15. Staff
+    match /staff/{staffId} {
+      allow read: if true;
+      allow create, update: if isValidId(staffId) && isValidStaff(incoming());
+      allow delete: if isValidId(staffId);
     }
 
     // Service requests (Guest bell)

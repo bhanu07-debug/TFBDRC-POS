@@ -80,13 +80,16 @@
         "sessionId": { "type": "string", "maxLength": 128 },
         "tableId": { "type": "string", "maxLength": 128 },
         "tableNumber": { "type": "number" },
-        "source": { "type": "string", "enum": ["GUEST_QR", "ADMIN_MANUAL"] },
-        "status": { "type": "string", "enum": ["NEW", "CONFIRMED", "PREPARING", "READY", "SERVED", "CANCELLED"] },
+        "source": { "type": "string", "enum": ["GUEST_QR", "ADMIN_MANUAL", "WAITER_MOBILE"] },
+        "status": { "type": "string", "enum": ["NEW", "PENDING_CASHIER", "REJECTED", "CONFIRMED", "PREPARING", "READY", "SERVED", "CANCELLED"] },
         "subtotal": { "type": "number" },
         "discount": { "type": "number" },
         "vat": { "type": "number" },
         "total": { "type": "number" },
         "items": { "type": "array" },
+        "notes": { "type": "string", "maxLength": 1000 },
+        "waiterName": { "type": "string", "maxLength": 128 },
+        "rejectionReason": { "type": "string", "maxLength": 500 },
         "createdAt": { "type": "string", "maxLength": 64 },
         "updatedAt": { "type": "string", "maxLength": 64 },
         "createdBy": { "type": "string", "maxLength": 128 }
@@ -278,9 +281,31 @@
         "updatedAt": { "type": "string", "maxLength": 64 }
       },
       "required": ["id", "title", "category", "amount", "paymentMethod", "date", "createdAt"]
+    },
+    "StaffMember": {
+      "title": "StaffMember",
+      "description": "Restaurant staff user profile with role-based access for waiters, cashiers, and admins.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128 },
+        "name": { "type": "string", "maxLength": 128 },
+        "username": { "type": "string", "maxLength": 64 },
+        "password": { "type": "string", "maxLength": 256 },
+        "role": { "type": "string", "enum": ["admin", "cashier", "waiter", "kitchen"] },
+        "phone": { "type": "string", "maxLength": 32 },
+        "email": { "type": "string", "maxLength": 128 },
+        "isActive": { "type": "boolean" },
+        "createdAt": { "type": "string", "maxLength": 64 },
+        "updatedAt": { "type": "string", "maxLength": 64 }
+      },
+      "required": ["id", "name", "username", "role", "isActive"]
     }
   },
   "firestore": {
+    "/staff/{staffId}": {
+      "schema": { "$ref": "#/entities/StaffMember" },
+      "description": "Staff roster and login credentials."
+    },
     "/tables/{tableId}": {
       "schema": { "$ref": "#/entities/Table" },
       "description": "Restaurant tables status and active session binding."

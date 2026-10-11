@@ -37,7 +37,10 @@ import {
   KOTDestination,
   AdminSession,
   Department,
-  Expense
+  Expense,
+  StaffMember,
+  StaffRole,
+  StaffSession
 } from '../types';
 import {
   INITIAL_10_TABLES,
@@ -83,7 +86,15 @@ import {
   addShopProductToDb,
   updateShopProductInDb,
   deleteShopProductFromDb,
-  updateAdminPassword as updateAdminPasswordService
+  updateAdminPassword as updateAdminPasswordService,
+  createWaiterOrder,
+  confirmWaiterOrder,
+  rejectWaiterOrder as rejectWaiterOrderService,
+  listenStaff,
+  createStaffMember as createStaffMemberService,
+  updateStaffMember as updateStaffMemberService,
+  deleteStaffMember as deleteStaffMemberService,
+  INITIAL_STAFF
 } from '../services/firebaseService';
 import { OFFICIAL_CATEGORIES, OFFICIAL_MENU_ITEMS } from '../data/restaurantMenu';
 import {
@@ -108,7 +119,7 @@ interface POSContextType {
   settings: RestaurantSettings;
   currentUser: User | null;
   currentGuestTableNumber: number;
-  activeInterface: 'guest' | 'admin' | 'kds';
+  activeInterface: 'guest' | 'admin' | 'kds' | 'waiter';
   adminActiveTab: AdminTab;
   cart: CartItem[];
   searchQuery: string;
@@ -118,7 +129,7 @@ interface POSContextType {
 
   // Navigation & Filter setters
   setCurrentGuestTableNumber: (tableNumber: number) => void;
-  setActiveInterface: (mode: 'guest' | 'admin' | 'kds') => void;
+  setActiveInterface: (mode: 'guest' | 'admin' | 'kds' | 'waiter') => void;
   setAdminActiveTab: (tab: AdminTab) => void;
   setSearchQuery: (q: string) => void;
   setSelectedCategory: (cat: string) => void;
@@ -137,6 +148,16 @@ interface POSContextType {
   logoutAdminPortal: (reason?: 'manual' | 'timeout') => void;
   updateAdminPassword: (newPassword: string) => Promise<void>;
   clearSessionTimeoutNotice: () => void;
+
+  // Staff & Waiter Management & Authentication
+  staffList: StaffMember[];
+  currentStaffSession: StaffSession | null;
+  isWaiterAuthenticated: boolean;
+  loginStaffMember: (username: string, pass: string) => { success: boolean; error?: string; role?: StaffRole; staff?: StaffMember };
+  logoutStaffMember: () => void;
+  createStaffMember: (data: Omit<StaffMember, 'id' | 'createdAt' | 'updatedAt'>) => Promise<StaffMember>;
+  updateStaffMember: (id: string, updates: Partial<StaffMember>) => Promise<void>;
+  deleteStaffMember: (id: string) => Promise<void>;
 
   // Cart operations
   addToCart: (
@@ -165,6 +186,19 @@ interface POSContextType {
     waiterName?: string,
     notes?: string
   ) => Promise<Order>;
+  submitWaiterOrder: (params: {
+    tableNumber: number;
+    waiterName: string;
+    items: Array<{
+      menuItem: MenuItem;
+      quantity: number;
+      selectedVariant?: MenuItemVariant;
+      notes?: string;
+    }>;
+    notes?: string;
+  }) => Promise<Order>;
+  approveWaiterOrder: (orderId: string, cashierName?: string) => Promise<void>;
+  rejectWaiterOrder: (orderId: string, reason: string, cashierName?: string) => Promise<void>;
   updateOrderStatus: (orderId: string, status: OrderStatus) => Promise<void>;
   updateTableOrdersStatus: (tableNumber: number, status: 'placed' | 'confirmed' | 'served') => Promise<void>;
   updateOrderItemStatus: (orderId: string, itemId: string, status: OrderItemStatus) => Promise<void>;
@@ -327,9 +361,12 @@ export const POSProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     return 1;
   });
 
-  const [activeInterface, setActiveInterface] = useState<'guest' | 'admin' | 'kds'>(() => {
+  const [activeInterface, setActiveInterface] = useState<'guest' | 'admin' | 'kds' | 'waiter'>(() => {
     if (typeof window !== 'undefined') {
       const params = new URLSearchParams(window.location.search);
+      if (params.get('mode') === 'waiter' || params.get('waiter') === 'true' || window.location.pathname === '/waiter') {
+        return 'waiter';
+      }
       if (params.get('table')) {
         return 'guest';
       }
@@ -469,6 +506,151 @@ export const POSProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     setSessionTimeoutNotice(null);
   }, []);
 
+  // ----------------------------------------------------
+  // Staff & Waiter Authentication (12-Hour Session)
+  // ----------------------------------------------------
+  const STAFF_SESSION_KEY = 'thefatbuddha_staff_session';
+  const TWELVE_HOURS_MS = 12 * 60 * 60 * 1000;
+
+  const [staffList, setStaffList] = useState<StaffMember[]>(INITIAL_STAFF);
+  const [currentStaffSession, setCurrentStaffSession] = useState<StaffSession | null>(() => {
+    if (typeof window === 'undefined') return null;
+    try {
+      const saved = localStorage.getItem(STAFF_SESSION_KEY);
+      if (saved) {
+        const parsed: StaffSession = JSON.parse(saved);
+        if (parsed.expiresAt && parsed.expiresAt > Date.now()) {
+          return parsed;
+        }
+        localStorage.removeItem(STAFF_SESSION_KEY);
+      }
+    } catch (_) {}
+    return null;
+  });
+
+  const isWaiterAuthenticated = Boolean(
+    currentStaffSession &&
+    currentStaffSession.role === 'waiter' &&
+    currentStaffSession.expiresAt > Date.now()
+  );
+
+  const loginStaffMember = useCallback(
+    (username: string, pass: string): { success: boolean; error?: string; role?: StaffRole; staff?: StaffMember } => {
+      const cleanUser = (username || '').trim().toLowerCase();
+      const cleanPass = (pass || '').trim();
+
+      if (!cleanUser) {
+        return { success: false, error: 'Please enter your username.' };
+      }
+      if (!cleanPass) {
+        return { success: false, error: 'Please enter your password.' };
+      }
+
+      // Find staff in staffList
+      let matched = staffList.find(s => s.username.toLowerCase().trim() === cleanUser);
+
+      // Fallback matching
+      if (!matched) {
+        if (cleanUser === 'waiter') {
+          matched = {
+            id: 'staff-waiter',
+            name: 'Floor Waiter',
+            username: 'waiter',
+            password: 'buddhaadmin@123',
+            role: 'waiter',
+            isActive: true,
+            createdAt: '',
+            updatedAt: ''
+          };
+        } else if (cleanUser === (settings.adminUsername || 'admin').toLowerCase()) {
+          matched = {
+            id: 'staff-admin',
+            name: 'Administrator',
+            username: cleanUser,
+            password: settings.adminPassword || 'buddhaadmin@123',
+            role: 'admin',
+            isActive: true,
+            createdAt: '',
+            updatedAt: ''
+          };
+        }
+      }
+
+      if (!matched) {
+        return { success: false, error: 'User account not found. Check username or contact Admin.' };
+      }
+
+      const expectedPass = matched.password || 'buddhaadmin@123';
+      if (cleanPass !== expectedPass) {
+        return { success: false, error: 'Incorrect password. Please verify and try again.' };
+      }
+
+      if (matched.isActive === false) {
+        return { success: false, error: 'This staff account has been deactivated. Please contact Admin.' };
+      }
+
+      const now = Date.now();
+      const newStaffSession: StaffSession = {
+        staffId: matched.id,
+        username: matched.username,
+        name: matched.name,
+        role: matched.role,
+        loginTimestamp: now,
+        expiresAt: now + TWELVE_HOURS_MS
+      };
+
+      setCurrentStaffSession(newStaffSession);
+      try {
+        localStorage.setItem(STAFF_SESSION_KEY, JSON.stringify(newStaffSession));
+        localStorage.setItem('fb_waiter_name', matched.name);
+      } catch (_) {}
+
+      if (matched.role === 'admin' || matched.role === 'cashier') {
+        const newAdminSession: AdminSession = {
+          username: matched.username,
+          loginTimestamp: now,
+          expiresAt: now + ONE_HOUR_MS
+        };
+        setAdminSession(newAdminSession);
+        setAdminSessionRemainingSeconds(3600);
+        setSessionTimeoutNotice(null);
+        try {
+          localStorage.setItem(ADMIN_SESSION_KEY, JSON.stringify(newAdminSession));
+        } catch (_) {}
+        setActiveInterface('admin');
+      } else if (matched.role === 'waiter') {
+        setActiveInterface('waiter');
+      }
+
+      return { success: true, role: matched.role, staff: matched };
+    },
+    [staffList, settings.adminUsername, settings.adminPassword]
+  );
+
+  const logoutStaffMember = useCallback(() => {
+    setCurrentStaffSession(null);
+    try {
+      localStorage.removeItem(STAFF_SESSION_KEY);
+    } catch (_) {}
+    setActiveInterface('admin');
+  }, []);
+
+  const createStaff = useCallback(async (data: Omit<StaffMember, 'id' | 'createdAt' | 'updatedAt'>): Promise<StaffMember> => {
+    const created = await createStaffMemberService(data);
+    setStaffList(prev => [...prev.filter(s => s.id !== created.id), created]);
+    return created;
+  }, []);
+
+  const updateStaff = useCallback(async (id: string, updates: Partial<StaffMember>): Promise<void> => {
+    await updateStaffMemberService(id, updates);
+    setStaffList(prev => prev.map(s => s.id === id ? { ...s, ...updates, updatedAt: new Date().toISOString() } : s));
+  }, []);
+
+  const deleteStaff = useCallback(async (id: string): Promise<void> => {
+    await deleteStaffMemberService(id);
+    setStaffList(prev => prev.filter(s => s.id !== id));
+  }, []);
+
   // Check URL query parameters for ?table=N
   useEffect(() => {
     if (typeof window !== 'undefined') {
@@ -499,6 +681,7 @@ export const POSProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     let unsubscribeWalkie: () => void = () => {};
     let unsubscribeExpenses: () => void = () => {};
     let unsubscribeAuth: () => void = () => {};
+    let unsubscribeStaff: () => void = () => {};
 
     const initialize = async () => {
       try {
@@ -599,6 +782,13 @@ export const POSProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
           }));
         }
       });
+
+      // Staff listener
+      unsubscribeStaff = listenStaff(liveStaff => {
+        if (liveStaff && liveStaff.length > 0) {
+          setStaffList(liveStaff);
+        }
+      });
     };
 
     initialize().catch(console.error);
@@ -617,6 +807,7 @@ export const POSProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       unsubscribeWalkie();
       unsubscribeSettings();
       unsubscribeAuth();
+      unsubscribeStaff();
     };
   }, []);
 
@@ -995,6 +1186,54 @@ export const POSProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     return order;
   };
 
+  const submitWaiterOrder = async (params: {
+    tableNumber: number;
+    waiterName: string;
+    items: Array<{
+      menuItem: MenuItem;
+      quantity: number;
+      selectedVariant?: MenuItemVariant;
+      notes?: string;
+    }>;
+    notes?: string;
+  }): Promise<Order> => {
+    const createdOrder = await createWaiterOrder({
+      tableNumber: params.tableNumber,
+      waiterName: params.waiterName,
+      items: params.items.map(it => ({
+        menuItemId: it.menuItem.id,
+        quantity: it.quantity,
+        variantId: it.selectedVariant?.id,
+        variantName: it.selectedVariant?.name,
+        notes: it.notes
+      })),
+      notes: params.notes,
+      vatEnabled: settings.vatEnabled,
+      vatRate: settings.vatRate,
+      serviceChargeEnabled: settings.serviceChargeEnabled,
+      serviceChargePercent: settings.serviceChargePercent
+    });
+
+    setOrders(prev => [createdOrder, ...prev.filter(o => o.id !== createdOrder.id)]);
+    playNewOrderSound();
+    return createdOrder;
+  };
+
+  const approveWaiterOrder = async (orderId: string, cashierName?: string): Promise<void> => {
+    const result = await confirmWaiterOrder(orderId, cashierName);
+    setOrders(prev => prev.map(o => o.id === orderId ? result.order : o));
+    if (result.kots && result.kots.length > 0) {
+      setKots(prev => [...result.kots, ...prev.filter(k => !result.kots.some(nk => nk.id === k.id))]);
+      playPrintSound();
+    }
+  };
+
+  const rejectWaiterOrder = async (orderId: string, reason: string, cashierName?: string): Promise<void> => {
+    const updated = await rejectWaiterOrderService(orderId, reason, cashierName);
+    setOrders(prev => prev.map(o => o.id === orderId ? updated : o));
+    playCancelSound();
+  };
+
   const updateOrderStatus = async (orderId: string, status: OrderStatus) => {
     const path = `orders/${orderId}`;
     const nowIso = new Date().toISOString();
@@ -1042,7 +1281,18 @@ export const POSProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
           ).catch(err => console.warn(`Error syncing KOT ${lk.id} to CANCELLED:`, err));
         }
       }
-    } else if (targetOrder && targetOrder.items && targetOrder.items.length > 0 && kots.filter(k => k.orderId === orderId).length === 0) {
+    } else if (
+      statusLower !== 'pending_cashier' &&
+      statusLower !== 'rejected' &&
+      targetOrder &&
+      (targetOrder.status as any) !== 'PENDING_CASHIER' &&
+      (targetOrder.status as any) !== 'pending_cashier' &&
+      (targetOrder.status as any) !== 'REJECTED' &&
+      (targetOrder.status as any) !== 'rejected' &&
+      targetOrder.items &&
+      targetOrder.items.length > 0 &&
+      kots.filter(k => k.orderId === orderId).length === 0
+    ) {
       // Auto-generate KOT ticket if none exists
       const tableNum = targetOrder.tableNumber || 1;
       const numStr = tableNum < 10 ? `0${tableNum}` : `${tableNum}`;
@@ -2537,6 +2787,16 @@ export const POSProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         updateAdminPassword: updateAdminPasswordHandler,
         clearSessionTimeoutNotice,
 
+        // Staff & Waiter Management & Auth
+        staffList,
+        currentStaffSession,
+        isWaiterAuthenticated,
+        loginStaffMember,
+        logoutStaffMember,
+        createStaffMember: createStaff,
+        updateStaffMember: updateStaff,
+        deleteStaffMember: deleteStaff,
+
         addToCart,
         updateCartQuantity,
         removeFromCart,
@@ -2546,6 +2806,9 @@ export const POSProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
 
         placeGuestOrder,
         createManualOrder,
+        submitWaiterOrder,
+        approveWaiterOrder,
+        rejectWaiterOrder,
         updateOrderStatus,
         updateTableOrdersStatus,
         updateOrderItemStatus,

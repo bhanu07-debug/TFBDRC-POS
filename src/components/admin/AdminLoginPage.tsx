@@ -14,14 +14,21 @@ import {
   RefreshCw,
   ChevronLeft,
   Smartphone,
-  ExternalLink
+  ExternalLink,
+  Shield,
+  Users
 } from 'lucide-react';
 import { usePOS } from '../../context/POSContext';
 import { FatBuddhaLogo } from '../common/FatBuddhaLogo';
 
-export const AdminLoginPage: React.FC = () => {
+interface AdminLoginPageProps {
+  defaultPortal?: 'admin' | 'waiter';
+}
+
+export const AdminLoginPage: React.FC<AdminLoginPageProps> = ({ defaultPortal }) => {
   const {
     loginAdminPortal,
+    loginStaffMember,
     updateAdminPassword,
     sessionTimeoutNotice,
     clearSessionTimeoutNotice,
@@ -32,7 +39,19 @@ export const AdminLoginPage: React.FC = () => {
   // Mode: 'login' | 'forgot_request' | 'forgot_verify' | 'forgot_reset' | 'reset_success'
   const [viewMode, setViewMode] = useState<'login' | 'forgot_request' | 'forgot_verify' | 'forgot_reset' | 'reset_success'>('login');
 
-  // Login form states
+  // Portal selection: 'admin' | 'waiter'
+  const [selectedPortal, setSelectedPortal] = useState<'admin' | 'waiter'>(() => {
+    if (defaultPortal) return defaultPortal;
+    if (typeof window !== 'undefined') {
+      const p = new URLSearchParams(window.location.search);
+      if (p.get('mode') === 'waiter' || p.get('waiter') === 'true' || window.location.pathname === '/waiter') {
+        return 'waiter';
+      }
+    }
+    return 'admin';
+  });
+
+  // Login form states (no automatic prefill)
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
@@ -72,22 +91,25 @@ export const AdminLoginPage: React.FC = () => {
     return () => clearInterval(timer);
   }, [resendCooldown]);
 
-  // Handle Admin Login submission
+  // Handle Login submission (supports both Waiter and Admin staff logins)
   const handleLogin = (e: React.FormEvent) => {
     e.preventDefault();
     setLoginError(null);
 
-    if (!username.trim()) {
+    const cleanUser = username.trim();
+    const cleanPass = password;
+
+    if (!cleanUser) {
       setLoginError('Please enter your username');
       return;
     }
-    if (!password) {
+    if (!cleanPass) {
       setLoginError('Please enter your password');
       return;
     }
 
     setIsSubmitting(true);
-    const result = loginAdminPortal(username.trim(), password);
+    const result = loginStaffMember(cleanUser, cleanPass);
     setIsSubmitting(false);
 
     if (!result.success) {
@@ -236,16 +258,27 @@ export const AdminLoginPage: React.FC = () => {
           </div>
         </div>
 
-        {/* Quick link to Guest QR Mode */}
-        <button
-          id="btn-switch-guest-view"
-          onClick={() => setActiveInterface('guest')}
-          className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-slate-800/80 hover:bg-slate-800 border border-slate-700 text-slate-300 hover:text-white text-xs font-semibold transition"
-          title="Switch to Customer Guest QR View"
-        >
-          <Smartphone className="w-3.5 h-3.5 text-amber-400" />
-          <span>Guest QR</span>
-        </button>
+        {/* Quick links to Guest QR and Waiter Mobile Mode */}
+        <div className="flex items-center gap-2">
+          <button
+            id="btn-switch-waiter-view"
+            onClick={() => setActiveInterface('waiter')}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-amber-500/20 hover:bg-amber-500/30 border border-amber-500/40 text-amber-300 hover:text-amber-200 text-xs font-bold transition"
+            title="Open Waiter Mobile Ordering"
+          >
+            <Smartphone className="w-3.5 h-3.5 text-amber-400" />
+            <span>Waiter Order</span>
+          </button>
+          <button
+            id="btn-switch-guest-view"
+            onClick={() => setActiveInterface('guest')}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-slate-800/80 hover:bg-slate-800 border border-slate-700 text-slate-300 hover:text-white text-xs font-semibold transition"
+            title="Switch to Customer Guest QR View"
+          >
+            <Smartphone className="w-3.5 h-3.5 text-slate-400" />
+            <span>Guest QR</span>
+          </button>
+        </div>
       </div>
 
       {/* Main Login / Recovery Card */}
@@ -272,14 +305,57 @@ export const AdminLoginPage: React.FC = () => {
             ======================================================== */}
         {viewMode === 'login' && (
           <div>
-            <div className="mb-6 text-center">
+            {/* Logo and Brand */}
+            <div className="mb-5 text-center">
               <div className="flex justify-center mb-3">
                 <FatBuddhaLogo size={68} alt="The Fat Buddha Delight Official Logo" />
               </div>
-              <h2 className="text-xl font-bold text-white tracking-tight">Admin Sign In</h2>
+              <h2 className="text-xl font-bold text-white tracking-tight">
+                {selectedPortal === 'waiter' ? 'Waiter Mobile Sign In' : 'Admin & Cashier Sign In'}
+              </h2>
               <p className="text-xs text-slate-400 mt-1">
-                Enter your administrative credentials to manage POS, tables & kitchen
+                {selectedPortal === 'waiter'
+                  ? 'Sign in with floor staff credentials to take table orders'
+                  : 'Enter credentials to manage POS, tables, kitchen & staff'}
               </p>
+            </div>
+
+            {/* Portal Switcher Tabs */}
+            <div className="grid grid-cols-2 p-1 rounded-xl bg-slate-900 border border-slate-800 mb-5 text-xs font-bold">
+              <button
+                type="button"
+                onClick={() => {
+                  setSelectedPortal('admin');
+                  setUsername('');
+                  setPassword('');
+                  setLoginError(null);
+                }}
+                className={`py-2 px-3 rounded-lg flex items-center justify-center gap-1.5 transition cursor-pointer ${
+                  selectedPortal === 'admin'
+                    ? 'bg-amber-500 text-slate-950 shadow-md font-bold'
+                    : 'text-slate-400 hover:text-white'
+                }`}
+              >
+                <Shield className="w-3.5 h-3.5" />
+                <span>Admin / Cashier</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setSelectedPortal('waiter');
+                  setUsername('');
+                  setPassword('');
+                  setLoginError(null);
+                }}
+                className={`py-2 px-3 rounded-lg flex items-center justify-center gap-1.5 transition cursor-pointer ${
+                  selectedPortal === 'waiter'
+                    ? 'bg-purple-600 text-white shadow-md font-bold'
+                    : 'text-slate-400 hover:text-white'
+                }`}
+              >
+                <Smartphone className="w-3.5 h-3.5" />
+                <span>Floor Waiter</span>
+              </button>
             </div>
 
             {loginError && (
@@ -289,11 +365,11 @@ export const AdminLoginPage: React.FC = () => {
               </div>
             )}
 
-            <form onSubmit={handleLogin} className="space-y-4">
+            <form onSubmit={handleLogin} className="space-y-4" autoComplete="off">
               {/* Username Input */}
               <div>
                 <label className="block text-xs font-semibold text-slate-300 mb-1.5">
-                  Username
+                  {selectedPortal === 'waiter' ? 'Waiter Username' : 'Admin Username'}
                 </label>
                 <div className="relative">
                   <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-slate-500">
@@ -301,13 +377,17 @@ export const AdminLoginPage: React.FC = () => {
                   </div>
                   <input
                     id="admin-username-input"
+                    name="username_login"
                     type="text"
                     value={username}
                     onChange={e => setUsername(e.target.value)}
-                    placeholder="Enter username"
-                    autoComplete="username"
+                    placeholder={selectedPortal === 'waiter' ? 'Enter waiter username' : 'Enter admin username'}
+                    autoComplete="off"
+                    autoCorrect="off"
+                    autoCapitalize="none"
+                    spellCheck="false"
                     style={{ color: '#ffffff', WebkitTextFillColor: '#ffffff' }}
-                    className="w-full pl-10 pr-3.5 py-2.5 rounded-xl bg-slate-900 border border-slate-700 focus:border-amber-500 focus:ring-1 focus:ring-amber-500 !text-white text-white text-sm placeholder-slate-500 transition outline-none"
+                    className="w-full pl-10 pr-3.5 py-2.5 rounded-xl bg-slate-900 border border-slate-700 focus:border-amber-500 focus:ring-1 focus:ring-amber-500 !text-white text-white text-sm placeholder-slate-500 transition outline-none font-mono"
                   />
                 </div>
               </div>
@@ -323,13 +403,14 @@ export const AdminLoginPage: React.FC = () => {
                   </div>
                   <input
                     id="admin-password-input"
+                    name="password_login"
                     type={showPassword ? 'text' : 'password'}
                     value={password}
                     onChange={e => setPassword(e.target.value)}
-                    placeholder="••••••••••••"
-                    autoComplete="current-password"
+                    placeholder="Enter password"
+                    autoComplete="new-password"
                     style={{ color: '#ffffff', WebkitTextFillColor: '#ffffff' }}
-                    className="w-full pl-10 pr-10 py-2.5 rounded-xl bg-slate-900 border border-slate-700 focus:border-amber-500 focus:ring-1 focus:ring-amber-500 !text-white text-white text-sm placeholder-slate-500 transition outline-none"
+                    className="w-full pl-10 pr-10 py-2.5 rounded-xl bg-slate-900 border border-slate-700 focus:border-amber-500 focus:ring-1 focus:ring-amber-500 !text-white text-white text-sm placeholder-slate-500 transition outline-none font-mono"
                   />
                   <button
                     type="button"
@@ -339,23 +420,28 @@ export const AdminLoginPage: React.FC = () => {
                     {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                   </button>
                 </div>
-                {/* Forget Password link placed below the password field */}
-                <div className="flex justify-end mt-2">
-                  <button
-                    type="button"
-                    id="btn-forgot-password-link"
-                    onClick={() => setViewMode('forgot_request')}
-                    className="text-xs text-amber-400 hover:text-amber-300 hover:underline transition font-medium cursor-pointer"
-                  >
-                    Forgot password?
-                  </button>
-                </div>
+                {selectedPortal === 'admin' && (
+                  <div className="flex justify-end mt-2">
+                    <button
+                      type="button"
+                      id="btn-forgot-password-link"
+                      onClick={() => setViewMode('forgot_request')}
+                      className="text-xs text-amber-400 hover:text-amber-300 hover:underline transition font-medium cursor-pointer"
+                    >
+                      Forgot password?
+                    </button>
+                  </div>
+                )}
               </div>
 
-              {/* Timeout Policy Notice */}
+              {/* Policy Notice */}
               <div className="p-2.5 rounded-xl bg-slate-900/60 border border-slate-800 flex items-center gap-2 text-[11px] text-slate-400">
                 <Clock className="w-3.5 h-3.5 text-amber-400 flex-shrink-0" />
-                <span>Active admin sessions automatically log out after <strong>1 hour</strong>.</span>
+                <span>
+                  {selectedPortal === 'waiter'
+                    ? 'Floor waiter sessions stay active for 12 hours.'
+                    : 'Active admin sessions automatically log out after 1 hour.'}
+                </span>
               </div>
 
               {/* Sign In Button */}
@@ -363,16 +449,20 @@ export const AdminLoginPage: React.FC = () => {
                 type="submit"
                 id="btn-admin-login-submit"
                 disabled={isSubmitting}
-                className="w-full py-2.5 px-4 rounded-xl bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-600 hover:to-amber-700 text-white font-bold text-sm shadow-lg shadow-amber-500/25 transition flex items-center justify-center gap-2 disabled:opacity-50 cursor-pointer"
+                className={`w-full py-2.5 px-4 rounded-xl text-white font-bold text-sm shadow-lg transition flex items-center justify-center gap-2 disabled:opacity-50 cursor-pointer ${
+                  selectedPortal === 'waiter'
+                    ? 'bg-gradient-to-r from-purple-600 to-purple-700 hover:from-purple-500 hover:to-purple-600 shadow-purple-600/30'
+                    : 'bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-600 hover:to-amber-700 shadow-amber-500/25'
+                }`}
               >
                 {isSubmitting ? (
                   <>
                     <RefreshCw className="w-4 h-4 animate-spin" />
-                    <span>Verifying...</span>
+                    <span>Verifying Credentials...</span>
                   </>
                 ) : (
                   <>
-                    <span>Sign In to POS</span>
+                    <span>{selectedPortal === 'waiter' ? 'Sign In as Waiter' : 'Sign In to POS'}</span>
                     <ArrowRight className="w-4 h-4" />
                   </>
                 )}
